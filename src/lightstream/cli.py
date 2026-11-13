@@ -28,6 +28,7 @@ def build_parser():
     sub.add_parser("doctor", help="check ffmpeg and available encoders")
     sub.add_parser("presets", help="list quality presets")
     sub.add_parser("init", help="write an example config file")
+    sub.add_parser("gui", help="open the easy window (3 steps, for beginners)")
     s = sub.add_parser("start", help="start streaming")
     s.add_argument("--platform", choices=PLATFORMS)
     s.add_argument("--url", help="RTMP base URL for --platform custom")
@@ -127,6 +128,9 @@ def main(argv=None, out=sys.stdout):
             return cmd_doctor(out)
         if args.command == "presets":
             return cmd_presets(out)
+        if args.command == "gui":
+            from .gui import main as gui_main  # lazy: tkinter is optional
+            return gui_main()
         if args.command == "init":
             path = config_path()
             try:

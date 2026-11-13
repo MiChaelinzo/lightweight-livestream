@@ -14,5 +14,8 @@ dependencies = []
 [project.scripts]
 lightstream = "lightstream.cli:main"
 
+[project.gui-scripts]
+lightstream-gui = "lightstream.gui:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]

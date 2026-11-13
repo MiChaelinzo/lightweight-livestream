@@ -23,6 +23,11 @@ STREAM_KEY=your_key lightstream start --platform twitch --preset light
 # or: ./launchers/start-stream.sh twitch light
 ```
 
+## Easy window (beginners and kids)
+
+Double-click `launchers/start-gui.bat` (Windows) or run `./launchers/start-gui.sh`, or `lightstream gui`.
+Three steps: 1 pick where to stream, 2 paste your stream key, 3 pick how strong your PC is. Then press the big green START. The banner says Offline, Starting, LIVE, Reconnecting or Problem, and "Check my PC" tests FFmpeg. Closing the window stops the stream. Your choices are remembered, but the stream key is never saved or shown in the log. Uses only Python's built-in tkinter. Status: window rendering is UNVERIFIED (no display in the test sandbox); the logic behind it is unit tested.
+
 ## Presets
 
 | Preset | Resolution | FPS | Video kbps | Use for |
