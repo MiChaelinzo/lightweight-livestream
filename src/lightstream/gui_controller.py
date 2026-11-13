@@ -99,9 +99,14 @@ def prefs_path(os_name=None):
     return os.path.join(os.path.dirname(config_path(os_name)), PREFS_FILENAME)
 
 
-def save_prefs(path, prefs):
-    """Write only whitelisted, non-secret fields."""
-    safe = {k: prefs[k] for k in PREF_FIELDS if k in prefs}
+def save_prefs(path, prefs, key=""):
+    """Write only whitelisted fields, and never any value containing the key.
+
+    The key check covers a user pasting a full rtmp://.../KEY address into the
+    "Other site" box.
+    """
+    safe = {k: prefs[k] for k in PREF_FIELDS if k in prefs
+            and not (key and key in str(prefs[k]))}
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(safe, fh, indent=2)

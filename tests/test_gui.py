@@ -156,3 +156,13 @@ class GuiModuleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_save_prefs_drops_value_containing_key(tmp_path):
+    path = str(tmp_path / "gui.json")
+    gc.save_prefs(path, {"platform": "custom",
+                         "url": "rtmp://host/app/SECRETKEY", "fps": "30"},
+                  "SECRETKEY")
+    saved = gc.load_prefs(path)
+    assert "url" not in saved and saved["fps"] == "30"
+    assert "SECRETKEY" not in open(path).read()

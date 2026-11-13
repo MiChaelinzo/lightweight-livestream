@@ -154,7 +154,7 @@ class StreamWindow:
         error = self.controller.start(prefs, self.key.get())
         if error is None:
             try:
-                gc.save_prefs(self.prefs_file, prefs)
+                gc.save_prefs(self.prefs_file, prefs, self.key.get().strip())
             except OSError:
                 pass  # remembering choices is optional
 
