@@ -131,7 +131,7 @@ Override anything: `--fps 30 --res 960x540 --bitrate 1500`. Invalid values (such
 - Both games are fine at 30 FPS (or 24 with `potato`). Higher FPS costs CPU and gains little.
 - Lower the emulator's own FPS and resolution and give it fewer CPU cores, leaving one for streaming.
 - Close browsers and other apps. Use wired ethernet if you can.
-- If it still lags, drop to `potato`, then lower `--bitrate`. A hardware encoder (NVIDIA, Intel QuickSync, AMD) is used only if a tiny test encode succeeds on your machine, otherwise it falls back to software `libx264`; use `--software` to skip hardware, or `--encoder NAME` to force one.
+- If it still lags, drop to `potato`, then lower `--bitrate`. A hardware encoder (NVIDIA, Intel QuickSync, AMD) is used only if a tiny test encode succeeds on your machine, otherwise it falls back to software `libx264`; if it later fails twice in a row with an error naming the encoder, the stream switches to `libx264` (wrong keys or network drops do not trigger this); use `--software` to skip hardware, or `--encoder NAME` to force one.
 - **Black picture?** `--window` uses Windows gdigrab, which often captures black for hardware-accelerated emulator windows (BlueStacks, LDPlayer, MuMu). If so, drop `--window` to capture the whole desktop, or try the emulator's DirectX/software render mode.
 - Window and desktop captures keep their aspect ratio and get black bars when it differs from the preset, instead of being stretched.
 - Audio: pass `--audio-device "Device name"` (Windows dshow name, run `ffmpeg -list_devices true -f dshow -i dummy`). Without it, Windows streams silent audio.

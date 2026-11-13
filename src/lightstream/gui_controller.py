@@ -265,11 +265,14 @@ class StreamController:
         finally:
             self._key = ""
 
-    def stop(self):
-        """Stop the stream and wait briefly for it to finish."""
+    def stop(self, wait=True):
+        """Stop the stream. wait=False returns at once (for the GUI thread);
+        the status poll then sees running turn False."""
         if self._stop is not None:
             self._stop.set()
         thread = self._thread
+        if not wait:
+            return
         if thread is not None:
             thread.join(STOP_JOIN_SECONDS)
         if not self.is_running():

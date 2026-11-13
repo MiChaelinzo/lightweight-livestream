@@ -15,6 +15,9 @@ WINDOWS_BELOW_NORMAL = 0x00004000  # BELOW_NORMAL_PRIORITY_CLASS
 FALLBACK_AFTER_FAILURES = 2  # quick failures of a hardware encoder before libx264
 LAGGING_BELOW_SPEED = 0.95   # ffmpeg speed under 1.0x means it cannot keep up
 STOP_POLL_SECONDS = 0.2
+# ffmpeg stderr words that point at the encoder itself, not the network or key
+ENCODER_ERROR_HINTS = ("nvenc", "qsv", "amf", "vaapi", "videotoolbox", "cuda",
+                       "encoder", "hwaccel", "libmfx", "device creation")
 
 STATUS_STARTING = "starting"
 STATUS_LIVE = "live"
@@ -69,6 +72,12 @@ def parse_progress(line):
     return found if "fps" in found or "speed" in found else {}
 
 
+def mentions_encoder_problem(line):
+    """True when an ffmpeg error line looks like a hardware encoder failure."""
+    lowered = line.lower()
+    return any(hint in lowered for hint in ENCODER_ERROR_HINTS)
+
+
 def is_lagging(health):
     """True when ffmpeg encodes slower than real time (viewers will buffer)."""
     return "speed" in health and health["speed"] < LAGGING_BELOW_SPEED
@@ -93,7 +102,9 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
     starting, live (detail is the health dict), reconnecting (detail is the
     delay), fallback (detail is the new encoder), stopped and failed.
     If a hardware encoder fails quickly FALLBACK_AFTER_FAILURES times in a
-    row and argv_factory is given, argv_factory("libx264") replaces argv.
+    row, with stderr naming the encoder, and argv_factory is given,
+    argv_factory("libx264") replaces argv. Network or key failures never
+    trigger it. Without on_status, progress lines are echoed to out.
     Returns an exit code.
     """
     def report(state, detail=None):
@@ -103,6 +114,7 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
     if sleep is None:
         sleep = stop.wait if stop is not None else time.sleep
     failures = 0
+    encoder_failures = 0
     while True:
         started = clock()
         report(STATUS_STARTING)
@@ -110,6 +122,7 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
                      stderr=subprocess.PIPE, universal_newlines=True,
                      **priority_kwargs(os_name))
         finished = threading.Event()
+        encoder_blamed = False
         if stop is not None:
             threading.Thread(target=_watch_for_stop, args=(stop, proc, finished),
                              daemon=True).start()
@@ -118,8 +131,11 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
                 health = parse_progress(line)
                 if health:
                     report(STATUS_LIVE, health)
+                    if not on_status:
+                        out.write(redact(line.rstrip("\n"), key) + "\r")
                 else:
                     out.write(redact(line, key))
+                    encoder_blamed = encoder_blamed or mentions_encoder_problem(line)
             code = proc.wait()
         except KeyboardInterrupt:
             proc.terminate()
@@ -138,13 +154,15 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
             return 0
         quick = clock() - started < HEALTHY_RUN_SECONDS
         failures = failures + 1 if quick else 1
+        encoder_failures = encoder_failures + 1 if quick and encoder_blamed else 0
         if (quick and argv_factory and encoder not in (None, SOFTWARE_ENCODER)
-                and failures >= FALLBACK_AFTER_FAILURES):
+                and encoder_failures >= FALLBACK_AFTER_FAILURES):
             out.write("%s keeps failing. Switching to %s.\n"
                       % (encoder, SOFTWARE_ENCODER))
             encoder = SOFTWARE_ENCODER
             argv = argv_factory(encoder)
             failures = 0
+            encoder_failures = 0
             report(STATUS_FALLBACK, encoder)
             continue
         if max_failures is not None and failures >= max_failures:

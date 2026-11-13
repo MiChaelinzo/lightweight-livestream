@@ -110,6 +110,15 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(snap[0], gc.BANNER_OFFLINE[0])
         self.assertEqual(calls[0][1]["max_failures"], gc.MAX_QUICK_FAILURES)
 
+    def test_stop_without_waiting_returns_at_once_and_ends_stream(self):
+        calls = []
+        c = make_controller(fake_runner_factory(calls))
+        c.start(PREFS, SECRET)
+        c._thread.join(0.3)
+        c.stop(wait=False)
+        c._thread.join(2)
+        self.assertFalse(c.snapshot()[4])
+
     def test_keep_trying_is_unlimited(self):
         calls = []
         c = make_controller(fake_runner_factory(calls))

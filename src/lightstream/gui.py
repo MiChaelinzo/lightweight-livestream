@@ -15,6 +15,7 @@ from . import gui_controller as gc
 from .cli import cmd_doctor
 
 POLL_MS = 500
+CLOSE_WAIT_MS = 5000
 TITLE_FONT = ("Segoe UI", 20, "bold")
 STEP_FONT = ("Segoe UI", 14, "bold")
 TEXT_FONT = ("Segoe UI", 13)
@@ -30,6 +31,7 @@ NO_GUI_MESSAGE = ("The window could not open. This computer has no screen "
 class StreamWindow:
     def __init__(self, root):
         self.root = root
+        self._shown_log = None
         self.controller = gc.StreamController(display=os.environ.get("DISPLAY"))
         self.prefs_file = gc.prefs_path()
         saved = gc.load_prefs(self.prefs_file)
@@ -159,7 +161,7 @@ class StreamWindow:
                 pass  # remembering choices is optional
 
     def on_stop(self):
-        self.controller.stop()
+        self.controller.stop(wait=False)
 
     def on_doctor(self):
         buffer = io.StringIO()
@@ -173,16 +175,22 @@ class StreamWindow:
             self.help.config(text=help_text, fg="#B00020")
         self.start_btn.config(state="disabled" if running else "normal")
         self.stop_btn.config(state="normal" if running else "disabled")
-        self.log.config(state="normal")
-        self.log.delete("1.0", "end")
-        self.log.insert("end", log_text)
-        self.log.see("end")
-        self.log.config(state="disabled")
+        if log_text != self._shown_log:
+            self._shown_log = log_text
+            self.log.config(state="normal")
+            self.log.delete("1.0", "end")
+            self.log.insert("end", log_text)
+            self.log.see("end")
+            self.log.config(state="disabled")
         self.root.after(POLL_MS, self.poll)
 
-    def on_close(self):
-        self.controller.stop()
-        self.root.destroy()
+    def on_close(self, waited=0):
+        """Ask ffmpeg to stop, then close once it has (or after a few seconds)."""
+        self.controller.stop(wait=False)
+        if self.controller.is_running() and waited < CLOSE_WAIT_MS:
+            self.root.after(100, lambda: self.on_close(waited + 100))
+        else:
+            self.root.destroy()
 
 
 def main(argv=None):

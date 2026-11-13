@@ -306,7 +306,8 @@ class ReliabilityTests(unittest.TestCase):
             seen.append(encoder)
             return ["ffmpeg", encoder]
         launched = []
-        procs = iter([FakeProc(1, []), FakeProc(1, []), FakeProc(0, [])])
+        err = ["Error while opening encoder h264_nvenc\n"]
+        procs = iter([FakeProc(1, err), FakeProc(1, err), FakeProc(0, [])])
         def popen(argv, **kwargs):
             launched.append(argv)
             return next(procs)
@@ -319,6 +320,14 @@ class ReliabilityTests(unittest.TestCase):
         self.assertEqual(["libx264"], seen)
         self.assertEqual(["ffmpeg", "libx264"], launched[-1])
         self.assertIn("Switching to libx264", out.getvalue())
+
+    def test_network_failures_do_not_trigger_fallback(self):
+        err = ["Connection refused\n"]
+        code, _, _ = self.run_runner(
+            [FakeProc(1, err) for _ in range(3)], max_failures=3,
+            encoder="h264_nvenc",
+            argv_factory=lambda e: self.fail("no fallback"))
+        self.assertEqual(1, code)
 
     def test_software_encoder_never_falls_back(self):
         code, events, _ = self.run_runner(
@@ -340,6 +349,13 @@ class ReliabilityTests(unittest.TestCase):
     def test_progress_lines_are_not_echoed(self):
         _, _, text = self.run_runner([FakeProc(0, ["fps=30 speed=1.0x\n"])])
         self.assertEqual("", text)
+
+    def test_progress_is_echoed_without_status_callback(self):
+        out = io.StringIO()
+        run_with_reconnect(["ffmpeg"], KEY, "linux",
+                           popen=lambda *a, **k: FakeProc(0, ["fps=30 speed=1.0x\n"]),
+                           out=out)
+        self.assertIn("fps=30", out.getvalue())
 
     def test_linux_display_and_macos_device(self):
         args, _ = capture_inputs("linux", 30, display=":1.0")
