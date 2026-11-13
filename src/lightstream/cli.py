@@ -1,0 +1,117 @@
+"""Command line interface."""
+
+import argparse
+import getpass
+import os
+import shutil
+import sys
+
+from . import __version__
+from .command import build_command
+from .config import (config_path, detect_os, load_file_config, resolve_key,
+                     resolve_settings, write_example_config)
+from .encoders import choose_encoder, probe_encoders
+from .platforms import PLATFORMS
+from .presets import PRESETS
+from .runner import format_command, run_with_reconnect
+
+
+def build_parser():
+    p = argparse.ArgumentParser(prog="lightstream",
+                                description="Very lightweight livestreaming via FFmpeg.")
+    p.add_argument("--version", action="version", version=__version__)
+    sub = p.add_subparsers(dest="command", required=True)
+    sub.add_parser("doctor", help="check ffmpeg and available encoders")
+    sub.add_parser("presets", help="list quality presets")
+    sub.add_parser("init", help="write an example config file")
+    s = sub.add_parser("start", help="start streaming")
+    s.add_argument("--platform", choices=PLATFORMS)
+    s.add_argument("--url", help="RTMP base URL for --platform custom")
+    s.add_argument("--preset", choices=sorted(PRESETS))
+    s.add_argument("--fps", type=int)
+    s.add_argument("--res", dest="resolution", help="for example 854x480")
+    s.add_argument("--bitrate", type=int, help="video kbps")
+    s.add_argument("--window", help="Windows only: exact window title to capture")
+    s.add_argument("--audio-device", help="dshow/pulse/avfoundation audio device")
+    s.add_argument("--encoder", help="force an encoder, e.g. libx264")
+    s.add_argument("--software", action="store_true",
+                   help="do not use a hardware encoder")
+    s.add_argument("--dry-run", action="store_true",
+                   help="print the ffmpeg command (key hidden) and exit")
+    return p
+
+
+def cmd_doctor(out):
+    os_name = detect_os()
+    out.write("OS: %s\n" % os_name)
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        out.write("ffmpeg: NOT FOUND. Install it and add it to PATH.\n")
+        return 1
+    out.write("ffmpeg: %s\n" % ffmpeg)
+    try:
+        encoders = probe_encoders(ffmpeg)
+    except RuntimeError as exc:
+        out.write("%s\n" % exc)
+        return 1
+    out.write("Encoder that would be used: %s\n" % choose_encoder(encoders))
+    return 0
+
+
+def cmd_presets(out):
+    for p in PRESETS.values():
+        out.write("%-9s %dx%d @%dfps %dk  %s\n" % (
+            p.name, p.width, p.height, p.fps, p.video_kbps, p.description))
+    return 0
+
+
+def cmd_start(args, out):
+    os_name = detect_os()
+    file_cfg = load_file_config(config_path(os_name))
+    settings = resolve_settings(
+        {"platform": args.platform, "url": args.url, "preset": args.preset,
+         "fps": args.fps, "resolution": args.resolution, "bitrate": args.bitrate,
+         "window": args.window, "audio_device": args.audio_device,
+         "encoder": args.encoder}, file_cfg)
+    key = resolve_key(os.environ, getpass.getpass)
+
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg is None and not args.dry_run:
+        out.write("ffmpeg not found. Run 'lightstream doctor'.\n")
+        return 1
+    available = set()
+    if ffmpeg:
+        try:
+            available = probe_encoders(ffmpeg)
+        except RuntimeError as exc:
+            out.write("Warning: %s. Using libx264.\n" % exc)
+    encoder = choose_encoder(available, not args.software, settings.encoder)
+    argv = build_command(settings, key, os_name, encoder, ffmpeg or "ffmpeg")
+
+    out.write("Encoder: %s\n" % encoder)
+    out.write(format_command(argv, key) + "\n")
+    if args.dry_run:
+        return 0
+    return run_with_reconnect(argv, key, os_name)
+
+
+def main(argv=None, out=sys.stdout):
+    args = build_parser().parse_args(argv)
+    try:
+        if args.command == "doctor":
+            return cmd_doctor(out)
+        if args.command == "presets":
+            return cmd_presets(out)
+        if args.command == "init":
+            path = config_path()
+            try:
+                write_example_config(path)
+            except FileExistsError:
+                out.write("Config already exists: %s\n" % path)
+                return 1
+            out.write("Wrote %s (the stream key is never stored here)\n" % path)
+            return 0
+        return cmd_start(args, out)
+    except (ValueError, FileExistsError) as exc:
+        out.write("Error: %s\n" % exc)
+        return 2
