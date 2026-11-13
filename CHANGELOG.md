@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Runner can be stopped from another thread (`stop` event), reports status (starting, live, reconnecting, fallback, stopped, failed) and parses ffmpeg `-stats` into fps/bitrate/speed for a live/lagging indicator.
+- A hardware encoder that fails quickly twice in a row falls back to libx264 mid-stream.
+- `--keep-trying` never gives up reconnecting; Linux capture follows `$DISPLAY`; macOS `--video-device` picks the screen.
 - Hardware encoders are chosen only if a short test encode succeeds, else libx264 (`doctor` uses the same check).
 - Stop retrying after 5 consecutive quick failures; report a missing ffmpeg at launch.
 - Keep source aspect ratio (scale plus pad) instead of stretching.

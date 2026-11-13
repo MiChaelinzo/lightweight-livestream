@@ -2,6 +2,7 @@ import io
 import os
 import sys
 import tempfile
+import threading
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -15,8 +16,9 @@ from lightstream.encoders import (choose_encoder, choose_working_encoder,
                                   encoder_works, parse_encoders)
 from lightstream.platforms import capture_inputs, ingest_url
 from lightstream.presets import PRESETS, get_preset, parse_resolution
-from lightstream.runner import (backoff_delay, format_command, priority_kwargs,
-                                redact, run_with_reconnect)
+from lightstream.runner import (backoff_delay, format_command, is_lagging,
+                                parse_progress, priority_kwargs, redact,
+                                run_with_reconnect)
 
 KEY = "live_SECRET123"
 FFMPEG_TEXT = """Encoders:
@@ -243,6 +245,118 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(3, code)
 
 
+class StoppableProc(FakeProc):
+    terminated = False
+
+    def terminate(self):
+        self.terminated = True
+
+
+class ReliabilityTests(unittest.TestCase):
+    def run_runner(self, procs, **kwargs):
+        procs = iter(procs)
+        events, out = [], io.StringIO()
+        kwargs.setdefault("sleep", lambda s: None)
+        code = run_with_reconnect(
+            ["ffmpeg"], KEY, "windows", popen=lambda *a, **k: next(procs),
+            clock=lambda: 0, out=out,
+            on_status=lambda state, detail=None: events.append((state, detail)),
+            **kwargs)
+        return code, events, out.getvalue()
+
+    def test_status_sequence_and_live_health(self):
+        line = "frame=1 fps=30 bitrate=900.5kbits/s speed=1.0x\n"
+        code, events, _ = self.run_runner(
+            [FakeProc(1, []), FakeProc(0, [line])])
+        self.assertEqual(0, code)
+        self.assertEqual(
+            [("starting", None), ("reconnecting", 1), ("starting", None),
+             ("live", {"fps": 30.0, "bitrate_kbps": 900.5, "speed": 1.0}),
+             ("stopped", None)], events)
+
+    def test_failed_status_and_keep_trying_forever(self):
+        code, events, _ = self.run_runner(
+            [FakeProc(3, []) for _ in range(3)], max_failures=3)
+        self.assertEqual(3, code)
+        self.assertEqual(("failed", 3), events[-1])
+        # max_failures=None never gives up: it only ends on a clean exit
+        procs = [FakeProc(1, []) for _ in range(20)] + [FakeProc(0, [])]
+        code, _, _ = self.run_runner(procs, max_failures=None)
+        self.assertEqual(0, code)
+
+    def test_stop_event_terminates_and_returns_zero(self):
+        stop = threading.Event()
+        proc = StoppableProc(1, [])
+        stop.set()
+        code, events, text = self.run_runner([proc], stop=stop)
+        self.assertEqual(0, code)
+        self.assertEqual(("stopped", None), events[-1])
+        self.assertIn("Stopped.", text)
+
+    def test_stop_during_reconnect_wait(self):
+        stop = threading.Event()
+        code, events, _ = self.run_runner(
+            [FakeProc(1, [])], stop=stop, sleep=lambda d: stop.set())
+        self.assertEqual(0, code)
+        self.assertEqual("stopped", events[-1][0])
+
+    def test_hardware_encoder_falls_back_to_libx264(self):
+        seen = []
+        def factory(encoder):
+            seen.append(encoder)
+            return ["ffmpeg", encoder]
+        launched = []
+        procs = iter([FakeProc(1, []), FakeProc(1, []), FakeProc(0, [])])
+        def popen(argv, **kwargs):
+            launched.append(argv)
+            return next(procs)
+        out = io.StringIO()
+        code = run_with_reconnect(
+            ["ffmpeg", "h264_nvenc"], KEY, "windows", popen=popen,
+            sleep=lambda s: None, clock=lambda: 0, out=out,
+            encoder="h264_nvenc", argv_factory=factory)
+        self.assertEqual(0, code)
+        self.assertEqual(["libx264"], seen)
+        self.assertEqual(["ffmpeg", "libx264"], launched[-1])
+        self.assertIn("Switching to libx264", out.getvalue())
+
+    def test_software_encoder_never_falls_back(self):
+        code, events, _ = self.run_runner(
+            [FakeProc(1, []) for _ in range(3)], max_failures=3,
+            encoder="libx264", argv_factory=lambda e: self.fail("no fallback"))
+        self.assertEqual(1, code)
+
+    def test_health_parser(self):
+        health = parse_progress(
+            "frame=  99 fps= 28 q=-1.0 size=N/A time=00:00:03 "
+            "bitrate=1500.2kbits/s speed=0.80x")
+        self.assertEqual({"fps": 28.0, "bitrate_kbps": 1500.2, "speed": 0.8},
+                         health)
+        self.assertTrue(is_lagging(health))
+        self.assertFalse(is_lagging({"speed": 1.0}))
+        self.assertEqual({}, parse_progress("Connection refused"))
+        self.assertEqual({"fps": 5.0}, parse_progress("fps=5 bitrate=N/A"))
+
+    def test_progress_lines_are_not_echoed(self):
+        _, _, text = self.run_runner([FakeProc(0, ["fps=30 speed=1.0x\n"])])
+        self.assertEqual("", text)
+
+    def test_linux_display_and_macos_device(self):
+        args, _ = capture_inputs("linux", 30, display=":1.0")
+        self.assertEqual(":1.0", args[args.index("-i") + 1])
+        args, _ = capture_inputs("linux", 30)
+        self.assertEqual(":0.0", args[args.index("-i") + 1])
+        args, _ = capture_inputs("macos", 30, video_device="2")
+        self.assertEqual("2:0", args[args.index("-i") + 1])
+        self.assertEqual("1:0", capture_inputs("macos", 30)[0][-1])
+
+    def test_display_env_reaches_command(self):
+        s = resolve_settings({"display": ":2.0"}, {})
+        argv = build_command(s, KEY, "linux", "libx264")
+        self.assertIn(":2.0", argv)
+        self.assertIn("-stats", argv)
+
+
 class CliTests(unittest.TestCase):
     def run_cli(self, argv, env=None):
         out = io.StringIO()
@@ -282,6 +396,25 @@ class CliTests(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn("Could not start ffmpeg", text)
         self.assertNotIn(KEY, text)
+
+    def test_keep_trying_removes_retry_cap_and_passes_fallback(self):
+        calls = {}
+        def fake_run(argv, key, os_name, **kwargs):
+            calls.update(kwargs)
+            return 0
+        real = (cli.run_with_reconnect, cli.shutil.which, cli.probe_encoders)
+        cli.run_with_reconnect = fake_run
+        cli.shutil.which = lambda name: "/usr/bin/ffmpeg"
+        cli.probe_encoders = lambda ffmpeg: set()
+        try:
+            code, _ = self.run_cli(["start", "--software", "--keep-trying"],
+                                   {"STREAM_KEY": KEY})
+        finally:
+            cli.run_with_reconnect, cli.shutil.which, cli.probe_encoders = real
+        self.assertEqual(0, code)
+        self.assertIsNone(calls["max_failures"])
+        self.assertEqual("libx264", calls["encoder"])
+        self.assertIn("libx264", calls["argv_factory"]("libx264"))
 
     def test_presets_and_errors(self):
         code, text = self.run_cli(["presets"])

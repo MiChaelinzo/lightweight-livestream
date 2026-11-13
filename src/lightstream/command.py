@@ -7,7 +7,8 @@ from .platforms import capture_inputs, ingest_url, silent_audio_input
 StreamSettings = namedtuple(
     "StreamSettings",
     "platform custom_url width height fps video_kbps audio_kbps x264_preset "
-    "window audio_device encoder",
+    "window audio_device encoder display video_device",
+    defaults=(None, None),
 )
 
 VAAPI_DEVICE = "/dev/dri/renderD128"
@@ -33,8 +34,10 @@ def _encoder_args(encoder, s):
 
 def build_command(s, key, os_name, encoder, ffmpeg="ffmpeg"):
     """Return the full ffmpeg argv list. Contains the key; redact before display."""
-    video_in, has_audio = capture_inputs(os_name, s.fps, s.window, s.audio_device)
-    args = [ffmpeg, "-hide_banner", "-loglevel", "warning"]
+    video_in, has_audio = capture_inputs(os_name, s.fps, s.window, s.audio_device,
+                                      s.display, s.video_device)
+    args = [ffmpeg, "-hide_banner", "-loglevel", "warning",
+            "-stats"]  # progress lines feed the live/lagging indicator
     if encoder == "h264_vaapi":
         args += ["-vaapi_device", VAAPI_DEVICE]
     args += video_in

@@ -37,6 +37,10 @@ def build_parser():
     s.add_argument("--bitrate", type=int, help="video kbps")
     s.add_argument("--window", help="Windows only: exact window title to capture")
     s.add_argument("--audio-device", help="dshow/pulse/avfoundation audio device")
+    s.add_argument("--video-device",
+                   help="macOS only: avfoundation screen index (see ffmpeg -list_devices)")
+    s.add_argument("--keep-trying", action="store_true",
+                   help="never give up reconnecting (for flaky internet)")
     s.add_argument("--encoder", help="force an encoder, e.g. libx264")
     s.add_argument("--software", action="store_true",
                    help="do not use a hardware encoder")
@@ -77,7 +81,8 @@ def cmd_start(args, out):
         {"platform": args.platform, "url": args.url, "preset": args.preset,
          "fps": args.fps, "resolution": args.resolution, "bitrate": args.bitrate,
          "window": args.window, "audio_device": args.audio_device,
-         "encoder": args.encoder}, file_cfg)
+         "encoder": args.encoder, "video_device": args.video_device,
+         "display": os.environ.get("DISPLAY")}, file_cfg)
     key = resolve_key(os.environ, getpass.getpass)
 
     ffmpeg = shutil.which("ffmpeg")
@@ -104,8 +109,12 @@ def cmd_start(args, out):
     if args.dry_run:
         return 0
     try:
-        return run_with_reconnect(argv, key, os_name,
-                                  max_failures=MAX_QUICK_FAILURES)
+        return run_with_reconnect(
+            argv, key, os_name,
+            max_failures=None if args.keep_trying else MAX_QUICK_FAILURES,
+            encoder=encoder,
+            argv_factory=lambda enc: build_command(
+                settings, key, os_name, enc, ffmpeg))
     except OSError as exc:
         out.write("Could not start ffmpeg: %s\n" % exc)
         return 1

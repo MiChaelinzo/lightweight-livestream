@@ -16,6 +16,7 @@ EXAMPLE_CONFIG = {
     "window": None,
     "audio_device": None,
     "encoder": None,
+    "video_device": None,
     "url": None,
 }
 
@@ -97,6 +98,8 @@ def resolve_settings(cli, file_cfg):
         window=_pick("window", cli, file_cfg),
         audio_device=_pick("audio_device", cli, file_cfg),
         encoder=_pick("encoder", cli, file_cfg),
+        display=_pick("display", cli, file_cfg),
+        video_device=_pick("video_device", cli, file_cfg),
     )
 
 

@@ -21,7 +21,12 @@ def ingest_url(platform, key, custom_url=None):
     return INGEST_URLS[platform] + key
 
 
-def capture_inputs(os_name, fps, window=None, audio_device=None):
+DEFAULT_DISPLAY = ":0.0"
+DEFAULT_MAC_VIDEO_DEVICE = "1"  # usually the main screen
+
+
+def capture_inputs(os_name, fps, window=None, audio_device=None,
+                   display=None, video_device=None):
     """FFmpeg input arguments for screen (+ audio when the OS allows it here).
 
     os_name is one of 'windows', 'linux', 'macos'. Returns (args, has_audio).
@@ -40,7 +45,8 @@ def capture_inputs(os_name, fps, window=None, audio_device=None):
         if window:
             raise ValueError("--window is only supported on Windows")
         args = low_latency + ["-f", "x11grab", "-framerate", str(fps),
-                              "-draw_mouse", "0", "-i", ":0.0"]
+                              "-draw_mouse", "0", "-i",
+                              display or DEFAULT_DISPLAY]
         args += low_latency + ["-f", "pulse", "-i", audio_device or "default"]
         return args, True
     if os_name == "macos":
@@ -49,7 +55,8 @@ def capture_inputs(os_name, fps, window=None, audio_device=None):
         # avfoundation takes "video:audio" device indexes in a single input.
         args = low_latency + ["-f", "avfoundation", "-framerate", str(fps),
                               "-capture_cursor", "0", "-i",
-                              "1:" + (audio_device or "0")]
+                              (video_device or DEFAULT_MAC_VIDEO_DEVICE) + ":"
+                              + (audio_device or "0")]
         return args, True
     raise ValueError("Unsupported OS %r" % os_name)
 
