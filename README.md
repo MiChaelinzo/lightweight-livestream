@@ -4,17 +4,107 @@ A tiny livestreaming launcher for old laptops and PCs where OBS stutters or lags
 
 Streams to Twitch, YouTube or any custom RTMP server.
 
-## Install (Windows, easiest)
+## Easiest way: the window app
 
-1. Install [Python 3.8+](https://www.python.org/downloads/) (tick "Add Python to PATH").
-2. Download [FFmpeg for Windows](https://www.gyan.dev/ffmpeg/builds/) and put `ffmpeg.exe` in a folder on your PATH.
-3. Get this project (Code > Download ZIP) and unzip it.
-4. Open `launchers\start-stream.bat` in Notepad, set `PLATFORM` (`twitch` or `youtube`) and `PRESET`, save.
-5. Double-click it, paste your stream key when asked, and play. Press Ctrl+C to stop.
+No typing commands needed. If you are a kid, ask a parent to help with steps 1 to 3 once. After that it is just click and go.
+
+### One-time setup (Windows)
+
+1. **Install Python.** Download it from [python.org](https://www.python.org/downloads/) (3.8 or newer). In the installer, tick **"Add Python to PATH"**, then click Install.
+2. **Install FFmpeg** (the part that sends your video). Download it from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), unzip it, and put `ffmpeg.exe` in a folder that is on your PATH.
+3. **Get this project.** On GitHub press Code, then Download ZIP, then unzip it.
+4. **Double-click `launchers\start-gui.bat`.** The window opens.
+
+On Linux or macOS, run `./launchers/start-gui.sh` (or `lightstream gui` after `pip install .`).
+
+### Every time you stream
+
+1. Pick **where to stream** (Twitch, YouTube or Other site).
+2. Paste your **secret stream key** (see "Where do I find my stream key?" below).
+3. Pick **how good your PC is**. Not sure? Choose **Old PC (light)**.
+4. Press the big green **START** (or press Enter).
+5. Wait for the banner to say **YOU ARE LIVE!** Then open your game.
+6. Press the red **STOP** when you are done. Closing the window also stops the stream.
+
+### What the window looks like
+
+Before you start (Offline):
+
+```
++--------------------------------------------------+
+|                 Let's go live!                   |
+|                                                  |
+| 1. Where do you want to stream?                  |
+| [ Twitch                                     v ] |
+| (Other site only) address starting with rtmp://  |
+| [                                              ] |
+|                                                  |
+| 2. Paste your secret stream key                  |
+| [ ********************                         ] |
+| [ ] Show the key                                 |
+| Never show your key to anyone. It is not saved.  |
+|                                                  |
+| 3. How good is your PC?                          |
+| [ Old PC (light)                             v ] |
+| Not sure? Pick 'Old PC (light)'.                 |
+|                                                  |
+| [      START (green)     ] [   STOP (greyed)   ] |
+|                                                  |
+| +----------------------------------------------+ |
+| | Offline. Press START when you are ready.     | |
+| +----------------------------------------------+ |
+| [Check my PC]                                    |
+| [Show advanced options]                          |
+| +----------------------------------------------+ |
+| | (log: what the program is doing)             | |
+| +----------------------------------------------+ |
++--------------------------------------------------+
+```
+
+While streaming (LIVE):
+
+```
+| [  START (greyed)  ] [      STOP (red)       ]   |
+| +----------------------------------------------+ |
+| |              YOU ARE LIVE!  (green)          | |
+| +----------------------------------------------+ |
+```
+
+Banner colors: grey = Offline, orange = Starting or Reconnecting, green = LIVE, red = Problem. If the PC is too slow the green banner says "LIVE, but your PC is struggling. Try a weaker setting." Then STOP and pick a weaker option in step 3.
+
+### Where do I find my stream key?
+
+- **Twitch:** log in, open your Creator Dashboard, then Settings, then Stream. Press "Copy" next to Primary Stream key.
+- **YouTube:** open YouTube Studio, press Create, then Go live, then Stream. Copy the Stream key (you may need to enable live streaming first, which can take up to 24 hours).
+- **Other site:** use the address the site gives you (it starts with `rtmp://`) and its key.
+
+Parent tip: the key is like a password for the channel. Keep it private, and if it ever leaks, reset it on the site. Lightstream never saves the key and never prints it in its log.
+
+### Something went wrong? (plain words)
+
+| What you see | What it means | What to do |
+|---|---|---|
+| The window does not open | Python has no window support (tkinter) or there is no screen | Windows: reinstall Python and keep "tcl/tk" ticked. Linux: install the `python3-tk` package. Or use the command line below |
+| "ffmpeg not found" or Check my PC says missing | FFmpeg is not installed where the PC can find it | Redo setup step 2 and restart the window |
+| Banner is red: Problem | The stream could not start | Read the red "What is wrong?" text under the banner. Check the key and your internet |
+| Twitch or YouTube says no signal | Wrong key, or the wrong site was picked in step 1 | Copy the key again, pick the right site |
+| Orange: Reconnecting | Your internet blinked | Wait. It tries again by itself. After 5 quick failures in a row it stops, and the advanced option "Keep trying if the internet drops" makes it never give up |
+| LIVE, but your PC is struggling | The PC cannot keep up | Press STOP, choose a weaker setting in step 3, close other programs, start again |
+| Viewers see a black picture | The capture cannot see your game window (common with BlueStacks, LDPlayer, MuMu) | Leave the advanced "Window title" empty to share the whole screen, or switch the emulator to DirectX or software rendering |
+| No sound | Audio device not found | Open advanced options and type your audio device name |
+
+Still stuck? Press **Check my PC** and read the answer, or ask a parent to try the command line below.
+
+## Command line (for advanced users)
+
+### Windows
+
+1. Open `launchers\start-stream.bat` in Notepad, set `PLATFORM` (`twitch` or `youtube`) and `PRESET`, save.
+2. Double-click it, paste your stream key when asked, and play. Press Ctrl+C to stop.
 
 Check your setup any time: `python -m lightstream doctor` (with `set PYTHONPATH=src`), or `pip install .` once, then use `lightstream doctor`.
 
-## Install (Linux / macOS)
+### Linux / macOS
 
 ```sh
 pip install .            # or: export PYTHONPATH=src
@@ -22,11 +112,6 @@ lightstream doctor
 STREAM_KEY=your_key lightstream start --platform twitch --preset light
 # or: ./launchers/start-stream.sh twitch light
 ```
-
-## Easy window (beginners and kids)
-
-Double-click `launchers/start-gui.bat` (Windows) or run `./launchers/start-gui.sh`, or `lightstream gui`.
-Three steps: 1 pick where to stream, 2 paste your stream key, 3 pick how strong your PC is. Then press the big green START. The banner says Offline, Starting, LIVE, Reconnecting or Problem, and "Check my PC" tests FFmpeg. Closing the window stops the stream. Your choices are remembered, but the stream key is never saved or shown in the log. Uses only Python's built-in tkinter. Status: window rendering is UNVERIFIED (no display in the test sandbox); the logic behind it is unit tested.
 
 ## Presets
 
@@ -57,7 +142,9 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Commands
 
-`lightstream doctor`, `presets`, `init`, `start [--platform twitch|youtube|custom] [--url RTMP_URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--encoder NAME] [--software] [--dry-run]`
+`lightstream doctor`, `presets`, `init`, `gui`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--keep-trying] [--encoder NAME] [--software] [--dry-run]`
+
+`--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 
 `--dry-run` prints the FFmpeg command without streaming.
 
@@ -65,19 +152,30 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 | Item | Status | Evidence |
 |---|---|---|
+| GUI controller logic (validation, banner states, prefs, key never saved or logged) | VERIFIED | unit tests, no display needed |
+| GUI window rendering (layout, fonts, buttons, colors) | UNVERIFIED | no display in the dev sandbox; mockups above are drawn from the code, not screenshots |
 | Command building (all OSes, encoders) | VERIFIED (as strings) | unit tests |
 | Preset, config precedence, key handling | VERIFIED | unit tests |
 | Key redaction in printed output | VERIFIED | unit tests, dry run |
-| Reconnect/backoff logic | VERIFIED | unit tests with fake process |
-| Real capture and streaming | UNVERIFIED | no FFmpeg, display or network in dev sandbox |
+| Reconnect/backoff, stop, status and stats parsing | VERIFIED (fake process) | unit tests |
 | Test-encode fallback and retry cap logic | VERIFIED (fake process) | unit tests; no real GPU or FFmpeg run |
+| `--help` flags match this README | VERIFIED | checked against `lightstream start --help` |
+| Real capture and streaming with real FFmpeg | UNVERIFIED | no FFmpeg, display or network in dev sandbox |
 | Hardware encoder flags (NVENC, QSV, AMF, VAAPI, VideoToolbox) | UNVERIFIED | never run on real hardware |
 | Windows window capture, dshow audio, low priority | UNVERIFIED | not run on Windows |
 | Actual lag/CPU improvement vs OBS | UNVERIFIED | not measured |
 
-## Limitations
+## Known limitations
 
-No GUI, no scenes/overlays/webcam mixing, RTMP only, screen capture via gdigrab (Windows), x11grab (Linux X11, not Wayland, display fixed to `:0.0`) and avfoundation (macOS, video device index is fixed at 1 and may point at a camera; only the audio index is configurable via `--audio-device`). Reports of what works on your hardware are welcome.
+- Window capture on Windows (`--window`) uses gdigrab and often shows black for GPU-accelerated emulators (BlueStacks, LDPlayer, MuMu). Capture the whole desktop instead.
+- The hardware encoder check runs short test encodes before streaming, so in the worst case (several encoders that hang or fail slowly) startup can take around 80 seconds. This figure is an estimate from the timeouts, not measured on real hardware.
+- RTMP only. No scenes, overlays or webcam mixing.
+- Screen capture: gdigrab (Windows), x11grab (Linux X11, not Wayland, follows `$DISPLAY`) and avfoundation (macOS, screen picked with `--video-device`).
+- Windows without `--audio-device` streams silent audio.
+- The stream key appears in the FFmpeg command line, so other local processes running as your user may see it in the process list. Lightstream hides it in everything it prints.
+- The window needs Python's tkinter, which some Linux installs lack (`python3-tk`).
+
+Reports of what works on your hardware are welcome.
 
 ## Development
 

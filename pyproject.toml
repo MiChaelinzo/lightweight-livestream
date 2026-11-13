@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lightstream"
-version = "0.1.0"
+version = "0.2.0"
 description = "Very lightweight livestreaming CLI that drives FFmpeg, made for old PCs and laptops"
 readme = "README.md"
 requires-python = ">=3.8"
