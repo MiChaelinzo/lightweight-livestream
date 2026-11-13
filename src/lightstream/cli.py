@@ -10,10 +10,14 @@ from . import __version__
 from .command import build_command
 from .config import (config_path, detect_os, load_file_config, resolve_key,
                      resolve_settings, write_example_config)
-from .encoders import choose_encoder, probe_encoders
+from .encoders import (SOFTWARE_ENCODER, choose_encoder,
+                       choose_working_encoder, probe_encoders)
 from .platforms import PLATFORMS
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
+
+
+MAX_QUICK_FAILURES = 5  # consecutive quick failures before giving up
 
 
 def build_parser():
@@ -54,7 +58,8 @@ def cmd_doctor(out):
     except RuntimeError as exc:
         out.write("%s\n" % exc)
         return 1
-    out.write("Encoder that would be used: %s\n" % choose_encoder(encoders))
+    out.write("Encoder that would be used (test-encoded): %s\n"
+              % choose_working_encoder(ffmpeg, encoders))
     return 0
 
 
@@ -85,14 +90,25 @@ def cmd_start(args, out):
             available = probe_encoders(ffmpeg)
         except RuntimeError as exc:
             out.write("Warning: %s. Using libx264.\n" % exc)
-    encoder = choose_encoder(available, not args.software, settings.encoder)
+    if ffmpeg and not args.dry_run:
+        encoder = choose_working_encoder(ffmpeg, available, not args.software,
+                                         settings.encoder)
+    else:  # dry run: never launch ffmpeg, so no hardware test encode
+        encoder = (settings.encoder or
+                   (choose_encoder(available) if available and not args.software
+                    else SOFTWARE_ENCODER))
     argv = build_command(settings, key, os_name, encoder, ffmpeg or "ffmpeg")
 
     out.write("Encoder: %s\n" % encoder)
     out.write(format_command(argv, key) + "\n")
     if args.dry_run:
         return 0
-    return run_with_reconnect(argv, key, os_name)
+    try:
+        return run_with_reconnect(argv, key, os_name,
+                                  max_failures=MAX_QUICK_FAILURES)
+    except OSError as exc:
+        out.write("Could not start ffmpeg: %s\n" % exc)
+        return 1
 
 
 def main(argv=None, out=sys.stdout):

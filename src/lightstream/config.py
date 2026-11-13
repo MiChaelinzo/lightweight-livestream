@@ -1,4 +1,4 @@
-"""Settings resolution. Precedence: command line > environment > config file > preset."""
+"""Settings resolution. Precedence: command line > config file > preset."""
 
 import json
 import os
@@ -43,9 +43,12 @@ def load_file_config(path):
         return {}
     with open(path, "r", encoding="utf-8") as fh:
         try:
-            return json.load(fh)
+            data = json.load(fh)
         except ValueError as exc:
             raise ValueError("Config file %s is not valid JSON: %s" % (path, exc))
+    if not isinstance(data, dict):
+        raise ValueError("Config file %s must contain a JSON object" % path)
+    return data
 
 
 def write_example_config(path):
@@ -58,10 +61,21 @@ def write_example_config(path):
 
 
 def _pick(name, cli, file_cfg, default=None):
+    """Command line value, else config file value, else default."""
     value = cli.get(name)
     if value is None:
         value = file_cfg.get(name)
     return default if value is None else value
+
+
+def _positive_int(name, value):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ValueError("%s must be a whole number, got %r" % (name, value))
+    if number <= 0:
+        raise ValueError("%s must be greater than 0, got %d" % (name, number))
+    return number
 
 
 def resolve_settings(cli, file_cfg):
@@ -75,8 +89,9 @@ def resolve_settings(cli, file_cfg):
         custom_url=_pick("url", cli, file_cfg),
         width=width,
         height=height,
-        fps=int(_pick("fps", cli, file_cfg, preset.fps)),
-        video_kbps=int(_pick("bitrate", cli, file_cfg, preset.video_kbps)),
+        fps=_positive_int("fps", _pick("fps", cli, file_cfg, preset.fps)),
+        video_kbps=_positive_int(
+            "bitrate", _pick("bitrate", cli, file_cfg, preset.video_kbps)),
         audio_kbps=preset.audio_kbps,
         x264_preset=preset.x264_preset,
         window=_pick("window", cli, file_cfg),

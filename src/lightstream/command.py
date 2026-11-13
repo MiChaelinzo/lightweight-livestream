@@ -41,7 +41,9 @@ def build_command(s, key, os_name, encoder, ffmpeg="ffmpeg"):
     if not has_audio:
         args += silent_audio_input()
 
-    scale = "scale=%d:%d:flags=fast_bilinear" % (s.width, s.height)
+    # Keep the source aspect ratio; letterbox the rest instead of stretching.
+    scale = ("scale=%d:%d:flags=fast_bilinear:force_original_aspect_ratio=decrease,"
+             "pad=%d:%d:(ow-iw)/2:(oh-ih)/2" % (s.width, s.height, s.width, s.height))
     if encoder == "h264_vaapi":
         scale += ",format=nv12,hwupload"
     args += ["-vf", scale, "-r", str(s.fps)]

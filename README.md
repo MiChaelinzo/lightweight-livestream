@@ -32,7 +32,7 @@ STREAM_KEY=your_key lightstream start --platform twitch --preset light
 | `balanced` | 1280x720 | 30 | 2500 | decent PCs or hardware encoder |
 | `720p60` | 1280x720 | 60 | 4000 | fast games, needs a good PC |
 
-Override anything: `--fps 30 --res 960x540 --bitrate 1500`. Settings priority: command line, then config file (`lightstream init` writes an example), then preset.
+Override anything: `--fps 30 --res 960x540 --bitrate 1500`. Invalid values (such as `--fps 0` or a negative `--bitrate`) are rejected. If FFmpeg keeps failing, lightstream gives up after 5 quick failures in a row. Settings priority: command line, then config file (`lightstream init` writes an example), then preset.
 
 ## Arknights / Limbus Company tips
 
@@ -41,12 +41,14 @@ Override anything: `--fps 30 --res 960x540 --bitrate 1500`. Settings priority: c
 - Both games are fine at 30 FPS (or 24 with `potato`). Higher FPS costs CPU and gains little.
 - Lower the emulator's own FPS and resolution and give it fewer CPU cores, leaving one for streaming.
 - Close browsers and other apps. Use wired ethernet if you can.
-- If it still lags, drop to `potato`, then lower `--bitrate`. A hardware encoder (NVIDIA, Intel QuickSync, AMD) is picked automatically when found; use `--software` to turn that off.
+- If it still lags, drop to `potato`, then lower `--bitrate`. A hardware encoder (NVIDIA, Intel QuickSync, AMD) is used only if a tiny test encode succeeds on your machine, otherwise it falls back to software `libx264`; use `--software` to skip hardware, or `--encoder NAME` to force one.
+- **Black picture?** `--window` uses Windows gdigrab, which often captures black for hardware-accelerated emulator windows (BlueStacks, LDPlayer, MuMu). If so, drop `--window` to capture the whole desktop, or try the emulator's DirectX/software render mode.
+- Window and desktop captures keep their aspect ratio and get black bars when it differs from the preset, instead of being stretched.
 - Audio: pass `--audio-device "Device name"` (Windows dshow name, run `ffmpeg -list_devices true -f dshow -i dummy`). Without it, Windows streams silent audio.
 
 ## Stream key safety
 
-The key is read from the `STREAM_KEY` environment variable or typed at a hidden prompt. It is never stored by lightstream, and it is hidden (`****`) in everything printed. Never share your key or commit it.
+The key is read from the `STREAM_KEY` environment variable or typed at a hidden prompt (asked by lightstream itself, also from the Windows launcher). It is never stored by lightstream, and it is hidden (`****`) in everything lightstream prints. Limitation: RTMP puts the key in the FFmpeg command line, so other local processes running as your user may be able to see it in the process list. Custom URLs that carry their own tokens are not redacted beyond the key. Never share your key or commit it.
 
 ## Commands
 
@@ -63,13 +65,14 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 | Key redaction in printed output | VERIFIED | unit tests, dry run |
 | Reconnect/backoff logic | VERIFIED | unit tests with fake process |
 | Real capture and streaming | UNVERIFIED | no FFmpeg, display or network in dev sandbox |
+| Test-encode fallback and retry cap logic | VERIFIED (fake process) | unit tests; no real GPU or FFmpeg run |
 | Hardware encoder flags (NVENC, QSV, AMF, VAAPI, VideoToolbox) | UNVERIFIED | never run on real hardware |
 | Windows window capture, dshow audio, low priority | UNVERIFIED | not run on Windows |
 | Actual lag/CPU improvement vs OBS | UNVERIFIED | not measured |
 
 ## Limitations
 
-No GUI, no scenes/overlays/webcam mixing, RTMP only, screen capture via gdigrab (Windows), x11grab (Linux X11, not Wayland) and avfoundation (macOS, device indexes may need `--audio-device`). Reports of what works on your hardware are welcome.
+No GUI, no scenes/overlays/webcam mixing, RTMP only, screen capture via gdigrab (Windows), x11grab (Linux X11, not Wayland, display fixed to `:0.0`) and avfoundation (macOS, video device index is fixed at 1 and may point at a camera; only the audio index is configurable via `--audio-device`). Reports of what works on your hardware are welcome.
 
 ## Development
 
