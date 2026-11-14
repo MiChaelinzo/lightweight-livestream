@@ -7,3 +7,7 @@ config.json
 *.egg-info/
 build/
 dist/
+*.pyz
+*.mkv
+*.spec
+gui_entry.py

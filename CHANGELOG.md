@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- New: `--test-local [FILE]` and a GUI "Test first" button record 10 seconds to a file instead of going live (no stream key needed).
+- New: `--mute` (and a GUI checkbox) sends silence; `lightstream devices` lists audio devices on Windows and macOS.
+- Faster start: encoder test encodes run in parallel, time out after 8 seconds and are cached (was up to about 80 seconds worst case).
+- Fix: encoder fallback now matches known FFmpeg encoder error messages instead of loose keywords.
+- Fix: a short stream key no longer wipes unrelated saved preferences.
+- CI on Linux and Windows (Python 3.9 to 3.12), zipapp build recipe, polished README.
+- Key in the process list: documented as not avoidable with FFmpeg RTMP.
+
 ## 0.2.0
 
 - Fix: hardware-to-libx264 fallback only when ffmpeg's error names the encoder, so a wrong key or dropped network no longer downgrades quality.

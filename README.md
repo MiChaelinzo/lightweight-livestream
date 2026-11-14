@@ -1,8 +1,31 @@
-# lightweight-livestream (lightstream)
+# lightstream
 
-A tiny livestreaming launcher for old laptops and PCs where OBS stutters or lags while you play light games such as Arknights or Limbus Company. It has **no dependencies except Python and FFmpeg**. It builds one lean FFmpeg command (low delay, no B-frames, small buffer, hardware encoder when available), runs it at low priority so your game wins, and reconnects automatically if the network drops.
+[![CI](https://github.com/MiChaelinzo/lightweight-livestream/actions/workflows/ci.yml/badge.svg)](https://github.com/MiChaelinzo/lightweight-livestream/actions/workflows/ci.yml)
+![Python 3.8+](https://img.shields.io/badge/python-3.8%2B-blue)
+![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen)
+![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)
 
-Streams to Twitch, YouTube or any custom RTMP server.
+**Go live from an old PC without the lag.** lightstream is a tiny launcher for old laptops and PCs where OBS stutters while you play light games such as Arknights or Limbus Company. It needs only Python and FFmpeg.
+
+- **One window, 3 steps.** Pick a site, paste your key, pick your PC strength, press START.
+- **Lean by design.** One low-delay FFmpeg command, no B-frames, small buffer, hardware encoder when a test encode proves it works.
+- **Plays nice.** Runs at low priority so your game wins.
+- **Hard to break.** Reconnects with backoff, falls back to software encoding if a GPU encoder fails, and never prints or saves your key.
+- **Safe to try.** `--test-local` records 10 seconds to a file instead of going live. `--mute` sends silence.
+- Streams to Twitch, YouTube or any custom RTMP server.
+
+## Quick start
+
+```sh
+pip install .                       # or: export PYTHONPATH=src
+lightstream doctor                  # checks ffmpeg and your encoder
+lightstream gui                     # the easy window
+# or the command line:
+lightstream start --test-local      # record 10 seconds, nothing goes live
+STREAM_KEY=your_key lightstream start --platform twitch --preset light
+```
+
+Installing also gives you the `lightstream-gui` command. No install? Use `python -m lightstream ...` with `PYTHONPATH=src`.
 
 ## Easiest way: the window app
 
@@ -23,8 +46,9 @@ On Linux or macOS, run `./launchers/start-gui.sh` (or `lightstream gui` after `p
 2. Paste your **secret stream key** (see "Where do I find my stream key?" below).
 3. Pick **how good your PC is**. Not sure? Choose **Old PC (light)**.
 4. Press the big green **START** (or press Enter).
-5. Wait for the banner to say **YOU ARE LIVE!** Then open your game.
-6. Press the red **STOP** when you are done. Closing the window also stops the stream.
+5. Want to check first? Press **Test first** to record 10 seconds to `lightstream-test.mkv` without going live.
+6. Wait for the banner to say **YOU ARE LIVE!** Then open your game.
+7. Press the red **STOP** when you are done. Closing the window also stops the stream.
 
 ### What the window looks like
 
@@ -91,7 +115,7 @@ Parent tip: the key is like a password for the channel. Keep it private, and if 
 | Orange: Reconnecting | Your internet blinked | Wait. It tries again by itself. After 5 quick failures in a row it stops, and the advanced option "Keep trying if the internet drops" makes it never give up |
 | LIVE, but your PC is struggling | The PC cannot keep up | Press STOP, choose a weaker setting in step 3, close other programs, start again |
 | Viewers see a black picture | The capture cannot see your game window (common with BlueStacks, LDPlayer, MuMu) | Leave the advanced "Window title" empty to share the whole screen, or switch the emulator to DirectX or software rendering |
-| No sound | Audio device not found | Open advanced options and type your audio device name |
+| No sound | Audio device not found | Run `lightstream devices`, then type the name in advanced options. Tick "Mute" for silence on purpose |
 
 Still stuck? Press **Check my PC** and read the answer, or ask a parent to try the command line below.
 
@@ -134,7 +158,7 @@ Override anything: `--fps 30 --res 960x540 --bitrate 1500`. Invalid values (such
 - If it still lags, drop to `potato`, then lower `--bitrate`. A hardware encoder (NVIDIA, Intel QuickSync, AMD) is used only if a tiny test encode succeeds on your machine, otherwise it falls back to software `libx264`; if it later fails twice in a row with an error naming the encoder, the stream switches to `libx264` (wrong keys or network drops do not trigger this); use `--software` to skip hardware, or `--encoder NAME` to force one.
 - **Black picture?** `--window` uses Windows gdigrab, which often captures black for hardware-accelerated emulator windows (BlueStacks, LDPlayer, MuMu). If so, drop `--window` to capture the whole desktop, or try the emulator's DirectX/software render mode.
 - Window and desktop captures keep their aspect ratio and get black bars when it differs from the preset, instead of being stretched.
-- Audio: pass `--audio-device "Device name"` (Windows dshow name, run `ffmpeg -list_devices true -f dshow -i dummy`). Without it, Windows streams silent audio.
+- Audio: run `lightstream devices` (Windows, macOS) to list names, then pass `--audio-device "Device name"` (macOS wants the index). Without it, Windows streams silent audio. `--mute` forces silence on any OS.
 
 ## Stream key safety
 
@@ -142,11 +166,11 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Commands
 
-`lightstream doctor`, `presets`, `init`, `gui`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--keep-trying] [--encoder NAME] [--software] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `init`, `gui`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 
-`--dry-run` prints the FFmpeg command without streaming.
+`--dry-run` prints the FFmpeg command without streaming. `--test-local [FILE]` records 10 seconds (default `lightstream-test.mkv`) and needs no stream key.
 
 ## Verification status
 
@@ -158,6 +182,9 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 | Preset, config precedence, key handling | VERIFIED | unit tests |
 | Key redaction in printed output | VERIFIED | unit tests, dry run |
 | Reconnect/backoff, stop, status and stats parsing | VERIFIED (fake process) | unit tests |
+| Mute, `--test-local` command, audio device list parsing (sample text) | VERIFIED (as strings) | unit tests; real device output may differ |
+| Encoder-failure detection (known FFmpeg messages) | VERIFIED (sample lines) | unit tests; real FFmpeg wording may vary by version |
+| CI on Linux and Windows, Python 3.9 to 3.12 | UNVERIFIED | workflow added, not yet run on GitHub |
 | Test-encode fallback and retry cap logic | VERIFIED (fake process) | unit tests; no real GPU or FFmpeg run |
 | `--help` flags match this README | VERIFIED | checked against `lightstream start --help` |
 | Real capture and streaming with real FFmpeg | UNVERIFIED | no FFmpeg, display or network in dev sandbox |
@@ -168,14 +195,33 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 ## Known limitations
 
 - Window capture on Windows (`--window`) uses gdigrab and often shows black for GPU-accelerated emulators (BlueStacks, LDPlayer, MuMu). Capture the whole desktop instead.
-- The hardware encoder check runs short test encodes before streaming, so in the worst case (several encoders that hang or fail slowly) startup can take around 80 seconds. This figure is an estimate from the timeouts, not measured on real hardware.
+- The hardware encoder check runs short test encodes (8 second timeout each, run in parallel and cached), so worst-case startup is about 8 seconds plus the `-encoders` listing. This is derived from the timeouts, not measured on real hardware.
 - RTMP only. No scenes, overlays or webcam mixing.
 - Screen capture: gdigrab (Windows), x11grab (Linux X11, not Wayland, follows `$DISPLAY`) and avfoundation (macOS, screen picked with `--video-device`).
 - Windows without `--audio-device` streams silent audio.
-- The stream key appears in the FFmpeg command line, so other local processes running as your user may see it in the process list. Lightstream hides it in everything it prints.
+- The stream key appears in the FFmpeg command line, so other local processes running as your user may see it in the process list. Lightstream hides it in everything it prints. Hiding it from the process list is not feasible with FFmpeg's RTMP output, so on a shared PC use your own user account.
 - The window needs Python's tkinter, which some Linux installs lack (`python3-tk`).
 
 Reports of what works on your hardware are welcome.
+
+## Build a standalone app (optional)
+
+Nothing is committed as a binary. To make your own, with [PyInstaller](https://pyinstaller.org) (needs network once):
+
+```sh
+pip install pyinstaller .
+printf 'from lightstream.gui import main\nmain()\n' > gui_entry.py
+pyinstaller --onefile --windowed --name lightstream-gui gui_entry.py
+```
+
+Or build a single runnable file with the standard library (needs Python on the target PC):
+
+```sh
+python -m zipapp src -m "lightstream.cli:main" -o lightstream.pyz
+python lightstream.pyz doctor
+```
+
+The zipapp recipe is VERIFIED on Linux (`presets` and `start --help` ran from the `.pyz`). The PyInstaller recipe is UNVERIFIED (not run in the dev sandbox). FFmpeg is not bundled; install it separately.
 
 ## Development
 
@@ -183,3 +229,5 @@ Reports of what works on your hardware are welcome.
 python3 -m unittest discover -s tests -v
 python3 -m compileall -q src
 ```
+
+CI runs the same two commands on Linux and Windows (`.github/workflows/ci.yml`).
