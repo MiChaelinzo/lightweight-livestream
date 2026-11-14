@@ -92,6 +92,9 @@ class StreamWindow:
                                   bg="#B00020", fg="white", command=self.on_stop,
                                   state="disabled")
         self.stop_btn.pack(side="left", expand=True, fill="x", padx=4)
+        self.test_btn = ttk.Button(frame, text="Test first: record 10 seconds "
+                                   "to a file (not live)", command=self.on_test)
+        self.test_btn.pack(anchor="w", **pad)
 
         self.banner = tk.Label(frame, text="", font=STEP_FONT, fg="white",
                                wraplength=520, pady=10)
@@ -121,6 +124,9 @@ class StreamWindow:
                      ).pack(fill="x")
             tk.Entry(self.advanced, textvariable=var, font=TEXT_FONT
                      ).pack(fill="x", pady=2)
+        self.mute = tk.BooleanVar(value=bool(saved.get("mute")))
+        tk.Checkbutton(self.advanced, text="Mute (send silence)", font=TEXT_FONT,
+                       variable=self.mute).pack(anchor="w")
         tk.Checkbutton(self.advanced, text="Keep trying if the internet drops",
                        font=TEXT_FONT, variable=self.keep_trying).pack(anchor="w")
 
@@ -149,6 +155,7 @@ class StreamWindow:
             "window": self.window_title.get(),
             "audio_device": self.audio.get(),
             "keep_trying": self.keep_trying.get(),
+            "mute": self.mute.get(),
         }
 
     def on_start(self):
@@ -159,6 +166,9 @@ class StreamWindow:
                 gc.save_prefs(self.prefs_file, prefs, self.key.get().strip())
             except OSError:
                 pass  # remembering choices is optional
+
+    def on_test(self):
+        self.controller.start(self.collect_prefs(), "", test_local=True)
 
     def on_stop(self):
         self.controller.stop(wait=False)
@@ -174,6 +184,7 @@ class StreamWindow:
         if help_text:
             self.help.config(text=help_text, fg="#B00020")
         self.start_btn.config(state="disabled" if running else "normal")
+        self.test_btn.config(state="disabled" if running else "normal")
         self.stop_btn.config(state="normal" if running else "disabled")
         if log_text != self._shown_log:
             self._shown_log = log_text

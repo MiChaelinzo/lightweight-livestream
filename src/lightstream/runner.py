@@ -15,9 +15,17 @@ WINDOWS_BELOW_NORMAL = 0x00004000  # BELOW_NORMAL_PRIORITY_CLASS
 FALLBACK_AFTER_FAILURES = 2  # quick failures of a hardware encoder before libx264
 LAGGING_BELOW_SPEED = 0.95   # ffmpeg speed under 1.0x means it cannot keep up
 STOP_POLL_SECONDS = 0.2
-# ffmpeg stderr words that point at the encoder itself, not the network or key
-ENCODER_ERROR_HINTS = ("nvenc", "qsv", "amf", "vaapi", "videotoolbox", "cuda",
-                       "encoder", "hwaccel", "libmfx", "device creation")
+# Known ffmpeg messages for a hardware encoder that cannot start. Network and
+# key errors ("Connection refused", "Input/output error") never match these.
+ENCODER_ERROR_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
+    r"error while opening encoder",
+    r"cannot load nvcuda|no nvenc capable devices|openencodesessionex failed",
+    r"error creating a mfx session|error initializing an internal mfx",
+    r"failed to (set up|create|initiali[sz]e).*(vaapi|va display|hardware device)",
+    r"no usable encoding profile found|device creation failed",
+    r"amf.*(failed|error)|(failed|error).*amf",
+    r"videotoolbox.*(failed|error)|(failed|error).*videotoolbox",
+))
 
 STATUS_STARTING = "starting"
 STATUS_LIVE = "live"
@@ -74,8 +82,7 @@ def parse_progress(line):
 
 def mentions_encoder_problem(line):
     """True when an ffmpeg error line looks like a hardware encoder failure."""
-    lowered = line.lower()
-    return any(hint in lowered for hint in ENCODER_ERROR_HINTS)
+    return any(pattern.search(line) for pattern in ENCODER_ERROR_PATTERNS)
 
 
 def is_lagging(health):

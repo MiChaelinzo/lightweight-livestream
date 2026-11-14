@@ -4,6 +4,7 @@ import argparse
 import getpass
 import os
 import shutil
+import subprocess
 import sys
 
 from . import __version__
@@ -12,11 +13,12 @@ from .config import (config_path, detect_os, load_file_config, resolve_key,
                      resolve_settings, write_example_config)
 from .encoders import (SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
-from .platforms import PLATFORMS
+from .platforms import PLATFORMS, parse_audio_devices
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
 
 
+DEFAULT_TEST_FILE = "lightstream-test.mkv"
 MAX_QUICK_FAILURES = 5  # consecutive quick failures before giving up
 
 
@@ -28,6 +30,7 @@ def build_parser():
     sub.add_parser("doctor", help="check ffmpeg and available encoders")
     sub.add_parser("presets", help="list quality presets")
     sub.add_parser("init", help="write an example config file")
+    sub.add_parser("devices", help="list audio devices (Windows and macOS)")
     sub.add_parser("gui", help="open the easy window (3 steps, for beginners)")
     s = sub.add_parser("start", help="start streaming")
     s.add_argument("--platform", choices=PLATFORMS)
@@ -40,6 +43,12 @@ def build_parser():
     s.add_argument("--audio-device", help="dshow/pulse/avfoundation audio device")
     s.add_argument("--video-device",
                    help="macOS only: avfoundation screen index (see ffmpeg -list_devices)")
+    s.add_argument("--mute", action="store_true",
+                   help="send silence instead of capturing audio")
+    s.add_argument("--test-local", nargs="?", const=DEFAULT_TEST_FILE,
+                   metavar="FILE",
+                   help="record 10 seconds to FILE instead of going live "
+                        "(default %s); no stream key needed" % DEFAULT_TEST_FILE)
     s.add_argument("--keep-trying", action="store_true",
                    help="never give up reconnecting (for flaky internet)")
     s.add_argument("--encoder", help="force an encoder, e.g. libx264")
@@ -68,6 +77,35 @@ def cmd_doctor(out):
     return 0
 
 
+def cmd_devices(out, os_name=None, run=subprocess.run):
+    os_name = os_name or detect_os()
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        out.write("ffmpeg: NOT FOUND. Install it and add it to PATH.\n")
+        return 1
+    if os_name == "windows":
+        cmd = [ffmpeg, "-hide_banner", "-list_devices", "true", "-f", "dshow",
+               "-i", "dummy"]
+    elif os_name == "macos":
+        cmd = [ffmpeg, "-hide_banner", "-f", "avfoundation",
+               "-list_devices", "true", "-i", ""]
+    else:
+        out.write("Linux: use 'default' (or a name from 'pactl list short sources').\n")
+        return 0
+    try:  # ffmpeg prints the list on stderr and exits with an error: expected
+        text = run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                   universal_newlines=True, timeout=15).stdout
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        out.write("Could not list devices: %s\n" % exc)
+        return 1
+    names = parse_audio_devices(text)
+    for name in names:
+        out.write("%s\n" % name)
+    if not names:
+        out.write("No audio devices found.\n")
+    return 0
+
+
 def cmd_presets(out):
     for p in PRESETS.values():
         out.write("%-9s %dx%d @%dfps %dk  %s\n" % (
@@ -83,8 +121,10 @@ def cmd_start(args, out):
          "fps": args.fps, "resolution": args.resolution, "bitrate": args.bitrate,
          "window": args.window, "audio_device": args.audio_device,
          "encoder": args.encoder, "video_device": args.video_device,
-         "display": os.environ.get("DISPLAY")}, file_cfg)
-    key = resolve_key(os.environ, getpass.getpass)
+         "display": os.environ.get("DISPLAY"),
+         "mute": args.mute or None}, file_cfg)
+    record_path = args.test_local
+    key = "test" if record_path else resolve_key(os.environ, getpass.getpass)
 
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None and not args.dry_run:
@@ -103,19 +143,23 @@ def cmd_start(args, out):
         encoder = (settings.encoder or
                    (choose_encoder(available) if available and not args.software
                     else SOFTWARE_ENCODER))
-    argv = build_command(settings, key, os_name, encoder, ffmpeg or "ffmpeg")
+    argv = build_command(settings, key, os_name, encoder, ffmpeg or "ffmpeg",
+                         record_path)
 
     out.write("Encoder: %s\n" % encoder)
     out.write(format_command(argv, key) + "\n")
+    if record_path:
+        out.write("Test mode: recording 10 seconds to %s (not live).\n" % record_path)
     if args.dry_run:
         return 0
     try:
         return run_with_reconnect(
             argv, key, os_name,
-            max_failures=None if args.keep_trying else MAX_QUICK_FAILURES,
+            max_failures=(1 if record_path else
+                          None if args.keep_trying else MAX_QUICK_FAILURES),
             encoder=encoder,
             argv_factory=lambda enc: build_command(
-                settings, key, os_name, enc, ffmpeg))
+                settings, key, os_name, enc, ffmpeg, record_path))
     except OSError as exc:
         out.write("Could not start ffmpeg: %s\n" % exc)
         return 1
@@ -126,6 +170,8 @@ def main(argv=None, out=sys.stdout):
     try:
         if args.command == "doctor":
             return cmd_doctor(out)
+        if args.command == "devices":
+            return cmd_devices(out)
         if args.command == "presets":
             return cmd_presets(out)
         if args.command == "gui":

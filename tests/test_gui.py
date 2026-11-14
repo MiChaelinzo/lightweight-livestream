@@ -82,6 +82,15 @@ class PrefsTests(unittest.TestCase):
             self.assertEqual(json.loads(text), PREFS)
             self.assertEqual(gc.load_prefs(path), PREFS)
 
+    def test_short_key_keeps_unrelated_prefs(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "gui.json")
+            prefs = dict(PREFS, fps="30", bitrate="1000")
+            gc.save_prefs(path, prefs, key="3")
+            self.assertEqual(gc.load_prefs(path), prefs)
+            gc.save_prefs(path, prefs, key="30")  # whole-value match is dropped
+            self.assertNotIn("fps", gc.load_prefs(path))
+
     def test_load_bad_file(self):
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "gui.json")
@@ -118,6 +127,20 @@ class ControllerTests(unittest.TestCase):
         c.stop(wait=False)
         c._thread.join(2)
         self.assertFalse(c.snapshot()[4])
+
+    def test_test_local_needs_no_key_and_records_once(self):
+        calls = []
+        c = make_controller(fake_runner_factory(calls))
+        self.assertIsNone(c.start(PREFS, "", test_local=True))
+        c._thread.join(0.3)
+        argv, kw = calls[0]
+        self.assertEqual(argv[-1], gc.TEST_FILENAME)
+        self.assertEqual(kw["max_failures"], 1)
+        c.stop()
+
+    def test_mute_pref_reaches_settings(self):
+        self.assertTrue(gc.settings_from_prefs(dict(PREFS, mute=True)).mute)
+        self.assertFalse(gc.settings_from_prefs(PREFS).mute)
 
     def test_keep_trying_is_unlimited(self):
         calls = []

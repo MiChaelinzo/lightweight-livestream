@@ -19,11 +19,13 @@ from .runner import (STATUS_FALLBACK, STATUS_FAILED, STATUS_LIVE,
                      is_lagging, redact, run_with_reconnect)
 
 MAX_QUICK_FAILURES = 5
+TEST_FILENAME = "lightstream-test.mkv"
 LOG_LINES = 200
 STOP_JOIN_SECONDS = 10
+MIN_SUBSTRING_KEY_LENGTH = 8
 PREFS_FILENAME = "gui.json"
 PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
-               "audio_device", "keep_trying")
+               "audio_device", "keep_trying", "mute")
 
 # (label shown to the user, value used internally)
 PLATFORM_CHOICES = (("Twitch", "twitch"), ("YouTube", "youtube"),
@@ -99,6 +101,17 @@ def prefs_path(os_name=None):
     return os.path.join(os.path.dirname(config_path(os_name)), PREFS_FILENAME)
 
 
+def _contains_key(value, key):
+    """Short keys could match innocent text ("1" in "30"), so below
+    MIN_SUBSTRING_KEY_LENGTH only a whole-value match counts."""
+    if not key:
+        return False
+    text = str(value)
+    if len(key) < MIN_SUBSTRING_KEY_LENGTH:
+        return text == key
+    return key in text
+
+
 def save_prefs(path, prefs, key=""):
     """Write only whitelisted fields, and never any value containing the key.
 
@@ -106,7 +119,7 @@ def save_prefs(path, prefs, key=""):
     "Other site" box.
     """
     safe = {k: prefs[k] for k in PREF_FIELDS if k in prefs
-            and not (key and key in str(prefs[k]))}
+            and not _contains_key(prefs[k], key)}
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(safe, fh, indent=2)
@@ -125,9 +138,9 @@ def load_prefs(path):
     return {k: data[k] for k in PREF_FIELDS if k in data}
 
 
-def validate(prefs, key, ffmpeg):
+def validate(prefs, key, ffmpeg, test_local=False):
     """Friendly error text for the first problem found, else None."""
-    if not (key or "").strip():
+    if not test_local and not (key or "").strip():
         return HELP_TEXT["no_key"]
     if prefs.get("platform") == "custom" and not (prefs.get("url") or "").strip():
         return HELP_TEXT["no_url"]
@@ -152,6 +165,7 @@ def settings_from_prefs(prefs, display=None):
             "bitrate": _blank_to_none(prefs.get("bitrate")),
             "window": _blank_to_none(prefs.get("window")),
             "audio_device": _blank_to_none(prefs.get("audio_device")),
+            "mute": bool(prefs.get("mute")) or None,
             "display": display,
         }, {})
     except ValueError as exc:
@@ -212,12 +226,13 @@ class StreamController:
             self.write = write
 
     # -- actions ------------------------------------------------------------
-    def start(self, prefs, key):
-        """Begin streaming. Returns None, or a friendly error message."""
+    def start(self, prefs, key, test_local=False):
+        """Begin streaming, or with test_local record a short file instead
+        (no key needed, nothing goes live). Returns None or an error message."""
         if self.is_running():
             return "You are already streaming."
         ffmpeg = self._which("ffmpeg")
-        problem = validate(prefs, key, ffmpeg)
+        problem = validate(prefs, key, ffmpeg, test_local)
         if problem:
             with self._lock:
                 self._help = problem
@@ -228,7 +243,7 @@ class StreamController:
             with self._lock:
                 self._help = str(exc)
             return str(exc)
-        key = key.strip()
+        key = key.strip() or "test"
         self._key = key
         with self._lock:
             self._help = ""
@@ -237,12 +252,13 @@ class StreamController:
         self._stop = threading.Event()
         keep_trying = bool(prefs.get("keep_trying"))
         self._thread = threading.Thread(
-            target=self._work, args=(settings, key, ffmpeg, keep_trying),
+            target=self._work, args=(settings, key, ffmpeg, keep_trying,
+                  TEST_FILENAME if test_local else None),
             daemon=True)
         self._thread.start()
         return None
 
-    def _work(self, settings, key, ffmpeg, keep_trying):
+    def _work(self, settings, key, ffmpeg, keep_trying, record_path=None):
         try:
             try:
                 available = self._probe(ffmpeg)
@@ -251,14 +267,16 @@ class StreamController:
                 available = set()
             encoder = self._pick_encoder(ffmpeg, available)
             self._write("Encoder: %s\n" % encoder)
-            argv = build_command(settings, key, self._os_name, encoder, ffmpeg)
+            argv = build_command(settings, key, self._os_name, encoder, ffmpeg,
+                                 record_path)
             self._runner(
                 argv, key, self._os_name,
-                max_failures=None if keep_trying else MAX_QUICK_FAILURES,
+                max_failures=(1 if record_path else
+                              None if keep_trying else MAX_QUICK_FAILURES),
                 stop=self._stop, on_status=self._on_status, encoder=encoder,
                 out=self._LogSink(self._write),
                 argv_factory=lambda enc: build_command(
-                    settings, key, self._os_name, enc, ffmpeg))
+                    settings, key, self._os_name, enc, ffmpeg, record_path))
         except (OSError, ValueError) as exc:
             self._write("Could not start: %s\n" % exc)
             self._on_status(STATUS_FAILED, None)

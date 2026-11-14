@@ -7,8 +7,8 @@ from .platforms import capture_inputs, ingest_url, silent_audio_input
 StreamSettings = namedtuple(
     "StreamSettings",
     "platform custom_url width height fps video_kbps audio_kbps x264_preset "
-    "window audio_device encoder display video_device",
-    defaults=(None, None),
+    "window audio_device encoder display video_device mute",
+    defaults=(None, None, False),
 )
 
 VAAPI_DEVICE = "/dev/dri/renderD128"
@@ -32,10 +32,16 @@ def _encoder_args(encoder, s):
     raise ValueError("Unsupported encoder %r" % encoder)
 
 
-def build_command(s, key, os_name, encoder, ffmpeg="ffmpeg"):
-    """Return the full ffmpeg argv list. Contains the key; redact before display."""
+TEST_SECONDS = 10
+
+
+def build_command(s, key, os_name, encoder, ffmpeg="ffmpeg", record_path=None):
+    """Return the full ffmpeg argv list. Contains the key; redact before display.
+
+    With record_path, record TEST_SECONDS to that file instead of going live.
+    """
     video_in, has_audio = capture_inputs(os_name, s.fps, s.window, s.audio_device,
-                                      s.display, s.video_device)
+                                      s.display, s.video_device, s.mute)
     args = [ffmpeg, "-hide_banner", "-loglevel", "warning",
             "-stats"]  # progress lines feed the live/lagging indicator
     if encoder == "h264_vaapi":
@@ -59,8 +65,11 @@ def build_command(s, key, os_name, encoder, ffmpeg="ffmpeg"):
         "-g", str(s.fps * 2),              # keyframe every 2 seconds
         "-bf", "0",                        # no B-frames: less delay and CPU
         "-c:a", "aac", "-b:a", "%dk" % s.audio_kbps, "-ar", "44100", "-ac", "2",
+    ]
+    if record_path:
+        return args + ["-t", str(TEST_SECONDS), "-f", "matroska", "-y", record_path]
+    return args + [
         "-flush_packets", "1",
         "-flvflags", "no_duration_filesize",
         "-f", "flv", ingest_url(s.platform, key, s.custom_url),
     ]
-    return args

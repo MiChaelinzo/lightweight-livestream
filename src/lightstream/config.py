@@ -18,6 +18,7 @@ EXAMPLE_CONFIG = {
     "encoder": None,
     "video_device": None,
     "url": None,
+    "mute": False,
 }
 
 
@@ -100,6 +101,7 @@ def resolve_settings(cli, file_cfg):
         encoder=_pick("encoder", cli, file_cfg),
         display=_pick("display", cli, file_cfg),
         video_device=_pick("video_device", cli, file_cfg),
+        mute=bool(_pick("mute", cli, file_cfg, False)),
     )
 
 

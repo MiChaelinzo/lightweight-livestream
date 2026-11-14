@@ -2,11 +2,14 @@
 
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 
 HARDWARE_ORDER = (
     "h264_nvenc", "h264_qsv", "h264_amf", "h264_videotoolbox", "h264_vaapi",
 )
 SOFTWARE_ENCODER = "libx264"
+PROBE_TIMEOUT_SECONDS = 8
+_WORKS_CACHE = {}  # (ffmpeg, encoder) -> bool, for this run only
 
 
 def parse_encoders(ffmpeg_output):
@@ -41,13 +44,16 @@ def _test_args(ffmpeg, encoder):
 
 def encoder_works(ffmpeg, encoder, run=subprocess.run):
     """True if a tiny test encode succeeds. `-encoders` only lists compiled-in
-    support, not what this machine's GPU can actually do."""
-    try:
-        result = run(_test_args(ffmpeg, encoder), stdout=subprocess.DEVNULL,
-                     stderr=subprocess.DEVNULL, timeout=20)
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0
+    support, not what this machine's GPU can actually do. Cached per run."""
+    cache_key = (ffmpeg, encoder)
+    if cache_key not in _WORKS_CACHE:
+        try:
+            result = run(_test_args(ffmpeg, encoder), stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, timeout=PROBE_TIMEOUT_SECONDS)
+            _WORKS_CACHE[cache_key] = result.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            _WORKS_CACHE[cache_key] = False
+    return _WORKS_CACHE[cache_key]
 
 
 def choose_working_encoder(ffmpeg, available, prefer_hardware=True, forced=None,
@@ -55,8 +61,14 @@ def choose_working_encoder(ffmpeg, available, prefer_hardware=True, forced=None,
     """Like choose_encoder, but skips hardware encoders that fail a test encode."""
     if forced or not prefer_hardware:
         return choose_encoder(available, prefer_hardware, forced)
-    for name in HARDWARE_ORDER:
-        if name in available and encoder_works(ffmpeg, name, run):
+    candidates = [n for n in HARDWARE_ORDER if n in available]
+    if not candidates:
+        return SOFTWARE_ENCODER
+    # Test all at once so startup waits for the slowest probe, not the sum.
+    with ThreadPoolExecutor(max_workers=len(candidates)) as pool:
+        results = list(pool.map(lambda n: encoder_works(ffmpeg, n, run), candidates))
+    for name, works in zip(candidates, results):
+        if works:
             return name
     return SOFTWARE_ENCODER
 
@@ -66,7 +78,8 @@ def probe_encoders(ffmpeg="ffmpeg", run=subprocess.run):
     try:
         result = run([ffmpeg, "-hide_banner", "-encoders"],
                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                     universal_newlines=True, timeout=20)
+                     universal_newlines=True,
+                     timeout=PROBE_TIMEOUT_SECONDS)
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RuntimeError("Could not run %s: %s" % (ffmpeg, exc))
     return parse_encoders(result.stdout)

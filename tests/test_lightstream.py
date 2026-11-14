@@ -7,16 +7,18 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-from lightstream import cli
+from lightstream import cli, encoders
 from lightstream.command import build_command
 from lightstream.config import (config_path, detect_os, load_file_config,
                                 resolve_key,
                                 resolve_settings, write_example_config)
 from lightstream.encoders import (choose_encoder, choose_working_encoder,
                                   encoder_works, parse_encoders)
-from lightstream.platforms import capture_inputs, ingest_url
+from lightstream.platforms import (capture_inputs, ingest_url,
+                                   parse_audio_devices)
 from lightstream.presets import PRESETS, get_preset, parse_resolution
 from lightstream.runner import (backoff_delay, format_command, is_lagging,
+                                mentions_encoder_problem,
                                 parse_progress, priority_kwargs, redact,
                                 run_with_reconnect)
 
@@ -74,6 +76,19 @@ class FakeRun:
 
 class WorkingEncoderTests(unittest.TestCase):
     avail = {"h264_nvenc", "h264_qsv", "libx264"}
+
+    def setUp(self):
+        encoders._WORKS_CACHE.clear()
+
+    def test_probe_results_are_cached(self):
+        calls = []
+
+        def run(argv, **kw):
+            calls.append(argv)
+            return type("R", (), {"returncode": 0})()
+        encoder_works("ffmpeg", "h264_qsv", run)
+        encoder_works("ffmpeg", "h264_qsv", run)
+        self.assertEqual(1, len(calls))
 
     def test_skips_hardware_that_fails_test_encode(self):
         self.assertFalse(encoder_works("ffmpeg", "h264_nvenc", FakeRun(set())))
@@ -152,6 +167,78 @@ class CommandTests(unittest.TestCase):
             ingest_url("custom", "k")
         with self.assertRaises(ValueError):
             ingest_url("other", "k")
+
+
+DSHOW_TEXT = """[dshow @ 0x1] DirectShow video devices (some may be both video and audio devices)
+[dshow @ 0x1]  "Integrated Camera"
+[dshow @ 0x1]     Alternative name "@device_pnp_x"
+[dshow @ 0x1] DirectShow audio devices
+[dshow @ 0x1]  "Microphone (Realtek)" (audio)
+[dshow @ 0x1]  "Stereo Mix (Realtek)" (audio)
+"""
+AVF_TEXT = """[AVFoundation indev @ 0x1] AVFoundation video devices:
+[AVFoundation indev @ 0x1] [0] FaceTime HD Camera
+[AVFoundation indev @ 0x1] [1] Capture screen 0
+[AVFoundation indev @ 0x1] AVFoundation audio devices:
+[AVFoundation indev @ 0x1] [0] MacBook Microphone
+"""
+
+
+class AudioTests(unittest.TestCase):
+    def test_parse_dshow_and_avfoundation(self):
+        self.assertEqual(["Microphone (Realtek)", "Stereo Mix (Realtek)"],
+                         parse_audio_devices(DSHOW_TEXT))
+        self.assertEqual(["0 = MacBook Microphone"], parse_audio_devices(AVF_TEXT))
+        self.assertEqual([], parse_audio_devices("nothing here"))
+
+    def test_mute_opens_no_audio_device(self):
+        for os_name, marker in (("linux", "pulse"), ("windows", "dshow"),
+                                ("macos", "0")):
+            argv = build_command(settings(mute=True, audio_device="Mic"), KEY,
+                                 os_name, "libx264")
+            self.assertNotIn(marker if marker != "0" else "1:0", argv)
+            self.assertIn("anullsrc=r=44100:cl=stereo", argv)
+
+    def test_macos_mute_uses_none(self):
+        self.assertIn("1:none", capture_inputs("macos", 30, mute=True)[0])
+
+
+class TestLocalTests(unittest.TestCase):
+    def test_record_instead_of_live(self):
+        argv = build_command(settings(), KEY, "linux", "libx264",
+                             record_path="t.mkv")
+        self.assertEqual(["-t", "10", "-f", "matroska", "-y", "t.mkv"], argv[-6:])
+        self.assertFalse(any("rtmp" in a for a in argv))
+
+    def test_cli_dry_run_test_local_needs_no_key(self):
+        out = io.StringIO()
+        env = {k: v for k, v in os.environ.items() if k != "STREAM_KEY"}
+        old = os.environ.copy()
+        os.environ.clear()
+        os.environ.update(env)
+        try:
+            code = cli.main(["start", "--dry-run", "--test-local", "x.mkv"], out)
+        finally:
+            os.environ.clear()
+            os.environ.update(old)
+        self.assertEqual(0, code)
+        self.assertIn("x.mkv", out.getvalue())
+
+
+class EncoderErrorTests(unittest.TestCase):
+    def test_known_encoder_failures_match(self):
+        for line in ("[h264_nvenc @ 0x1] OpenEncodeSessionEx failed: out of memory",
+                     "Cannot load nvcuda.dll",
+                     "Error while opening encoder for output stream #0:0",
+                     "Error creating a MFX session: -9."):
+            self.assertTrue(mentions_encoder_problem(line), line)
+
+    def test_network_errors_do_not_match(self):
+        for line in ("Connection to tcp://live.twitch.tv:1935 failed: Connection refused",
+                     "av_interleaved_write_frame(): Broken pipe",
+                     "rtmp://x/live_123: Input/output error",
+                     "Encoder (codec aac) not found for output"):
+            self.assertFalse(mentions_encoder_problem(line), line)
 
 
 class RedactionTests(unittest.TestCase):

@@ -1,5 +1,7 @@
 """Ingest URLs and per-OS screen/audio capture inputs. Pure functions."""
 
+import re
+
 INGEST_URLS = {
     "twitch": "rtmp://live.twitch.tv/app/",
     "youtube": "rtmp://a.rtmp.youtube.com/live2/",
@@ -26,11 +28,14 @@ DEFAULT_MAC_VIDEO_DEVICE = "1"  # usually the main screen
 
 
 def capture_inputs(os_name, fps, window=None, audio_device=None,
-                   display=None, video_device=None):
+                   display=None, video_device=None, mute=False):
     """FFmpeg input arguments for screen (+ audio when the OS allows it here).
 
     os_name is one of 'windows', 'linux', 'macos'. Returns (args, has_audio).
+    With mute, no audio device is opened (has_audio is False).
     """
+    if mute:
+        audio_device = None
     low_latency = ["-fflags", "nobuffer", "-thread_queue_size", "64"]
     if os_name == "windows":
         target = "title=" + window if window else "desktop"
@@ -47,6 +52,8 @@ def capture_inputs(os_name, fps, window=None, audio_device=None,
         args = low_latency + ["-f", "x11grab", "-framerate", str(fps),
                               "-draw_mouse", "0", "-i",
                               display or DEFAULT_DISPLAY]
+        if mute:
+            return args, False
         args += low_latency + ["-f", "pulse", "-i", audio_device or "default"]
         return args, True
     if os_name == "macos":
@@ -56,11 +63,40 @@ def capture_inputs(os_name, fps, window=None, audio_device=None,
         args = low_latency + ["-f", "avfoundation", "-framerate", str(fps),
                               "-capture_cursor", "0", "-i",
                               (video_device or DEFAULT_MAC_VIDEO_DEVICE) + ":"
-                              + (audio_device or "0")]
-        return args, True
+                              + ("none" if mute else audio_device or "0")]
+        return args, not mute
     raise ValueError("Unsupported OS %r" % os_name)
 
 
 def silent_audio_input():
     """Used when no audio device is given; many sites want an audio track."""
     return ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"]
+
+
+_DSHOW_AUDIO = re.compile(r'"([^"]+)"\s+\(audio\)')
+_AVF_INDEX = re.compile(r"\[(\d+)\]\s+(.+)$")
+
+
+def parse_audio_devices(ffmpeg_output):
+    """Audio device names from `ffmpeg -list_devices true -f dshow -i dummy`
+    (Windows) or `-f avfoundation -i ""` (macOS) text.
+
+    dshow gives names to pass to --audio-device; avfoundation gives
+    "index = name" lines, and the index is what --audio-device wants.
+    """
+    names = []
+    in_audio = False
+    for line in ffmpeg_output.splitlines():
+        m = _DSHOW_AUDIO.search(line)
+        if m:
+            names.append(m.group(1))
+            continue
+        if "AVFoundation audio devices" in line:
+            in_audio = True
+        elif "AVFoundation video devices" in line:
+            in_audio = False
+        elif in_audio:
+            m = _AVF_INDEX.search(line)
+            if m:
+                names.append("%s = %s" % (m.group(1), m.group(2).strip()))
+    return names
