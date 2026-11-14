@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.agents/
+config.json
+*.key
+.env
+*.egg-info/
+build/
+dist/
+*.pyz
+*.mkv
+*.spec
+gui_entry.py

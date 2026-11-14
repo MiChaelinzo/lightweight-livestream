@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lightstream"
+version = "0.3.0"
+description = "Very lightweight livestreaming CLI that drives FFmpeg, made for old PCs and laptops"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+dependencies = []
+
+[project.scripts]
+lightstream = "lightstream.cli:main"
+
+[project.gui-scripts]
+lightstream-gui = "lightstream.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
