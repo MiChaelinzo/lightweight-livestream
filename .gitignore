@@ -11,3 +11,8 @@ dist/
 *.mkv
 *.spec
 gui_entry.py
+data/
+*.zip
+ffmpeg/
+ffmpeg.exe
+portable.flag

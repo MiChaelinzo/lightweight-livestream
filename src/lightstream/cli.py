@@ -13,6 +13,7 @@ from .config import (config_path, detect_os, load_file_config, resolve_key,
                      resolve_settings, write_example_config)
 from .encoders import (SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
+from .portable import find_ffmpeg
 from .platforms import PLATFORMS, parse_audio_devices
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
@@ -62,7 +63,7 @@ def build_parser():
 def cmd_doctor(out):
     os_name = detect_os()
     out.write("OS: %s\n" % os_name)
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = find_ffmpeg()
     if not ffmpeg:
         out.write("ffmpeg: NOT FOUND. Install it and add it to PATH.\n")
         return 1
@@ -79,7 +80,7 @@ def cmd_doctor(out):
 
 def cmd_devices(out, os_name=None, run=subprocess.run):
     os_name = os_name or detect_os()
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = find_ffmpeg()
     if not ffmpeg:
         out.write("ffmpeg: NOT FOUND. Install it and add it to PATH.\n")
         return 1
@@ -126,7 +127,7 @@ def cmd_start(args, out):
     record_path = args.test_local
     key = "test" if record_path else resolve_key(os.environ, getpass.getpass)
 
-    ffmpeg = shutil.which("ffmpeg")
+    ffmpeg = find_ffmpeg()
     if ffmpeg is None and not args.dry_run:
         out.write("ffmpeg not found. Run 'lightstream doctor'.\n")
         return 1
