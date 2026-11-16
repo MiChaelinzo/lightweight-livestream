@@ -204,6 +204,17 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 Reports of what works on your hardware are welcome.
 
+## Portable mode (USB stick friendly)
+
+```sh
+python tools/build_portable.py        # writes lightstream-portable.zip
+```
+
+Unzip anywhere, put `ffmpeg.exe` (or `ffmpeg`) into the `ffmpeg/` folder, then run `launchers/start-gui.bat` (or `.sh`). Settings go to the `data/` folder next to the app, nothing is written to your user profile, and deleting the folder removes everything. The stream key is still never saved. A bundled ffmpeg is used before any ffmpeg on PATH. Python 3 still has to be installed on the PC (use the PyInstaller recipe below for a no-Python exe).
+
+- VERIFIED (Linux): the zip builds, unzips, and `init` from the unzipped copy wrote `data/config.json` and nothing in the home folder; unit tests cover flag, env var, config path and ffmpeg lookup.
+- UNVERIFIED: running from a Windows USB stick, and the GUI in portable mode (no display in the dev sandbox; the GUI has still never been rendered).
+
 ## Build a standalone app (optional)
 
 Nothing is committed as a binary. To make your own, with [PyInstaller](https://pyinstaller.org) (needs network once):

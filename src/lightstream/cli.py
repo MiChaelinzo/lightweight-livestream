@@ -13,7 +13,7 @@ from .config import (config_path, detect_os, load_file_config, resolve_key,
                      resolve_settings, write_example_config)
 from .encoders import (SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
-from .portable import find_ffmpeg
+from .portable import find_ffmpeg, is_portable
 from .platforms import PLATFORMS, parse_audio_devices
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
@@ -63,6 +63,8 @@ def build_parser():
 def cmd_doctor(out):
     os_name = detect_os()
     out.write("OS: %s\n" % os_name)
+    if is_portable():
+        out.write("Mode: portable (settings in %s)\n" % os.path.dirname(config_path(os_name)))
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         out.write("ffmpeg: NOT FOUND. Install it and add it to PATH.\n")

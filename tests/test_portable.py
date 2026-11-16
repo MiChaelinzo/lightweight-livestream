@@ -67,3 +67,20 @@ class PortableTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DoctorPortableTests(unittest.TestCase):
+    def test_doctor_reports_portable_mode(self):
+        import io
+        from lightstream import cli
+        old = os.environ.get("LIGHTSTREAM_PORTABLE")
+        os.environ["LIGHTSTREAM_PORTABLE"] = "1"
+        try:
+            out = io.StringIO()
+            cli.cmd_doctor(out)
+        finally:
+            if old is None:
+                del os.environ["LIGHTSTREAM_PORTABLE"]
+            else:
+                os.environ["LIGHTSTREAM_PORTABLE"] = old
+        self.assertIn("Mode: portable", out.getvalue())

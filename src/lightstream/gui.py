@@ -13,6 +13,7 @@ except ImportError:  # some Linux Pythons ship without tkinter
 
 from . import gui_controller as gc
 from .cli import cmd_doctor
+from .portable import is_portable
 
 POLL_MS = 500
 CLOSE_WAIT_MS = 5000
@@ -35,7 +36,8 @@ class StreamWindow:
         self.controller = gc.StreamController(display=os.environ.get("DISPLAY"))
         self.prefs_file = gc.prefs_path()
         saved = gc.load_prefs(self.prefs_file)
-        root.title("Lightstream - easy streaming")
+        root.title("Lightstream - easy streaming"
+                   + (" (portable)" if is_portable() else ""))
         root.minsize(560, 640)
         self._build(saved)
         root.protocol("WM_DELETE_WINDOW", self.on_close)
