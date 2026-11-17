@@ -1,0 +1,45 @@
+{
+  "default": "light",
+  "presets": [
+    {
+      "name": "potato",
+      "width": 640,
+      "height": 360,
+      "fps": 24,
+      "video_kbps": 700,
+      "audio_kbps": 64,
+      "x264_preset": "ultrafast",
+      "description": "Oldest PCs, weak Wi-Fi, mobile emulators. Lowest CPU use."
+    },
+    {
+      "name": "light",
+      "width": 854,
+      "height": 480,
+      "fps": 30,
+      "video_kbps": 1000,
+      "audio_kbps": 96,
+      "x264_preset": "ultrafast",
+      "description": "Old laptops. Good default for Arknights / Limbus Company."
+    },
+    {
+      "name": "balanced",
+      "width": 1280,
+      "height": 720,
+      "fps": 30,
+      "video_kbps": 2500,
+      "audio_kbps": 128,
+      "x264_preset": "veryfast",
+      "description": "Decent PCs or any PC with a hardware encoder."
+    },
+    {
+      "name": "720p60",
+      "width": 1280,
+      "height": 720,
+      "fps": 60,
+      "video_kbps": 4000,
+      "audio_kbps": 128,
+      "x264_preset": "veryfast",
+      "description": "Fast action games. Needs a hardware encoder or a good CPU."
+    }
+  ]
+}
