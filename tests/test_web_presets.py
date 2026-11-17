@@ -26,5 +26,19 @@ class WebPresetsParityTests(unittest.TestCase):
         self.assertEqual(export_presets.main(["--check"]), 0)
 
 
+class DescribeCommandParsesTests(unittest.TestCase):
+    def test_web_command_is_accepted_by_real_parser(self):
+        import re
+        from lightstream.cli import build_parser
+
+        source = open(os.path.join(os.path.dirname(export_presets.OUTPUT), "js", "presets-logic.js"), encoding="utf-8").read()
+        match = re.search(r'return "(lightstream start [^"]*?)" \+ preset\.name', source)
+        self.assertIsNotNone(match)
+        argv = (match.group(1) + "light").split()[1:]
+        args = build_parser().parse_args(argv)
+        self.assertEqual(args.platform, "twitch")
+        self.assertEqual(args.preset, "light")
+
+
 if __name__ == "__main__":
     unittest.main()

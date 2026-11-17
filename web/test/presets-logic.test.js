@@ -60,5 +60,5 @@ test("invalid input is rejected", () => {
 });
 
 test("command text", () => {
-  assert.equal(describeCommand(byName.light), "lightstream start twitch light");
+  assert.equal(describeCommand(byName.light), "lightstream start --platform twitch --preset light");
 });

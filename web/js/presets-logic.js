@@ -48,5 +48,5 @@ export function recommendPreset(presets, uploadMbps, pcClass) {
 }
 
 export function describeCommand(preset) {
-  return "lightstream start twitch " + preset.name;
+  return "lightstream start --platform twitch --preset " + preset.name;
 }
