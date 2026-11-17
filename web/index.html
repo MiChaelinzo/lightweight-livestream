@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lightstream: lightweight streaming for old PCs</title>
+  <meta name="description" content="A small FFmpeg-based streamer for old PCs. Pick a preset, see the bandwidth it needs, and get the install steps.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="hero">
+    <canvas id="hero-canvas" aria-hidden="true"></canvas>
+    <div class="hero-text">
+      <h1>lightstream</h1>
+      <p class="tagline">Stream from an old PC without the lag. A tiny Python tool that drives FFmpeg.</p>
+      <p><a class="button" href="#picker">Pick a preset</a>
+         <a class="button ghost" href="#install">Install</a></p>
+    </div>
+  </header>
+
+  <main id="main">
+    <noscript><p class="note">This page works best with JavaScript. The preset table is in the README.</p></noscript>
+
+    <section aria-labelledby="honest">
+      <h2 id="honest">What it does and does not do</h2>
+      <div class="columns">
+        <div>
+          <h3>Does</h3>
+          <ul>
+            <li>Streams your screen to Twitch, YouTube or a custom RTMP server using FFmpeg.</li>
+            <li>Uses low-CPU presets and hardware encoders when available.</li>
+            <li>Runs from a simple window, the command line, or a USB stick.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Does not</h3>
+          <ul>
+            <li>Run in the browser. This site is a guide and a calculator only.</li>
+            <li>Stream from a web page. Browsers cannot push RTMP to Twitch or YouTube.</li>
+            <li>Send your stream key anywhere. This site never asks for it.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="picker" aria-labelledby="picker-title">
+      <h2 id="picker-title">Preset picker</h2>
+      <div class="form">
+        <label>Preset <select id="preset"></select></label>
+        <label>Upload speed (Mbps) <input id="upload" type="number" min="0.1" step="0.1" inputmode="decimal"></label>
+        <label>Your PC <select id="pc"></select></label>
+      </div>
+      <pre id="result" class="result" role="status" aria-live="polite">Loading presets...</pre>
+    </section>
+
+    <section aria-labelledby="steps">
+      <h2 id="steps">Three beginner steps</h2>
+      <ol class="steps">
+        <li><strong>Install</strong> Python 3 and FFmpeg, then get lightstream (below).</li>
+        <li><strong>Open the window</strong> with <code>python -m lightstream gui</code> and paste your stream key.</li>
+        <li><strong>Press Test first</strong>, then Go live with the preset recommended above.</li>
+      </ol>
+    </section>
+
+    <section id="install" aria-labelledby="install-title">
+      <h2 id="install-title">Download and install</h2>
+      <p>Source and releases are on
+        <a href="https://github.com/MiChaelinzo/lightweight-livestream">GitHub</a>.
+        Clone the repo or download the zip, then run:</p>
+      <pre class="code">pip install .
+lightstream gui</pre>
+      <p>For a USB stick, build the portable zip with
+        <code>python tools/build_portable.py</code> and drop FFmpeg into its <code>ffmpeg</code> folder.
+        The README has the full steps.</p>
+    </section>
+
+    <section aria-labelledby="capture-title">
+      <h2 id="capture-title">Try a local screen recording</h2>
+      <p class="note">This only records to a file on your computer. Browsers cannot stream to Twitch or YouTube, so nothing is uploaded or sent live.</p>
+      <p>
+        <button id="capture-start" type="button">Start recording</button>
+        <button id="capture-stop" type="button" disabled>Stop</button>
+        <a id="capture-download" class="button ghost" hidden>Download recording</a>
+      </p>
+      <p id="capture-status" role="status" aria-live="polite"></p>
+      <video id="capture-preview" controls hidden></video>
+    </section>
+  </main>
+
+  <footer>
+    <p>lightstream is MIT licensed. The 3D scene is plain WebGL and pauses when the tab is hidden.</p>
+  </footer>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
