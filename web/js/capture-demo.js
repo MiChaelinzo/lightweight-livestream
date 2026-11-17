@@ -12,6 +12,10 @@ export function pickMimeType(isTypeSupported) {
   return MIME_CANDIDATES.find((type) => isTypeSupported(type)) || "";
 }
 
+export function extensionForMime(mimeType) {
+  return /^video\/mp4/.test(mimeType || "") ? "mp4" : "webm";
+}
+
 export function isCaptureSupported(env = globalThis) {
   return Boolean(
     env.navigator && env.navigator.mediaDevices &&
@@ -38,6 +42,10 @@ export function setupCaptureDemo({ startButton, stopButton, status, preview, dow
     status.textContent = message;
   }
 
+  function stopStream() {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+  }
+
   async function start() {
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
@@ -47,19 +55,30 @@ export function setupCaptureDemo({ startButton, stopButton, status, preview, dow
     }
     const mimeType = pickMimeType((t) => MediaRecorder.isTypeSupported(t));
     const chunks = [];
-    recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    try {
+      recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch (err) {
+      stopStream();
+      recorder = null;
+      setIdle("Recording could not start: " + err.message);
+      return;
+    }
+    recorder.addEventListener("error", (e) => {
+      stopStream();
+      setIdle("Recording failed: " + ((e.error && e.error.message) || "unknown error"));
+    });
     recorder.addEventListener("dataavailable", (e) => {
       if (e.data.size > 0) chunks.push(e.data);
     });
     recorder.addEventListener("stop", () => {
-      stream.getTracks().forEach((t) => t.stop());
+      stopStream();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
       const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
       objectUrl = URL.createObjectURL(blob);
       preview.src = objectUrl;
       preview.hidden = false;
       download.href = objectUrl;
-      download.download = "lightstream-demo.webm";
+      download.download = "lightstream-demo." + extensionForMime(recorder.mimeType);
       download.hidden = false;
       setIdle("Done. The recording stays on this computer. Nothing was uploaded or streamed.");
     });
