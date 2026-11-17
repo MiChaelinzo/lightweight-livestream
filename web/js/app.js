@@ -11,7 +11,9 @@ const DEFAULT_UPLOAD_MBPS = 5;
 function initHero() {
   const canvas = $("hero-canvas");
   try {
-    const hero = startHero(canvas);
+    const hero = startHero(canvas, {
+      onFallback: () => document.body.classList.add("no-3d"),
+    });
     if (hero.mode === "off") document.body.classList.add("no-3d");
   } catch (err) {
     console.warn("3D hero disabled:", err.message);

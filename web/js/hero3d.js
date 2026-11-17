@@ -20,6 +20,8 @@ const SPIN_X = 0.18;
 const RING_TILT = 0.5;
 const STILL_FRAME_TIME = 2.2;
 const MAX_PIXEL_RATIO = 2;
+const FACE_OFFSET_FACTOR = 1;
+const FACE_OFFSET_UNITS = 1;
 
 export function isLowEnd(nav) {
   const cores = nav.hardwareConcurrency;
@@ -45,7 +47,7 @@ varying vec3 vNormal;
 varying vec3 vView;
 void main() {
   vec4 world = model * vec4(position, 1.0);
-  vNormal = mat3(model) * normal;
+  vNormal = (model * vec4(normal, 0.0)).xyz;
   vView = normalize(vec3(0.0, 0.0, ${CAMERA_DISTANCE.toFixed(1)}) - world.xyz);
   gl_Position = viewProj * world;
 }`;
@@ -134,7 +136,11 @@ function createScene(gl) {
     gl.uniformMatrix4fv(gl.getUniformLocation(facesProgram, "model"), false, model);
     gl.uniformMatrix4fv(gl.getUniformLocation(facesProgram, "viewProj"), false, viewProj);
     gl.uniform1f(gl.getUniformLocation(facesProgram, "time"), time);
+    // Push faces back slightly so the coplanar edge lines win the depth test.
+    gl.enable(gl.POLYGON_OFFSET_FILL);
+    gl.polygonOffset(FACE_OFFSET_FACTOR, FACE_OFFSET_UNITS);
     gl.drawArrays(gl.TRIANGLES, 0, counts.faces);
+    gl.disable(gl.POLYGON_OFFSET_FILL);
     gl.disableVertexAttribArray(nor);
   }
 
@@ -166,7 +172,8 @@ function createScene(gl) {
   };
 }
 
-// Returns { mode, stop }. onFallback() is called when the CSS fallback should show.
+// Returns { mode, stop }. env.onFallback() is called if the GL context is lost
+// later, so the page can show the CSS fallback.
 export function startHero(canvas, env = {}) {
   const nav = env.navigator || navigator;
   const reducedMotion = Boolean(
@@ -198,6 +205,10 @@ export function startHero(canvas, env = {}) {
   }
 
   if (mode === "still") {
+    canvas.addEventListener("webglcontextlost", (event) => {
+      event.preventDefault();
+      if (env.onFallback) env.onFallback();
+    });
     resize();
     render(canvas.width, canvas.height, STILL_FRAME_TIME);
     window.addEventListener("resize", () => {
@@ -209,8 +220,10 @@ export function startHero(canvas, env = {}) {
 
   let frameId = 0;
   let visible = true;
+  let lost = false;
   const startedAt = performance.now();
   function frame(now) {
+    if (lost) return;
     resize();
     render(canvas.width, canvas.height, (now - startedAt) / 1000);
     frameId = requestAnimationFrame(frame);
@@ -222,6 +235,12 @@ export function startHero(canvas, env = {}) {
       frameId = 0;
     }
   }
+  canvas.addEventListener("webglcontextlost", (event) => {
+    event.preventDefault();
+    lost = true;
+    setRunning(false);
+    if (env.onFallback) env.onFallback();
+  });
   const observer = new IntersectionObserver((entries) => {
     visible = entries[0].isIntersecting;
     setRunning(visible && !document.hidden);
