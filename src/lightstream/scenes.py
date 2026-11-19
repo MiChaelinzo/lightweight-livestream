@@ -7,6 +7,7 @@ are checked by unit tests on the generated text only.
 """
 
 import json
+import os
 import re
 from collections import namedtuple
 
@@ -265,3 +266,32 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
     if tail:
         graph.append("[%s]%s[%s]" % (label(steps - 1), tail, OUTPUT_LABEL))
     return input_args, ";".join(graph), "[%s]" % OUTPUT_LABEL
+
+
+EXAMPLE_SCENES = {
+    "scenes": [
+        {"name": "game-with-webcam",
+         "sources": [
+             {"kind": "screen"},
+             {"kind": "webcam", "device": "Integrated Camera",
+              "corner": "bottom-right", "size_percent": 20}]},
+        {"name": "browser-source",
+         "sources": [
+             {"kind": "browser", "window": "My Overlay - Browser",
+              "crop": {"x": 0, "y": 0, "w": 1280, "h": 720}},
+             {"kind": "text", "text": "Thanks for watching", "corner": "top-left"}]},
+        {"name": "webcam-green-screen",
+         "sources": [
+             {"kind": "screen"},
+             {"kind": "webcam", "device": "Integrated Camera", "corner": "bottom-left",
+              "size_percent": 25, "chromakey": {"color": "00ff00", "similarity": 0.3}}]},
+    ]
+}
+
+
+def write_example_scenes(path):
+    """Write the example scenes file. Never overwrites an existing file."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "x", encoding="utf-8") as fh:  # "x" fails if the file exists
+        json.dump(EXAMPLE_SCENES, fh, indent=2)
+        fh.write("\n")

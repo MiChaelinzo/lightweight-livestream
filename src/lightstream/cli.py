@@ -10,19 +10,22 @@ import sys
 from . import __version__
 from .command import build_command
 from .config import (config_path, detect_os, load_file_config, resolve_key,
-                     resolve_settings, write_example_config)
+                     resolve_settings, scenes_path, write_example_config)
+from .audio import NOISE_LEVELS
 from .bandwidth import measure_upload, mbps_to_kbps, recommend
 from .encoders import (HARDWARE_ORDER, SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
 from .portable import find_ffmpeg, is_portable
-from .hardware import get_profile
+from .hardware import PROFILES, classify_gpus, detect_gpu_names, get_profile
 from .health import HealthTracker
 from .platforms import PLATFORMS, parse_audio_devices
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
+from .scenes import load_scenes, write_example_scenes
 
 
 DEFAULT_TEST_FILE = "lightstream-test.mkv"
+DEFAULT_RECORDING_FILE = "lightstream-recording.mkv"
 MAX_QUICK_FAILURES = 5  # consecutive quick failures before giving up
 
 
@@ -45,6 +48,9 @@ def build_parser():
     b.add_argument("--upload-mbps", help="your upload speed in Mbps")
     b.add_argument("--measure-url", help="a URL you control that accepts a POST upload")
     b.add_argument("--hardware", help="hardware profile, e.g. intel_hd")
+    sc = sub.add_parser("scenes", help="list, check or create a scenes file")
+    sc.add_argument("action", choices=("list", "validate", "example"))
+    sc.add_argument("--scenes-file", help="scenes file (default: scenes.json next to config.json)")
     s = sub.add_parser("start", help="start streaming")
     s.add_argument("--platform", choices=PLATFORMS)
     s.add_argument("--url", help="RTMP base URL for --platform custom")
@@ -67,14 +73,55 @@ def build_parser():
     s.add_argument("--encoder", help="force an encoder, e.g. libx264")
     s.add_argument("--software", action="store_true",
                    help="do not use a hardware encoder")
+    s.add_argument("--scene", help="scene name from the scenes file (set at start; "
+                                   "to switch scenes, stop and start again)")
+    s.add_argument("--scenes-file", help="scenes file (default: scenes.json next to config.json)")
+    s.add_argument("--record", nargs="?", const=DEFAULT_RECORDING_FILE, metavar="FILE",
+                   help="also save a local copy while streaming (default %s)"
+                        % DEFAULT_RECORDING_FILE)
+    s.add_argument("--noise", choices=NOISE_LEVELS,
+                   help="microphone noise suppression: off, light (afftdn), ai (arnndn model)")
+    s.add_argument("--noise-model", help="path to an arnndn .rnnn model for --noise ai")
+    s.add_argument("--hardware", choices=("auto",) + tuple(PROFILES),
+                   help="hardware profile; auto detects the GPU (default when none is configured)")
     s.add_argument("--dry-run", action="store_true",
                    help="print the ffmpeg command (key hidden) and exit")
     return p
 
 
-def cmd_doctor(out):
+def resolve_hardware(cli_value, file_cfg, os_name, detect=detect_gpu_names):
+    """Profile name: explicit choice wins, else the config file, else detect the GPU."""
+    if cli_value and cli_value != "auto":
+        return cli_value
+    if not cli_value and file_cfg.get("hardware"):
+        return file_cfg["hardware"]
+    return classify_gpus(detect(os_name))
+
+
+def cmd_scenes(args, out):
+    path = args.scenes_file or scenes_path()
+    if args.action == "example":
+        write_example_scenes(path)  # raises FileExistsError, never overwrites
+        out.write("Wrote %s\n" % path)
+        return 0
+    if not os.path.exists(path):
+        out.write("No scenes file at %s. Create one with: lightstream scenes example\n" % path)
+        return 1
+    scenes = load_scenes(path)  # ValueError in plain words
+    if args.action == "validate":
+        out.write("OK: %d scene(s) in %s\n" % (len(scenes), path))
+    else:
+        for name in scenes:
+            out.write("%s\n" % name)
+    return 0
+
+
+def cmd_doctor(out, detect=detect_gpu_names):
     os_name = detect_os()
     out.write("OS: %s\n" % os_name)
+    names = detect(os_name)
+    out.write("GPU: %s\n" % (", ".join(names) or "not detected"))
+    out.write("Hardware profile: %s (UNVERIFIED on real hardware)\n" % classify_gpus(names))
     if is_portable():
         out.write("Mode: portable (settings in %s)\n" % os.path.dirname(config_path(os_name)))
     ffmpeg = find_ffmpeg()
@@ -144,16 +191,20 @@ def cmd_bandwidth(args, out, post=None):
     return 0
 
 
-def cmd_start(args, out):
+def cmd_start(args, out, detect=detect_gpu_names):
     os_name = detect_os()
     file_cfg = load_file_config(config_path(os_name))
+    hardware = resolve_hardware(args.hardware, file_cfg, os_name, detect)
     settings = resolve_settings(
         {"platform": args.platform, "url": args.url, "preset": args.preset,
          "fps": args.fps, "resolution": args.resolution, "bitrate": args.bitrate,
          "window": args.window, "audio_device": args.audio_device,
          "encoder": args.encoder, "video_device": args.video_device,
          "display": os.environ.get("DISPLAY"),
-         "mute": args.mute or None}, file_cfg)
+         "mute": args.mute or None, "scene": args.scene,
+         "scenes_file": args.scenes_file, "record": args.record,
+         "noise": args.noise, "noise_model": args.noise_model,
+         "hardware": hardware}, file_cfg)
     record_path = args.test_local
     key = "test" if record_path else resolve_key(os.environ, getpass.getpass)
 
@@ -227,6 +278,8 @@ def main(argv=None, out=sys.stdout):
             from .wizard import run_setup
             return run_setup(detect_os(), out, yes=args.yes,
                              platform=args.platform, upload_mbps=args.upload_mbps)
+        if args.command == "scenes":
+            return cmd_scenes(args, out)
         if args.command == "init":
             path = config_path()
             try:
