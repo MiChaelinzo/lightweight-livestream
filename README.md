@@ -160,13 +160,94 @@ Override anything: `--fps 30 --res 960x540 --bitrate 1500`. Invalid values (such
 - Window and desktop captures keep their aspect ratio and get black bars when it differs from the preset, instead of being stretched.
 - Audio: run `lightstream devices` (Windows, macOS) to list names, then pass `--audio-device "Device name"` (macOS wants the index). Without it, Windows streams silent audio. `--mute` forces silence on any OS.
 
+## Low-end studio features (0.6.0)
+
+Everything in this section is aimed at old laptops. It lowers work by design (mechanisms below); no CPU or RAM numbers have been measured. See the status table at the end of this section.
+
+### Hardware profiles (Intel HD, MX250)
+
+`lightstream doctor` prints the detected GPU and profile. `start` detects the GPU when no profile is set (`--hardware auto`, the default), or you can pick `intel_hd`, `nvidia_mx`, `nvidia` or `generic`, or set `"hardware"` in `config.json`.
+
+Mechanisms: fewer FFmpeg threads (`-filter_threads 1`, `-threads 2` for libx264), smaller capture buffers and probe size, the cheapest scaler (`fast_bilinear`), no lookahead on hardware encoders, one audio/video path. Intel HD uses Quick Sync (`h264_qsv`) and caps the preset at `light` unless `force_preset` is set. MX series uses NVENC first and Quick Sync second.
+
+Caveats (UNVERIFIED on real hardware): an Intel HD GPU has to share system RAM with the game, Quick Sync needs a recent driver, and MX250 NVENC session support depends on the driver. If a hardware encoder fails to start, the existing fallback switches to software encoding.
+
+### Scenes, webcam overlay and "browser source"
+
+A scene is a screen capture plus light overlays, kept in `scenes.json` next to `config.json`.
+
+```sh
+lightstream scenes example      # writes an example file, never overwrites
+lightstream scenes validate
+lightstream scenes list
+lightstream start --scene game-with-webcam
+```
+
+The example has a webcam overlay, a window-capture "browser source" and a chroma key webcam. Source kinds: `screen`, `window`/`browser` (capture one window by title, optional crop), `webcam` (one per scene, 5 to 35 percent of the frame, at most 15 fps), `image` and `text`.
+
+Browser source trade-off: lightstream has no embedded browser engine (that would add a heavy dependency and RAM use). To show a web overlay, open it in any browser window and capture that window by title. Window capture is Windows only (`gdigrab`) and often shows black for GPU-accelerated windows.
+
+Scene switching: the scene is chosen at START. Switching while live is NOT implemented; stop and start again. The window's scene dropdown (under Advanced) also applies at START.
+
+Background handling: only chroma key (`chromakey`) and `blur`. `blur` is a plain box blur of the whole webcam picture, not background segmentation.
+
+### Recording a copy
+
+`lightstream start --record [FILE]` (or the "Record a copy" checkbox) encodes once and writes to RTMP and a Matroska file through FFmpeg's tee muxer, so there is no second encode. Matroska survives a crash. A file write error is ignored so the stream keeps going. The path may not contain `| [ ] '`.
+
+### Noise suppression
+
+`--noise light`: a rumble cut plus FFmpeg's built-in `afftdn` FFT denoiser. `--noise ai`: `arnndn` with an RNNoise `.rnnn` model. No model is bundled. Download one yourself, check its license before using it, and pass `--noise-model PATH`. Without the file, `start` stops with a clear error. `arnndn` costs more CPU than `afftdn`, so `light` is the default the wizard picks.
+
+### Bandwidth optimizer
+
+```sh
+lightstream bandwidth --upload-mbps 3 --platform twitch --hardware intel_hd
+lightstream bandwidth --measure-url https://your-server.example/upload
+```
+
+Picks the heaviest preset whose video plus audio fits in 70 percent of your upload speed, capped by the platform maximum. `--measure-url` posts 1 MiB to an endpoint you control; no third-party speed test is built in.
+
+### Stream health
+
+The CLI prints a summary at the end of a session (speed, dropped frames, reconnects, longest lag). The window shows one advice line while live. Advice rules: speed under 0.95x means the PC is the limit; low bitrate while speed is fine points at the network; many dropped frames or two or more reconnects get their own advice. Thresholds are fixed constants in `health.py`.
+
+### One-click setup wizard
+
+`lightstream setup` (or the window's "One-click setup" button) detects GPU, CPU threads and RAM, asks at most two questions (platform, upload speed), and writes safe settings to `config.json`. The window button fills the fields and saves nothing until you press START. The stream key is never asked for or saved. With 4 GB RAM or less the preset never goes above `light`.
+
+### Not done
+
+- **AI background removal.** Not implemented. ML segmentation would use a lot of CPU, which conflicts with the ultra-low CPU goal on old laptops, and it needs a model and a heavy dependency. Use a green screen with `chromakey`.
+- Mid-stream scene switching, embedded browser source, multi-webcam scenes.
+
+### Status of the 0.6.0 features
+
+| Item | Status | Evidence |
+|---|---|---|
+| Hardware profile parsing, GPU classification (sample `lspci`/`wmic` text), tuned argv | VERIFIED (as strings) | unit tests |
+| Default argv unchanged when no new option is set | VERIFIED | golden test and combination sweep |
+| Scenes parsing, validation, filter graph text, example file, `scenes` command | VERIFIED (as strings) | unit tests |
+| `--record` tee argument, key redaction | VERIFIED (as strings) | unit tests |
+| Noise filter text, missing model error | VERIFIED (as strings) | unit tests |
+| Bandwidth maths, health tracker, advice rules, wizard config | VERIFIED | unit tests (fake clock, fake probes) |
+| GUI controller additions (setup, record, scene list, advice) | VERIFIED | unit tests, no display |
+| GUI window layout of the new widgets | UNVERIFIED | no display |
+| Real FFmpeg accepting the scene graphs, tee, `arnndn`, `afftdn` | UNVERIFIED | no FFmpeg in the dev sandbox |
+| Webcam capture (dshow, v4l2, avfoundation) | UNVERIFIED | no camera |
+| Quick Sync / NVENC tuning on Intel HD and MX250 | UNVERIFIED | no such hardware |
+| Windows RAM probe, `wmic` GPU detection | UNVERIFIED | not run on Windows |
+| Real upload measurement with `--measure-url` | PARTIALLY VERIFIED | fake HTTP in tests only |
+| Lower CPU/RAM use than before | UNVERIFIED | mechanisms only, not measured |
+| AI background removal, mid-stream scene switching | NOT DONE | see Not done |
+
 ## Stream key safety
 
 The key is read from the `STREAM_KEY` environment variable or typed at a hidden prompt (asked by lightstream itself, also from the Windows launcher). It is never stored by lightstream, and it is hidden (`****`) in everything lightstream prints. Limitation: RTMP puts the key in the FFmpeg command line, so other local processes running as your user may be able to see it in the process list. Custom URLs that carry their own tokens are not redacted beyond the key. Never share your key or commit it.
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `init`, `gui`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example [--scenes-file FILE]`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|nvidia_mx|nvidia|generic] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 
@@ -217,7 +298,7 @@ python3 tools/export_presets.py --check  # fails if it is stale
 
 - Window capture on Windows (`--window`) uses gdigrab and often shows black for GPU-accelerated emulators (BlueStacks, LDPlayer, MuMu). Capture the whole desktop instead.
 - The hardware encoder check runs short test encodes (8 second timeout each, run in parallel and cached), so worst-case startup is about 8 seconds plus the `-encoders` listing. This is derived from the timeouts, not measured on real hardware.
-- RTMP only. No scenes, overlays or webcam mixing.
+- RTMP only. Scenes are fixed when you press START; there is no mid-stream scene switching and no embedded browser engine (see Scenes below).
 - Screen capture: gdigrab (Windows), x11grab (Linux X11, not Wayland, follows `$DISPLAY`) and avfoundation (macOS, screen picked with `--video-device`).
 - Windows without `--audio-device` streams silent audio.
 - The stream key appears in the FFmpeg command line, so other local processes running as your user may see it in the process list. Lightstream hides it in everything it prints. Hiding it from the process list is not feasible with FFmpeg's RTMP output, so on a shared PC use your own user account.
