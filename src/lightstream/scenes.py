@@ -163,11 +163,15 @@ def parse_scenes(data):
 
 
 def load_scenes(path):
-    with open(path, "r", encoding="utf-8") as fh:
-        try:
-            data = json.load(fh)
-        except ValueError as exc:
-            raise ValueError("Scenes file %s is not valid JSON: %s" % (path, exc))
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            try:
+                data = json.load(fh)
+            except ValueError as exc:
+                raise ValueError("Scenes file %s is not valid JSON: %s" % (path, exc))
+    except OSError:
+        raise ValueError("Scenes file %s could not be read. Create one with: "
+                         "lightstream scenes example" % path)
     return parse_scenes(data)
 
 
