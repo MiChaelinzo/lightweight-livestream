@@ -38,6 +38,8 @@ _PROGRESS_FIELDS = (
     ("fps", re.compile(r"fps=\s*([\d.]+)")),
     ("bitrate_kbps", re.compile(r"bitrate=\s*([\d.]+)\s*kbits/s")),
     ("speed", re.compile(r"speed=\s*([\d.]+)x")),
+    ("dropped", re.compile(r"drop=\s*(\d+)")),
+    ("dup", re.compile(r"dup=\s*(\d+)")),
 )
 
 
