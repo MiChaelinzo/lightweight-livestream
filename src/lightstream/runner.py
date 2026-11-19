@@ -103,7 +103,8 @@ def _watch_for_stop(stop, proc, finished):
 def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
                        sleep=None, clock=time.monotonic,
                        out=sys.stderr, max_failures=None, stop=None,
-                       on_status=None, encoder=None, argv_factory=None):
+                       on_status=None, encoder=None, argv_factory=None,
+                       argv_for_attempt=None):
     """Run ffmpeg until it exits cleanly, is stopped, or fails too often.
 
     max_failures=None keeps trying forever. stop is a threading.Event; setting
@@ -114,6 +115,8 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
     row, with stderr naming the encoder, and argv_factory is given,
     argv_factory("libx264") replaces argv. Network or key failures never
     trigger it. Without on_status, progress lines are echoed to out.
+    argv_for_attempt(attempt, encoder), when given, returns the argv for each
+    relaunch (attempt 1, 2, ...), e.g. a new recording file name per attempt.
     Returns an exit code.
     """
     def report(state, detail=None):
@@ -124,7 +127,11 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
         sleep = stop.wait if stop is not None else time.sleep
     failures = 0
     encoder_failures = 0
+    attempt = 0
     while True:
+        if attempt and argv_for_attempt:
+            argv = argv_for_attempt(attempt, encoder)
+        attempt += 1
         started = clock()
         report(STATUS_STARTING)
         proc = popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,

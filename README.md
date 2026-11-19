@@ -166,9 +166,9 @@ Everything in this section is aimed at old laptops. It lowers work by design (me
 
 ### Hardware profiles (Intel HD, MX250)
 
-`lightstream doctor` prints the detected GPU and profile. `start` detects the GPU when no profile is set (`--hardware auto`, the default), or you can pick `intel_hd`, `nvidia_mx`, `nvidia` or `generic`, or set `"hardware"` in `config.json`.
+`lightstream doctor` prints the detected GPU and profile. `start` detects the GPU when no profile is set (`--hardware auto`, the default). **This changes the default `start` command on every machine**: even an unknown GPU gets the `generic` profile (`-filter_threads 1`, `-sws_flags fast_bilinear`, `-threads 2` for libx264, a small input probe). Plain `build_command` without a profile is unchanged, or you can pick `intel_hd`, `nvidia_mx`, `nvidia` or `generic`, or set `"hardware"` in `config.json`.
 
-Mechanisms: fewer FFmpeg threads (`-filter_threads 1`, `-threads 2` for libx264), smaller capture buffers and probe size, the cheapest scaler (`fast_bilinear`), no lookahead on hardware encoders, one audio/video path. Intel HD uses Quick Sync (`h264_qsv`) and caps the preset at `light` unless `force_preset` is set. MX series uses NVENC first and Quick Sync second.
+Mechanisms: fewer FFmpeg threads (`-filter_threads 1`, `-threads 2` for libx264), a smaller probe size (capture buffers are left at their defaults), the cheapest scaler (`fast_bilinear`), no lookahead on hardware encoders, one audio/video path. Intel HD uses Quick Sync (`h264_qsv`) and caps the preset at `light` unless you pass `--preset` yourself or set `force_preset` in `config.json`; with a cap in effect the preset you did not pick explicitly is lowered. On Linux, Intel tries Quick Sync, then VAAPI. MX series uses NVENC first and Quick Sync second.
 
 Caveats (UNVERIFIED on real hardware): an Intel HD GPU has to share system RAM with the game, Quick Sync needs a recent driver, and MX250 NVENC session support depends on the driver. If a hardware encoder fails to start, the existing fallback switches to software encoding.
 
@@ -189,15 +189,17 @@ Browser source trade-off: lightstream has no embedded browser engine (that would
 
 Scene switching: the scene is chosen at START. Switching while live is NOT implemented; stop and start again. The window's scene dropdown (under Advanced) also applies at START.
 
+Webcam and fonts (UNVERIFIED): a live webcam feeding `overlay` may stall the stream if the camera clock drifts, and `drawtext` needs a font; set `font_file` on text overlays on ffmpeg builds without fontconfig (common on Windows). Windows drive-letter paths in filter options use a `\:` escape that has not been run against real ffmpeg. If a webcam stalls the stream, remove it from the scene.
+
 Background handling: only chroma key (`chromakey`) and `blur`. `blur` is a plain box blur of the whole webcam picture, not background segmentation.
 
 ### Recording a copy
 
-`lightstream start --record [FILE]` (or the "Record a copy" checkbox) encodes once and writes to RTMP and a Matroska file through FFmpeg's tee muxer, so there is no second encode. Matroska survives a crash. A file write error is ignored so the stream keeps going. The path may not contain `| [ ] '`.
+`lightstream start --record [FILE]` (or the "Record a copy" checkbox) encodes once and writes to RTMP and a Matroska file through FFmpeg's tee muxer, so there is no second encode. Matroska survives a crash. The folder is created and checked for write access before starting (an error is printed if it fails), but a write error later (full disk) is ignored so the stream keeps going. After an automatic reconnect the copy goes to a new file (`name-2.mkv`, `name-3.mkv`) so earlier footage is never overwritten. The window saves to `recordings/` in the app data folder with a timestamp and prints the path. `--record` is ignored with `--test-local` (a notice is printed). The path may not contain `| [ ] '`.
 
 ### Noise suppression
 
-`--noise light`: a rumble cut plus FFmpeg's built-in `afftdn` FFT denoiser. `--noise ai`: `arnndn` with an RNNoise `.rnnn` model. No model is bundled. Download one yourself, check its license before using it, and pass `--noise-model PATH`. Without the file, `start` stops with a clear error. `arnndn` costs more CPU than `afftdn`, so `light` is the default the wizard picks.
+`--noise light`: a rumble cut plus FFmpeg's built-in `afftdn` FFT denoiser. `--noise ai`: `arnndn` with an RNNoise `.rnnn` model. No model is bundled. Download one yourself, check its license before using it, and pass `--noise-model PATH`. Without the file, `start` stops with a clear error. `arnndn` costs more CPU than `afftdn`, so `light` is cheaper than `ai`. The wizard saves `off` because filtering costs CPU on the machines this targets; turn it on with `--noise light` if your mic is noisy.
 
 ### Bandwidth optimizer
 
@@ -226,7 +228,8 @@ The CLI prints a summary at the end of a session (speed, dropped frames, reconne
 | Item | Status | Evidence |
 |---|---|---|
 | Hardware profile parsing, GPU classification (sample `lspci`/`wmic` text), tuned argv | VERIFIED (as strings) | unit tests |
-| Default argv unchanged when no new option is set | VERIFIED | golden test and combination sweep |
+| `build_command` without a profile or new option unchanged | VERIFIED | golden test and combination sweep |
+| Default `start` argv (auto hardware profile applied) | Changed on purpose, see Hardware profiles | unit tests (strings only) |
 | Scenes parsing, validation, filter graph text, example file, `scenes` command | VERIFIED (as strings) | unit tests |
 | `--record` tee argument, key redaction | VERIFIED (as strings) | unit tests |
 | Noise filter text, missing model error | VERIFIED (as strings) | unit tests |
@@ -298,7 +301,7 @@ python3 tools/export_presets.py --check  # fails if it is stale
 
 - Window capture on Windows (`--window`) uses gdigrab and often shows black for GPU-accelerated emulators (BlueStacks, LDPlayer, MuMu). Capture the whole desktop instead.
 - The hardware encoder check runs short test encodes (8 second timeout each, run in parallel and cached), so worst-case startup is about 8 seconds plus the `-encoders` listing. This is derived from the timeouts, not measured on real hardware.
-- RTMP only. Scenes are fixed when you press START; there is no mid-stream scene switching and no embedded browser engine (see Scenes below).
+- RTMP only. Scenes are fixed when you press START; there is no mid-stream scene switching and no embedded browser engine (see Scenes above).
 - Screen capture: gdigrab (Windows), x11grab (Linux X11, not Wayland, follows `$DISPLAY`) and avfoundation (macOS, screen picked with `--video-device`).
 - Windows without `--audio-device` streams silent audio.
 - The stream key appears in the FFmpeg command line, so other local processes running as your user may see it in the process list. Lightstream hides it in everything it prints. Hiding it from the process list is not feasible with FFmpeg's RTMP output, so on a shared PC use your own user account.

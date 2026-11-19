@@ -98,8 +98,8 @@ class ProfileTests(unittest.TestCase):
         args = ["-fflags", "nobuffer", "-thread_queue_size", "64", "-f", "gdigrab",
                 "-rtbufsize", "32M", "-i", "desktop", "-f", "lavfi", "-i", "x"]
         self.assertEqual(
-            ["-fflags", "nobuffer", "-thread_queue_size", "32", "-f", "gdigrab",
-             "-rtbufsize", "16M", "-probesize", "32k", "-analyzeduration", "0",
+            ["-fflags", "nobuffer", "-thread_queue_size", "64", "-f", "gdigrab",
+             "-rtbufsize", "32M", "-probesize", "32k", "-analyzeduration", "0",
              "-i", "desktop", "-f", "lavfi", "-probesize", "32k",
              "-analyzeduration", "0", "-i", "x"],
             hardware.low_resource_input_args(args))
@@ -118,6 +118,7 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual("h264_qsv", choose_encoder(available, order=order))
         self.assertEqual("h264_nvenc", choose_encoder(available))
         self.assertEqual("libx264", choose_encoder({"h264_nvenc"}, order=order))
+        self.assertEqual("h264_vaapi", choose_encoder({"h264_vaapi"}, order=order))
         self.assertEqual("libx264", choose_working_encoder(
             "ffmpeg", {"h264_nvenc"}, order=order))
 
@@ -127,7 +128,7 @@ class HardwareCommandTests(unittest.TestCase):
         s = resolve_settings({"hardware": "intel_hd"}, {})
         argv = build_command(s, "K", "windows", "h264_qsv")
         self.assertIn("-async_depth", argv)
-        self.assertIn("16M", argv)
+        self.assertIn("32M", argv)
         self.assertEqual(1, argv.count("-probesize"))  # capture input only
         self.assertEqual(["-filter_threads", "1", "-sws_flags", "fast_bilinear"],
                          argv[argv.index("-filter_threads"):

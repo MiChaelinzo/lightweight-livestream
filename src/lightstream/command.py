@@ -1,5 +1,6 @@
 """Pure FFmpeg command builder: same inputs always give the same argv."""
 
+import os
 from collections import namedtuple
 
 from .audio import noise_filter_args
@@ -38,6 +39,30 @@ def _encoder_args(encoder, s):
 
 
 TEST_SECONDS = 10
+
+
+def numbered_recording_path(path, attempt):
+    """Recording path for a connection attempt. Attempt 0 keeps the path; later
+    attempts get -2, -3, ... before the extension so ffmpeg never truncates
+    footage written before a drop."""
+    if attempt <= 0:
+        return path
+    root, ext = os.path.splitext(path)
+    return "%s-%d%s" % (root, attempt + 1, ext)
+
+
+def prepare_recording_path(path):
+    """Create the folder and check it is writable. onfail=ignore would hide a
+    bad path, so fail loudly before starting. Raises ValueError."""
+    folder = os.path.dirname(os.path.abspath(path))
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError as exc:
+        raise ValueError("Cannot create the recording folder %s (%s)" % (folder, exc))
+    if not os.access(folder, os.W_OK):
+        raise ValueError("Cannot write recordings to %s. Pick another folder." % folder)
+    if os.path.isdir(path):
+        raise ValueError("Recording path %s is a folder, not a file" % path)
 
 
 def tee_output(live_url, record_to):

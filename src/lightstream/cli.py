@@ -8,7 +8,8 @@ import subprocess
 import sys
 
 from . import __version__
-from .command import build_command
+from .command import (build_command, numbered_recording_path,
+                      prepare_recording_path)
 from .config import (config_path, detect_os, load_file_config, resolve_key,
                      resolve_settings, scenes_path, write_example_config)
 from .audio import NOISE_LEVELS
@@ -197,6 +198,7 @@ def cmd_start(args, out, detect=detect_gpu_names):
     hardware = resolve_hardware(args.hardware, file_cfg, os_name, detect)
     settings = resolve_settings(
         {"platform": args.platform, "url": args.url, "preset": args.preset,
+         "force_preset": True if args.preset else None,
          "fps": args.fps, "resolution": args.resolution, "bitrate": args.bitrate,
          "window": args.window, "audio_device": args.audio_device,
          "encoder": args.encoder, "video_device": args.video_device,
@@ -206,6 +208,12 @@ def cmd_start(args, out, detect=detect_gpu_names):
          "noise": args.noise, "noise_model": args.noise_model,
          "hardware": hardware}, file_cfg)
     record_path = args.test_local
+    if settings.record_to and record_path:
+        out.write("Note: --record is ignored with --test-local.\n")
+    elif settings.record_to:
+        prepare_recording_path(settings.record_to)  # ValueError -> "Error: ..."
+        out.write("Recording a copy to %s (later attempts add -2, -3, ...)\n"
+                  % settings.record_to)
     key = "test" if record_path else resolve_key(os.environ, getpass.getpass)
 
     order = (get_profile(settings.hardware_profile).encoder_order
@@ -251,7 +259,12 @@ def cmd_start(args, out, detect=detect_gpu_names):
                           None if args.keep_trying else MAX_QUICK_FAILURES),
             encoder=encoder,
             argv_factory=lambda enc: build_command(
-                settings, key, os_name, enc, ffmpeg, record_path))
+                settings, key, os_name, enc, ffmpeg, record_path),
+            argv_for_attempt=(None if not settings.record_to or record_path else
+                              lambda n, enc: build_command(
+                                  settings._replace(record_to=numbered_recording_path(
+                                      settings.record_to, n)),
+                                  key, os_name, enc, ffmpeg)))
         if tracker.samples or tracker.reconnects:
             out.write("\n" + "\n".join(tracker.report_lines()) + "\n")
         return code

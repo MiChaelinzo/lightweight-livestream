@@ -178,7 +178,7 @@ class StudioFeatureTests(unittest.TestCase):
             ram_mb=4096, gpu_text="00:02.0 VGA compatible controller: Intel HD Graphics 620")
         self.assertEqual(fields["hardware"], "intel_hd")
         self.assertIn(fields["preset"], ("potato", "light"))
-        self.assertEqual(fields["noise"], "light")
+        self.assertEqual(fields["noise"], "off")
         self.assertIn("intel hd", message)
         self.assertNotIn("key", " ".join(str(v) for v in fields.values()).lower())
 
@@ -201,18 +201,25 @@ class StudioFeatureTests(unittest.TestCase):
             self.assertEqual(gc.scene_choices(path), [gc.NO_SCENE_LABEL])
 
     def test_record_checkbox_reaches_settings(self):
-        self.assertEqual(gc.settings_from_prefs(dict(PREFS, record=True)).record_to,
-                         gc.RECORDING_FILENAME)
+        path = gc.settings_from_prefs(dict(PREFS, record=True)).record_to
+        self.assertTrue(os.path.isabs(path))
+        self.assertIn(os.path.join(gc.data_dir(), gc.RECORDINGS_DIRNAME), path)
+        self.assertRegex(os.path.basename(path), r"^lightstream-\d{8}-\d{6}\.mkv$")
         self.assertIsNone(gc.settings_from_prefs(dict(PREFS, record=False)).record_to)
 
     def test_record_uses_tee_in_argv(self):
         calls = []
         c = make_controller(fake_runner_factory(calls))
-        c.start(dict(PREFS, record=True), SECRET)
-        c._thread.join(0.3)
-        c.stop()
-        self.assertIn("tee", calls[0][0])
-        self.assertIn(gc.RECORDING_FILENAME, calls[0][0][-1])
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(gc, "recording_path",
+                                   lambda: os.path.join(d, "rec", "a.mkv")):
+                c.start(dict(PREFS, record=True), SECRET)
+                c._thread.join(0.3)
+                c.stop()
+            self.assertIn("tee", calls[0][0])
+            self.assertIn(os.path.join(d, "rec", "a.mkv").replace("\\", "/"),
+                          calls[0][0][-1])
+            self.assertTrue(os.path.isdir(os.path.join(d, "rec")))
 
     def test_unknown_scene_gives_plain_error(self):
         c = make_controller(fake_runner_factory([]))

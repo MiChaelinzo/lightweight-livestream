@@ -1,6 +1,6 @@
 """GPU detection and low-resource tuning per hardware profile. Pure parsing.
 
-Everything here describes mechanisms (smaller buffers, fewer threads, no
+Everything here describes mechanisms (smaller probe, fewer threads, no
 lookahead). No speed or memory numbers are claimed; real FFmpeg behavior on
 Intel HD / MX250 machines is UNVERIFIED until tested on that hardware.
 """
@@ -17,8 +17,8 @@ HardwareProfile = namedtuple(
 PROFILES = {
     p.name: p
     for p in (
-        HardwareProfile("intel_hd", ("h264_qsv",), "light", 2,
-                        "Intel HD/UHD graphics: Quick Sync, preset capped at light."),
+        HardwareProfile("intel_hd", ("h264_qsv", "h264_vaapi"), "light", 2,
+                        "Intel HD/UHD graphics: Quick Sync, then VAAPI, preset capped at light."),
         HardwareProfile("nvidia_mx", ("h264_nvenc", "h264_qsv"), None, 2,
                         "NVIDIA MX series laptop GPU: NVENC, Quick Sync fallback."),
         HardwareProfile("nvidia", ("h264_nvenc",), None, 2, "NVIDIA GPU: NVENC."),
@@ -34,8 +34,6 @@ _MX_SERIES = re.compile(r"\bMX\s*\d{3}", re.IGNORECASE)
 _INTEL_GRAPHICS = re.compile(r"intel.*(graphics|iris)", re.IGNORECASE)
 
 INPUT_PROBESIZE = "32k"
-INPUT_RTBUFSIZE = "16M"
-INPUT_THREAD_QUEUE = "32"
 
 
 def get_profile(name):
@@ -108,17 +106,13 @@ def tuned_encoder_args(profile_name, encoder):
 
 
 def low_resource_input_args(args):
-    """Capture args with smaller probe and capture buffers (less RAM, faster
-    start). Input options must sit right before their own -i."""
-    smaller = {"-rtbufsize": INPUT_RTBUFSIZE, "-thread_queue_size": INPUT_THREAD_QUEUE}
+    """Capture args with a smaller probe (faster start). Capture buffers are
+    left alone: a 1080p BGRA frame is about 8 MB, so shrinking -rtbufsize risks
+    dropped frames. Input options must sit right before their own -i."""
     out = []
     i = 0
     while i < len(args):
         token = args[i]
-        if token in smaller and i + 1 < len(args):
-            out += [token, smaller[token]]
-            i += 2
-            continue
         if token == "-i":
             out += ["-probesize", INPUT_PROBESIZE, "-analyzeduration", "0"]
         out.append(token)

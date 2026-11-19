@@ -68,7 +68,7 @@ def build_recommended_config(gpu_text, cpu_count, ram_mb, upload_kbps, platform)
     preset = suggest_strength(cpu_count)
     if ram_mb is not None and ram_mb <= LOW_RAM_MB:
         preset = _lighter(preset, "light")
-    config = {"platform": platform, "hardware": profile, "noise": "light"}
+    config = {"platform": platform, "hardware": profile, "noise": "off"}
     if upload_kbps:
         rec = bandwidth.recommend(upload_kbps, platform, profile)
         preset = _lighter(preset, rec.preset)

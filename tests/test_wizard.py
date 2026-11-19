@@ -19,7 +19,7 @@ class BuildTests(unittest.TestCase):
         cfg = wizard.build_recommended_config(INTEL, 2, 4096, None, "twitch")
         self.assertEqual(cfg["hardware"], "intel_hd")
         self.assertEqual(cfg["preset"], "potato")
-        self.assertEqual(cfg["noise"], "light")
+        self.assertEqual(cfg["noise"], "off")
         self.assertNotIn("scene", cfg)
 
     def test_mx250(self):

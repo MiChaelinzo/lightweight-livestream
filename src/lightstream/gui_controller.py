@@ -8,9 +8,11 @@ import collections
 import json
 import os
 import threading
+import time
 
-from .command import build_command
-from .portable import find_ffmpeg
+from .command import (build_command, numbered_recording_path,
+                      prepare_recording_path)
+from .portable import data_dir, find_ffmpeg
 from .config import config_path, detect_os, resolve_settings
 from .config import scenes_path
 from .encoders import choose_working_encoder, probe_encoders
@@ -23,7 +25,7 @@ from .runner import (STATUS_FALLBACK, STATUS_FAILED, STATUS_LIVE,
 
 MAX_QUICK_FAILURES = 5
 TEST_FILENAME = "lightstream-test.mkv"
-RECORDING_FILENAME = "lightstream-recording.mkv"
+RECORDINGS_DIRNAME = "recordings"
 NO_SCENE_LABEL = "Just my screen"
 LOG_LINES = 200
 STOP_JOIN_SECONDS = 10
@@ -197,6 +199,12 @@ def _blank_to_none(value):
     return value or None
 
 
+def recording_path(now=None):
+    """Timestamped file in the app data folder, one per session."""
+    stamp = time.strftime("%Y%m%d-%H%M%S", now or time.localtime())
+    return os.path.join(data_dir(), RECORDINGS_DIRNAME, "lightstream-%s.mkv" % stamp)
+
+
 def settings_from_prefs(prefs, display=None):
     """StreamSettings from GUI fields. Raises ValueError with plain words."""
     try:
@@ -210,7 +218,7 @@ def settings_from_prefs(prefs, display=None):
             "audio_device": _blank_to_none(prefs.get("audio_device")),
             "mute": bool(prefs.get("mute")) or None,
             "scene": _blank_to_none(prefs.get("scene")),
-            "record": RECORDING_FILENAME if prefs.get("record") else None,
+            "record": recording_path() if prefs.get("record") else None,
             "hardware": _blank_to_none(prefs.get("hardware")),
             "noise": _blank_to_none(prefs.get("noise")),
             "display": display,
@@ -322,6 +330,9 @@ class StreamController:
                 available = set()
             encoder = self._pick_encoder(ffmpeg, available)
             self._write("Encoder: %s\n" % encoder)
+            if settings.record_to and not record_path:
+                prepare_recording_path(settings.record_to)
+                self._write("Recording a copy to %s\n" % settings.record_to)
             argv = build_command(settings, key, self._os_name, encoder, ffmpeg,
                                  record_path)
             self._runner(
@@ -331,7 +342,12 @@ class StreamController:
                 stop=self._stop, on_status=self._on_status, encoder=encoder,
                 out=self._LogSink(self._write),
                 argv_factory=lambda enc: build_command(
-                    settings, key, self._os_name, enc, ffmpeg, record_path))
+                    settings, key, self._os_name, enc, ffmpeg, record_path),
+                argv_for_attempt=(None if not settings.record_to or record_path else
+                                  lambda n, enc: build_command(
+                                      settings._replace(record_to=numbered_recording_path(
+                                          settings.record_to, n)),
+                                      key, self._os_name, enc, ffmpeg)))
         except (OSError, ValueError) as exc:
             self._write("Could not start: %s\n" % exc)
             self._on_status(STATUS_FAILED, None)
