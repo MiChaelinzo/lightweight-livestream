@@ -4,9 +4,12 @@ import json
 import os
 import sys
 
+from .audio import NOISE_LEVELS, require_model_file
 from .command import StreamSettings
+from .hardware import cap_preset_name, get_profile
 from .portable import data_dir, is_portable
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
+from .scenes import load_scenes, select_scene
 
 EXAMPLE_CONFIG = {
     "platform": "twitch",
@@ -20,6 +23,13 @@ EXAMPLE_CONFIG = {
     "video_device": None,
     "url": None,
     "mute": False,
+    "scene": None,
+    "scenes_file": None,
+    "noise": "off",
+    "noise_model": None,
+    "record": None,
+    "hardware": None,
+    "force_preset": False,
 }
 
 
@@ -32,6 +42,12 @@ def config_path(os_name=None, environ=None, root=None):
     else:
         base = environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config")
     return os.path.join(base, "lightstream", "config.json")
+
+
+def scenes_path(os_name=None, environ=None, root=None):
+    """Default scenes.json: next to config.json."""
+    return os.path.join(os.path.dirname(config_path(os_name, environ, root)),
+                        "scenes.json")
 
 
 def detect_os(platform_name=None):
@@ -85,7 +101,28 @@ def _positive_int(name, value):
 
 def resolve_settings(cli, file_cfg):
     """cli and file_cfg are dicts; None means 'not set'."""
-    preset = get_preset(_pick("preset", cli, file_cfg, DEFAULT_PRESET))
+    hardware = _pick("hardware", cli, file_cfg)
+    if hardware:
+        get_profile(hardware)  # raises a clear error for unknown names
+    preset_name = _pick("preset", cli, file_cfg, DEFAULT_PRESET)
+    if hardware:
+        get_preset(preset_name)
+        preset_name = cap_preset_name(
+            hardware, preset_name, bool(_pick("force_preset", cli, file_cfg, False)))
+    preset = get_preset(preset_name)
+    noise = _pick("noise", cli, file_cfg, "off")
+    if noise not in NOISE_LEVELS:
+        raise ValueError("Unknown noise level %r. Choose one of: %s"
+                         % (noise, ", ".join(NOISE_LEVELS)))
+    noise_model = _pick("noise_model", cli, file_cfg)
+    if noise == "ai":
+        require_model_file(noise_model)
+    scene = None
+    scene_name = _pick("scene", cli, file_cfg)
+    if scene_name:
+        scene = select_scene(
+            load_scenes(_pick("scenes_file", cli, file_cfg) or scenes_path()),
+            scene_name)
     resolution = _pick("resolution", cli, file_cfg)
     width, height = (parse_resolution(resolution) if resolution
                      else (preset.width, preset.height))
@@ -105,6 +142,11 @@ def resolve_settings(cli, file_cfg):
         display=_pick("display", cli, file_cfg),
         video_device=_pick("video_device", cli, file_cfg),
         mute=bool(_pick("mute", cli, file_cfg, False)),
+        scene=scene,
+        noise=noise,
+        noise_model=noise_model,
+        hardware_profile=hardware,
+        record_to=_pick("record", cli, file_cfg),
     )
 
 
