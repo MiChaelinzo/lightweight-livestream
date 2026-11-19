@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0
+
+Low-end studio release. Real FFmpeg, GPU and webcam behavior of everything below is UNVERIFIED (no FFmpeg, GPU, display or network in the dev sandbox); command text is checked by unit tests only.
+
+- New: hardware profiles (`--hardware auto|intel_hd|nvidia_mx|nvidia|generic`). The GPU is detected when no profile is configured (`wmic` on Windows, `lspci` on Linux). Profiles use fewer threads, smaller capture buffers, a cheap scaler and no lookahead, and Intel HD caps the preset at `light`. `doctor` prints the detected GPU and profile.
+- New: scenes file (`scenes.json` next to `config.json`): screen, window or "browser" capture, one webcam overlay (corner, size, chroma key or plain blur), image and text overlays. Commands: `lightstream scenes list|validate|example` (the example writer never overwrites a file) and `start --scene NAME --scenes-file FILE`. A scene is chosen at start; switching scenes while live is not implemented (stop and start again).
+- New: `start --record [FILE]` saves a local Matroska copy while streaming, using one encode through the tee muxer. A failing file does not stop the stream.
+- New: noise suppression `--noise off|light|ai`. `light` is a rumble cut plus `afftdn`. `ai` uses `arnndn` with an RNNoise `.rnnn` model you download yourself (not bundled).
+- New: `lightstream bandwidth` (typed upload speed or `--measure-url` to an endpoint you control) recommends a preset and bitrate with 30% headroom.
+- New: stream health summary at the end of a CLI session and a health advice line in the window (speed, dropped frames, reconnects, plain-words advice).
+- New: `lightstream setup` wizard and a "One-click setup" button in the window. At most two questions, never saves the stream key.
+- New: window gets a "Record a copy" checkbox and a scene dropdown under Advanced.
+- Behavior change: the CLI now passes `on_status` to the runner (it feeds the health tracker). Because the runner only echoes raw ffmpeg progress lines to the terminal when no `on_status` is given, the CLI prints its own `fps=... speed=...` line while live instead of ffmpeg's raw progress text.
+- Fix: a missing scenes file is reported in plain words instead of a traceback.
+- Not done: AI background removal (see README). Only chroma key and a plain webcam blur exist.
+- Version bumped to 0.6.0.
+
 ## 0.5.0
 
 - New: `web/`, a static demo site (raw WebGL 3D hero, preset picker, local screen-recording demo). No build step, no dependencies, deployable to Vercel. The desktop app is unchanged and stays lightweight.
