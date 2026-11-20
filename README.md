@@ -172,6 +172,27 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 `--dry-run` prints the FFmpeg command without streaming. `--test-local [FILE]` records 10 seconds (default `lightstream-test.mkv`) and needs no stream key.
 
+## Web demo (Vercel)
+
+`web/` is a separate static site: a 3D hero (plain WebGL, no libraries), a preset picker that estimates upload need and data use, install steps, and a local screen-recording demo. It is a guide and calculator only. Browsers cannot push RTMP, so it cannot stream to Twitch or YouTube, and it never asks for a stream key. The desktop app does not use it.
+
+Deploy on Vercel: import the repo, set **Root Directory** to `web`, Framework Preset **Other**, leave Build Command and Output Directory empty. Preview locally with `python3 -m http.server -d web` (ES modules need http, not file://).
+
+The Python presets are the source of truth. After changing `src/lightstream/presets.py`, run:
+
+```sh
+python3 tools/export_presets.py          # regenerate web/presets.json
+python3 tools/export_presets.py --check  # fails if it is stale
+```
+
+| Web item | Status | Evidence |
+|---|---|---|
+| Presets JSON matches Python presets | VERIFIED | unit test and `--check` |
+| Bandwidth maths, recommendation, geometry, mode selection | VERIFIED | `node --test "web/test/*.test.js"` |
+| WebGL rendering, shaders, layout, CSS | UNVERIFIED | no browser or GPU in the dev sandbox |
+| Screen capture and recording | UNVERIFIED | needs a real browser |
+| Vercel deployment and headers (CSP) | UNVERIFIED | not deployed yet |
+
 ## Verification status
 
 | Item | Status | Evidence |
@@ -241,4 +262,8 @@ python3 -m unittest discover -s tests -v
 python3 -m compileall -q src
 ```
 
-CI runs the same two commands on Linux and Windows (`.github/workflows/ci.yml`).
+```sh
+node --test "web/test/*.test.js"
+```
+
+CI runs the same commands on Linux and Windows (`.github/workflows/ci.yml`).

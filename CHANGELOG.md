@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0
+
+- New: `web/`, a static demo site (raw WebGL 3D hero, preset picker, local screen-recording demo). No build step, no dependencies, deployable to Vercel. The desktop app is unchanged and stays lightweight.
+- New: `tools/export_presets.py` generates `web/presets.json` from the Python presets (`--check` fails if stale); a unit test keeps them in sync.
+- The 3D scene shows one still frame on weak devices or with reduced motion, falls back to a CSS gradient without WebGL, and pauses when hidden.
+- Browsers cannot push RTMP to Twitch or YouTube; the capture demo only records a file locally.
+- CI also runs the web tests with Node.
+
 ## 0.4.0
 
 - New: portable mode. With a `portable.flag` file next to the app (or `LIGHTSTREAM_PORTABLE=1`), settings are kept in `./data` instead of your user profile.
