@@ -282,6 +282,11 @@ class StreamController:
         with self._lock:
             return " ".join(self._health.diagnose())
 
+    def health_summary(self):
+        """Running health numbers for the dashboard cards."""
+        with self._lock:
+            return self._health.summary()
+
     def recommendations(self):
         """Suggestions (list of adaptive.Recommendation). The GUI shows them;
         only the user decides whether to change a setting."""
