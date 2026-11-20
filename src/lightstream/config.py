@@ -5,6 +5,7 @@ import os
 import sys
 
 from .command import StreamSettings
+from .portable import data_dir, is_portable
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
 
 EXAMPLE_CONFIG = {
@@ -22,8 +23,10 @@ EXAMPLE_CONFIG = {
 }
 
 
-def config_path(os_name=None, environ=None):
+def config_path(os_name=None, environ=None, root=None):
     environ = os.environ if environ is None else environ
+    if is_portable(root, environ):
+        return os.path.join(data_dir(root), "config.json")
     if (os_name or detect_os()) == "windows":
         base = environ.get("APPDATA") or os.path.expanduser("~")
     else:

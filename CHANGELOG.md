@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0
+
+- New: portable mode. With a `portable.flag` file next to the app (or `LIGHTSTREAM_PORTABLE=1`), settings are kept in `./data` instead of your user profile.
+- New: a copy of ffmpeg placed in `ffmpeg/` (or next to the app) is used before the one on PATH.
+- New: `python tools/build_portable.py` builds `lightstream-portable.zip` (no binaries added).
+- `doctor` and the window title show when portable mode is on.
+
 ## 0.3.0
 
 - New: `--test-local [FILE]` and a GUI "Test first" button record 10 seconds to a file instead of going live (no stream key needed).

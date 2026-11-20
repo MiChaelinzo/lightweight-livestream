@@ -7,10 +7,10 @@ file and it is redacted from the log shown on screen.
 import collections
 import json
 import os
-import shutil
 import threading
 
 from .command import build_command
+from .portable import find_ffmpeg
 from .config import config_path, detect_os, resolve_settings
 from .encoders import choose_working_encoder, probe_encoders
 from .presets import DEFAULT_PRESET, PRESETS
@@ -180,7 +180,7 @@ class StreamController:
     tkinter object is ever touched from the worker thread.
     """
 
-    def __init__(self, runner=run_with_reconnect, which=shutil.which,
+    def __init__(self, runner=run_with_reconnect, which=lambda _name: find_ffmpeg(),
                  os_name=None, display=None, probe=probe_encoders,
                  pick_encoder=choose_working_encoder):
         self._runner = runner
