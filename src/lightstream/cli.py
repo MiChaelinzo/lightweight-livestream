@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 from . import __version__
 from .command import (build_command, numbered_recording_path,
@@ -20,6 +21,8 @@ from .encoders import (HARDWARE_ORDER, SOFTWARE_ENCODER, choose_encoder,
 from .portable import find_ffmpeg, is_portable
 from .hardware import PROFILES, classify_gpus, detect_gpu_names, get_profile
 from .adaptive import AdaptiveAdvisor
+from .analytics import (analytics_enabled, build_session_report, reports_dir,
+                        write_session_report)
 from .health import HealthTracker
 from .platforms import PLATFORMS, parse_audio_devices
 from .presets import PRESETS
@@ -83,6 +86,8 @@ def build_parser():
                         % DEFAULT_RECORDING_FILE)
     s.add_argument("--no-record", action="store_true",
                    help="do not save a local copy (some hardware profiles record by default)")
+    s.add_argument("--analytics", action="store_true",
+                   help="opt in: save a session report (numbers only, no key) to reports/")
     s.add_argument("--noise", choices=NOISE_LEVELS,
                    help="microphone noise suppression: off, light (afftdn), ai (arnndn model)")
     s.add_argument("--noise-model", help="path to an arnndn .rnnn model for --noise ai")
@@ -197,7 +202,8 @@ def cmd_bandwidth(args, out, post=None):
     return 0
 
 
-def cmd_start(args, out, detect=detect_gpu_names):
+def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
+              report_dir=None):
     os_name = detect_os()
     file_cfg = load_file_config(config_path(os_name))
     hardware = resolve_hardware(args.hardware, file_cfg, os_name, detect)
@@ -262,6 +268,7 @@ def cmd_start(args, out, detect=detect_gpu_names):
             out.write("fps=%s speed=%sx\r" % (detail.get("fps", "?"),
                                               detail.get("speed", "?")))
 
+    started = clock()
     try:
         code = run_with_reconnect(
             argv, key, os_name, on_status=on_status,
@@ -279,6 +286,15 @@ def cmd_start(args, out, detect=detect_gpu_names):
             out.write("\n" + "\n".join(tracker.report_lines()) + "\n")
             for rec in advisor.recommendations():  # suggestions only, never applied
                 out.write("  suggestion (not applied): %s\n" % rec.message)
+            if not record_path and analytics_enabled(args.analytics, file_cfg):
+                path = write_session_report(
+                    report_dir or reports_dir(os_name),
+                    build_session_report(
+                        tracker.summary(), encoder, clock() - started,
+                        bool(settings.record_to),
+                        preset=effective_preset_name(cli_values, file_cfg, hardware),
+                        hardware_profile=settings.hardware_profile))
+                out.write("Session report saved to %s (no stream key inside)\n" % path)
         return code
     except OSError as exc:
         out.write("Could not start ffmpeg: %s\n" % exc)

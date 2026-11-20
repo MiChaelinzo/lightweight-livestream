@@ -36,6 +36,8 @@ class HealthTracker:
         self._min_speed = None
         self._speed_total = 0.0
         self._speed_count = 0
+        self._bitrate_total = 0.0
+        self._bitrate_count = 0
 
     def update(self, health):
         """Record one parse_progress dict."""
@@ -46,6 +48,8 @@ class HealthTracker:
             self._fps.append(health["fps"])
         if "bitrate_kbps" in health:
             self._bitrates.append(health["bitrate_kbps"])
+            self._bitrate_total += health["bitrate_kbps"]
+            self._bitrate_count += 1
         if "dropped" in health:  # ffmpeg reports a running total
             self.dropped_frames = int(health["dropped"])
         if "dup" in health:
@@ -89,6 +93,8 @@ class HealthTracker:
                           if self._speed_count else None),
             "min_speed": self._min_speed,
             "recent_speed": _mean(self._speeds),
+            "avg_bitrate_kbps": (self._bitrate_total / self._bitrate_count
+                                 if self._bitrate_count else None),
             "recent_bitrate_kbps": recent_bitrate,
             "recent_fps": _mean(self._fps),
             "dropped_frames": self.dropped_frames,
