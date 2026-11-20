@@ -429,7 +429,11 @@ class StreamWindow:
             if not ok:
                 status.config(text=message)
                 return
-            save_configured_ffmpeg(path)
+            try:
+                save_configured_ffmpeg(path)
+            except (OSError, ValueError) as err:
+                status.config(text="Could not save the setting: %s" % err)
+                return
             dialog.destroy()
 
         row = ttk.Frame(dialog)

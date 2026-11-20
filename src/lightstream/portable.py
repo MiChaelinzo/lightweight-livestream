@@ -65,6 +65,8 @@ CONFIG_KEY = "ffmpeg_path"
 FFMPEG_DOWNLOAD_URL = "https://ffmpeg.org/download.html"
 WINDOWS_BUILDS_URL = "https://www.gyan.dev/ffmpeg/builds/"
 VALIDATE_TIMEOUT_SECONDS = 10
+# A .app opened from Finder gets a minimal PATH, so look in the Homebrew folders too.
+MACOS_FFMPEG_DIRS = ("/opt/homebrew/bin", "/usr/local/bin")
 
 
 def configured_ffmpeg(config_file=None):
@@ -124,7 +126,8 @@ def ffmpeg_guidance(platform_name=None):
                   "   or copy ffmpeg.exe next to LightStream.exe."]
     elif name == "darwin":
         lines += ["Install it with Homebrew: brew install ffmpeg",
-                  "Then restart LightStream, or pick the file with 'Choose ffmpeg file...'."]
+                  "Then restart LightStream (it also looks in /opt/homebrew/bin and /usr/local/bin),",
+                  "or pick the file with 'Choose ffmpeg file...'."]
     else:
         lines += ["Install it with your package manager, for example:",
                   "  sudo apt install ffmpeg   (Debian, Ubuntu)",
@@ -139,8 +142,9 @@ def ffmpeg_download_url(platform_name=None):
     return WINDOWS_BUILDS_URL if name.startswith("win") else FFMPEG_DOWNLOAD_URL
 
 
-def find_ffmpeg(root=None, which=None, configured=None):
-    """Order: copy next to the app, then the user's chosen file, then PATH.
+def find_ffmpeg(root=None, which=None, configured=None, platform_name=None):
+    """Order: copy next to the app, then the user's chosen file, then PATH,
+    then (macOS only) the Homebrew folders.
 
     The chosen file is read from config.json only for real app calls (no root);
     pass configured to override it.
@@ -152,4 +156,11 @@ def find_ffmpeg(root=None, which=None, configured=None):
         configured = configured_ffmpeg()
     if configured and os.path.isfile(configured):
         return configured
-    return (which or shutil.which)("ffmpeg")
+    found = (which or shutil.which)("ffmpeg")
+    if found or (platform_name or sys.platform) != "darwin":
+        return found
+    for folder in MACOS_FFMPEG_DIRS:
+        path = os.path.join(folder, "ffmpeg")
+        if os.path.isfile(path):
+            return path
+    return None

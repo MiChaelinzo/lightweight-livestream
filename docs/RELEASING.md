@@ -10,6 +10,8 @@ Status: the release workflow (`.github/workflows/release.yml`) is UNVERIFIED. Gi
 4. Commit, then tag and push: `git tag v0.8.0 && git push origin main v0.8.0`.
 5. The `Release` workflow builds on Windows, macOS and Linux, then publishes a GitHub release with generated notes and a combined `SHA256SUMS.txt`. You can also start it by hand with "Run workflow"; that builds and uploads artifacts but does not publish.
 
+The workflow fails early if the tag (without the `v`) differs from `lightstream.__version__`, and fails the publish job if fewer than three artifacts arrive. Re-running the publish job on an existing release uploads the files again with `--clobber` instead of failing.
+
 To build locally on one platform: `pip install pyinstaller` then `python tools/build_release.py` (`--dry-run` prints the plan). Output goes to `dist/release/`. PyInstaller cannot cross-compile, so each OS must build its own artifact.
 
 ## Artifacts
@@ -17,8 +19,8 @@ To build locally on one platform: `pip install pyinstaller` then `python tools/b
 | Platform | File | Notes |
 |---|---|---|
 | Windows | `LightStream-<ver>-windows-portable.zip` | Unzip, double-click `LightStream.exe`. Portable folder layout. |
-| macOS | `LightStream-<ver>-macos.zip` (and `.dmg` when `hdiutil` exists) | Contains `LightStream.app`. |
-| Linux | `LightStream-<ver>-linux-x86_64.tar.gz` | One executable plus a short README. |
+| macOS | `LightStream-<ver>-macos.zip` (and `.dmg` when `hdiutil` exists) | Contains `LightStream.app`. Built on `macos-latest` (Apple Silicon, arm64), so Intel Macs are not supported by this artifact. |
+| Linux | `LightStream-<ver>-linux-x86_64.tar.gz` | One executable plus a short README. Built on `ubuntu-latest`, so it needs that image's glibc or newer; older distributions may not start it (UNVERIFIED on other distributions). |
 | All | `SHA256SUMS.txt` | Verify with `sha256sum -c` (Linux) or `shasum -a 256 -c` (macOS). |
 
 ## FFmpeg is not bundled

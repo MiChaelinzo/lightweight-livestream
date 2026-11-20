@@ -7,6 +7,7 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from contextlib import redirect_stdout, redirect_stderr
 
@@ -199,6 +200,17 @@ class FfmpegHelperTests(unittest.TestCase):
         os.makedirs(empty_root)
         found = portable.find_ffmpeg(empty_root, which=lambda n: "/usr/bin/ffmpeg", configured=chosen)
         self.assertEqual(found, chosen)
+
+    def test_find_ffmpeg_checks_homebrew_dirs_on_macos_only(self):
+        root = tempfile.mkdtemp()
+        brew = os.path.join(root, "brew")
+        os.makedirs(brew)
+        open(os.path.join(brew, "ffmpeg"), "w").close()
+        with mock.patch.object(portable, "MACOS_FFMPEG_DIRS", (brew,)):
+            none = lambda n: None
+            self.assertEqual(portable.find_ffmpeg(root, which=none, platform_name="darwin"),
+                             os.path.join(brew, "ffmpeg"))
+            self.assertIsNone(portable.find_ffmpeg(root, which=none, platform_name="linux"))
 
     def test_find_ffmpeg_falls_back_to_path_and_ignores_stale_config(self):
         root = os.path.join(self.dir, "root")

@@ -3,7 +3,8 @@
 ## 0.8.0
 
 Release builds for people who do not want to install Python or Git. Windows, macOS and workflow parts are UNVERIFIED; see the README status table.
-- New: `tools/build_release.py` builds `LightStream-<ver>-windows-portable.zip`, `-macos.zip` (and `.dmg`), `-linux-x86_64.tar.gz` and `SHA256SUMS.txt` into `dist/release/`. Linux build VERIFIED locally; Windows and macOS packaging UNVERIFIED.
+- Fix: on macOS `find_ffmpeg` also checks `/opt/homebrew/bin` and `/usr/local/bin` (Finder-launched apps have a minimal PATH). The release workflow now checks the tag against `__version__`, fails on missing artifacts when writing checksums, and can re-publish an existing release. The ffmpeg dialog shows an error instead of raising when the config cannot be saved.
+- New: `tools/build_release.py` builds `LightStream-<ver>-windows-portable.zip`, `-macos.zip` (and `.dmg`), `-linux-x86_64.tar.gz` and `SHA256SUMS.txt` into `dist/release/`. Linux build VERIFIED locally for 0.8.0 (PyInstaller build, tar.gz extracted, binary ran headless); Windows and macOS packaging UNVERIFIED.
 - New: first-run FFmpeg helper (download guidance, "Choose ffmpeg file..." with validation, path saved in config). FFmpeg is not bundled. Dialog rendering UNVERIFIED.
 - New: `.github/workflows/release.yml` builds on three OSes on `v*.*.*` tags and publishes a GitHub release. UNVERIFIED (Actions billing lock).
 - New: `docs/RELEASING.md` (release steps, FFmpeg decision, SmartScreen and Gatekeeper workarounds, formats not shipped) and a README Download section.
