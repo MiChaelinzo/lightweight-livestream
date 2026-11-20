@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.7.0 (in progress)
+## 0.7.0
 
-Core engine for the ultra low-end studio. Real FFmpeg and hardware behavior is UNVERIFIED; see the README table.
+Ultra low-end studio: adaptive advisor, new hardware profiles, scene collections, overlays, analytics, sidebar window, browser companion, Windows portable builder and web showcase. Real FFmpeg, hardware, browser, Twitch and PyInstaller behavior is UNVERIFIED; see the README status table.
+- Version bumped to 0.7.0.
+- Known limitations: a later session can overwrite an earlier recording with the same name; a stalled webcam may block the stream; `drawtext` `font_file` and Windows `C\:` escaping are unverified; 1080p on MX250 is unverified; YouTube companion is not implemented.
 
 - New: `adaptive.py` advisor (preset downgrade, bitrate reduction and bandwidth suggestions; never applies anything). Printed at the end of a CLI session and exposed by `StreamController.recommendations()`.
 - New: hardware profiles `intel_hd_optimized` (HD 4000/520/620) and `mx250_streamer` (MX250). Behavior change: auto detection now picks these instead of `intel_hd` and `nvidia_mx` for those GPUs; the MX250 profile records a local copy by default (`--no-record` to disable) and caps bitrate at 4500 kbps unless `--bitrate` is given.

@@ -244,33 +244,47 @@ The CLI prints a summary at the end of a session (speed, dropped frames, reconne
 | Lower CPU/RAM use than before | UNVERIFIED | mechanisms only, not measured |
 | AI background removal, mid-stream scene switching | NOT DONE | see Not done |
 
-## Ultra low-end studio core (0.7.0, in progress)
+## Ultra low-end studio (0.7.0)
 
 All of this is optional and off or suggestion-only by default. Real FFmpeg, GPU and webcam behavior is UNVERIFIED (no FFmpeg, GPU or display in the dev sandbox); the tests check pure logic and command text. No CPU or RAM numbers are claimed.
 
-- **Adaptive advisor** (`adaptive.py`): watches speed, fps, dropped frames and reconnects. Speed under 0.90x for 30 seconds suggests the next lighter preset; more than 30 dropped frames in a minute suggests 20% less bitrate; 2 reconnects in 10 minutes suggests `lightstream bandwidth`. It only suggests: nothing is ever applied without you. The CLI prints suggestions at the end of a session; the window controller exposes `recommendations()` (window display comes with the UI refresh). CPU pressure is a proxy (slow speed plus low fps), not a CPU reading.
+- **Adaptive advisor** (`adaptive.py`): watches speed, fps, dropped frames and reconnects. Speed under 0.90x for 30 seconds suggests the next lighter preset; more than 30 dropped frames in a minute suggests 20% less bitrate; 2 reconnects in 10 minutes suggests `lightstream bandwidth`. It only suggests: nothing is ever applied without you. The CLI prints suggestions at the end of a session; the window controller exposes `recommendations()` (the sidebar window shows them, see below). CPU pressure is a proxy (slow speed plus low fps), not a CPU reading.
 - **`intel_hd_optimized` profile** (auto for Intel HD 4000/520/620; other Intel graphics keep `intel_hd`): preset capped at `light` (an explicit `--preset` still wins), half-second rate-control buffer, webcam capped at 10 fps, chroma key and blur skipped, AI noise suppression off unless you pass `--noise ai`.
 - **`mx250_streamer` profile** (auto for GeForce MX250): NVENC first, then Quick Sync; webcam overlay allowed; a local copy is recorded by default (`--no-record` or `"record": false` turns it off); video bitrate capped at 4500 kbps unless you pass `--bitrate`. For 1080p use `--res 1920x1080`; there is no 1080p preset yet and 1080p on an MX250 is UNVERIFIED.
 - **Scene collections**: `lightstream scenes export [NAME] [--to PATH]` (one scene to a file, or every scene to `scenes/NAME.json`), `lightstream scenes import PATH` (a file or a folder of `.json` scenes), `lightstream scenes example --collection` (writes `scenes/gaming.json`, `just-chatting.json`, `work.json`, `retro.json`). Files are indented JSON, every scene is validated, and nothing is replaced without `--force`. `scene_collections.py` also has save and duplicate helpers for the window.
 - **Overlay widgets** (`overlays.py`): add an `"overlays"` list to a scene with kinds `text`, `clock`, `fps` (average since start), `recording` (blinking REC) and `image` (PNG). Each has `corner`, `margin_x`, `margin_y` and a size (`font_size` or `size_percent`). They compile to FFmpeg `drawtext` or `overlay` filters; no browser, no HTML. A missing PNG is skipped with a warning. At most 6 overlays per scene.
 - **Session reports** (opt-in): `lightstream start --analytics` (or `"analytics": true` in `config.json`, or `analytics` in the window prefs) writes `reports/session-YYYYMMDD.json` with average speed, average bitrate, reconnect count, encoder, preset, profile and recording seconds. It never contains the stream key, URL or file paths, and is never uploaded. Recording seconds equal the session length when recording (approximation).
 
-| Item | Status | Evidence |
-| --- | --- | --- |
-| Advisor rules, thresholds, no mutation | VERIFIED | `tests/test_adaptive.py` (fake clock) |
-| Profile selection, new classify cases, profile-specific argv | VERIFIED (as strings) | `tests/test_hardware.py` |
-| Scene export/import/duplicate/save, CLI flow | VERIFIED | `tests/test_scene_collections.py` |
-| Overlay filter text, validation, scene integration | VERIFIED (as strings) | `tests/test_overlays.py` |
-| Report content, no key, opt-in | VERIFIED | `tests/test_analytics.py` |
-| FFmpeg accepting `drawtext` clock/FPS/REC expressions and the PNG overlay | UNVERIFIED | no FFmpeg in the dev sandbox |
-| Stability gain on Intel HD / MX250 | UNVERIFIED | no such hardware, no measurements |
-| GUI page logic (page list, health cards, Apply/Dismiss, overlay preview text, scene save/duplicate/import/export) | VERIFIED | `tests/test_gui_pages.py` |
-| `gui.py` imports without a display | VERIFIED | `tests/test_gui_pages.py` |
-| Sidebar window rendering, ttk theme look, file dialogs, timer refresh | UNVERIFIED | no display in the dev sandbox |
-
 ### Sidebar window (0.7.0)
 
 The window now has a sidebar (Dashboard, Setup wizard, Scenes, Overlays, Recording, Advanced) built from native `ttk` widgets only, with each page created the first time you open it. The Dashboard shows health cards and suggestions from the adaptive advisor; a suggestion changes a setting only after you press Apply (and takes effect at the next START), or you can Dismiss it. The Scenes page has Save Scene, Duplicate Scene, Import Scene and Export Scene (indented JSON). The Overlays page has position and scale controls and shows the resulting FFmpeg filter text as the preview; it does not draw video. The session report checkbox (Advanced) is off by default. Logic lives in `gui_pages.py` and `gui_controller.py`; layout in `gui.py` is UNVERIFIED (never run on a screen here).
+
+### Browser companion overlay (0.7.0)
+
+`web/companion/` is a static page you add as a browser source or open in a window: chat, viewer count, stream timer and goal bar. With no credentials it runs in demo mode. Twitch chat uses anonymous IRC; the viewer count needs a client ID and token that you pass in the URL fragment (after `#`). They are read at runtime, never stored and never committed. YouTube is not implemented. Chat text is inserted with `textContent`. The CSP in `web/vercel.json` allows `wss://irc-ws.chat.twitch.tv` and `https://api.twitch.tv`. Logic is tested with node; rendering and the Twitch connection are UNVERIFIED.
+
+### Windows portable builder (0.7.0)
+
+`python tools/build_windows_portable.py` creates `LightStreamPortable/` with `portable.flag`, `ffmpeg/`, `scenes/`, `recordings/` and `config/`. `LightStream.exe` is built with PyInstaller only if PyInstaller is installed; otherwise use `--layout-only`. FFmpeg is never bundled: the `ffmpeg/` folder gets a note telling you to add your own copy. The folder layout is tested; the exe build is UNVERIFIED.
+
+### Web showcase upgrade (0.7.0)
+
+The `web/` showcase has an animated hero title (respects reduced motion), SVG mockups labeled as illustrations rather than screenshots, a design-difference comparison with OBS (no measurements are claimed) and setup guides for Intel HD and MX250. Browser rendering is UNVERIFIED.
+
+### Status of the 0.7.0 features
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Adaptive advisor (rules, thresholds, no mutation) | VERIFIED | `tests/test_adaptive.py` (fake clock) |
+| Scene collections (export, import, duplicate, save, CLI flow) | VERIFIED | `tests/test_scene_collections.py` |
+| Overlays (filter text, validation, scene integration) | VERIFIED (as strings) | `tests/test_overlays.py`; real FFmpeg acceptance of `drawtext` and PNG overlay UNVERIFIED |
+| Browser companion | PARTIALLY VERIFIED | node tests cover logic; rendering, Twitch chat and viewer API UNVERIFIED; YouTube not implemented |
+| `intel_hd_optimized` profile | VERIFIED (as strings) | `tests/test_hardware.py`; stability gain on real Intel HD UNVERIFIED |
+| `mx250_streamer` profile | VERIFIED (as strings) | `tests/test_hardware.py`; NVENC behavior and 1080p on an MX250 UNVERIFIED |
+| Windows portable builder | PARTIALLY VERIFIED | `tests/test_portable.py` covers the layout; PyInstaller exe UNVERIFIED |
+| UI refresh (sidebar) | PARTIALLY VERIFIED | page logic and display-free import tested in `tests/test_gui_pages.py`; window rendering UNVERIFIED |
+| Analytics reports (content, no key, opt-in) | VERIFIED | `tests/test_analytics.py` |
+| Web showcase | UNVERIFIED | static page, no browser in the dev sandbox |
 
 ## Stream key safety
 
@@ -278,7 +292,7 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example [--scenes-file FILE]`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|nvidia_mx|nvidia|generic] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|nvidia_mx|nvidia|generic] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 
@@ -337,6 +351,12 @@ python3 tools/export_presets.py --check  # fails if it is stale
 - Screen capture: gdigrab (Windows), x11grab (Linux X11, not Wayland, follows `$DISPLAY`) and avfoundation (macOS, screen picked with `--video-device`).
 - Windows without `--audio-device` streams silent audio.
 - The stream key appears in the FFmpeg command line, so other local processes running as your user may see it in the process list. Lightstream hides it in everything it prints. Hiding it from the process list is not feasible with FFmpeg's RTMP output, so on a shared PC use your own user account.
+- 0.7.0: a recording started by a later session can overwrite the file of an earlier one with the same name (only reconnects within a session get `-2`, `-3` suffixes). Give each session its own file name.
+- 0.7.0: a stalled webcam may block the stream. If it does, remove the webcam from the scene.
+- 0.7.0: `drawtext` `font_file` and Windows `C\:` path escaping have not been run against real FFmpeg.
+- 0.7.0: 1080p on an MX250 is UNVERIFIED. There is no 1080p preset.
+- 0.7.0: the YouTube companion is not implemented (Twitch only).
+- 0.7.0: the sidebar window, real FFmpeg, the PyInstaller exe, the browser pages and the Twitch connection are UNVERIFIED in the dev sandbox.
 - The window needs Python's tkinter, which some Linux installs lack (`python3-tk`).
 
 Reports of what works on your hardware are welcome.
