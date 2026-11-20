@@ -27,6 +27,7 @@ from .health import HealthTracker
 from .platforms import PLATFORMS, parse_audio_devices
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
+from .overlays import missing_images
 from .scenes import load_scenes, write_example_scenes
 
 
@@ -221,6 +222,9 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
          "hardware": hardware})
     settings = resolve_settings(cli_values, file_cfg)
     record_path = args.test_local
+    if settings.scene:
+        for path in missing_images(settings.scene.overlays):
+            out.write("Warning: overlay image %s not found; that overlay is skipped.\n" % path)
     if settings.record_to and record_path:
         out.write("Note: --record is ignored with --test-local.\n")
     elif settings.record_to:

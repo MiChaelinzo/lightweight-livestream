@@ -12,6 +12,8 @@ import re
 from collections import namedtuple
 
 from .hardware import get_profile
+from .overlays import (KIND_IMAGE, drawtext_stage, image_stage, parse_overlays,
+                       usable_overlays)
 from .filtergraph import (CORNERS, DEFAULT_FONT_SIZE, IMAGE_FPS, MAX_PERCENT, MIN_PERCENT,
                           filter_path, filter_text, letterbox_filter,
                           overlay_position, text_position)
@@ -27,7 +29,7 @@ WebcamSource = namedtuple(
     "WebcamSource", "device corner size_percent chromakey_color similarity blur")
 ImageSource = namedtuple("ImageSource", "path corner size_percent")
 TextSource = namedtuple("TextSource", "text corner font_file font_size")
-Scene = namedtuple("Scene", "name sources")
+Scene = namedtuple("Scene", "name sources overlays", defaults=((),))
 
 DEFAULT_SCENE = Scene("default", (ScreenSource(None, None),))
 
@@ -144,7 +146,7 @@ def parse_scene(raw):
         _fail(name, "use exactly one screen, window or browser source")
     if sum(isinstance(s, WebcamSource) for s in sources) > 1:
         _fail(name, "only one webcam per scene (keeps CPU and RAM low)")
-    return Scene(name, sources)
+    return Scene(name, sources, parse_overlays(name, raw.get("overlays")))
 
 
 def parse_scenes(data):
@@ -200,12 +202,14 @@ def scene_window(scene, fallback):
     return scene.sources[0].window or fallback
 
 
-def compile_scene(scene, settings, os_name, first_input, tail=""):
+def compile_scene(scene, settings, os_name, first_input, tail="", exists=os.path.isfile):
     """-> (extra input args, filter_complex text, output map label).
 
     first_input is the index of the first input this function adds (after the
     screen/audio inputs). tail is an optional last filter such as the VAAPI
-    upload. Deterministic: same arguments give the same text.
+    upload. Scene overlays (text, clock, fps, REC, PNG) are drawn after the
+    sources; a PNG that does not exist (per exists) is skipped. Deterministic:
+    same arguments give the same text.
     """
     screen = scene.sources[0]
     overlays = scene.sources[1:]
@@ -223,7 +227,8 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
     input_args = []
     graph = []
     next_input = first_input
-    steps = len(overlays) + (1 if tail else 0)
+    widgets = usable_overlays(scene.overlays, exists)
+    steps = len(overlays) + len(widgets) + (1 if tail else 0)
 
     def label(step):  # step 0 is the base; the last step is the output
         return OUTPUT_LABEL if step == steps else "v%d" % step
@@ -258,6 +263,18 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
         next_input += 1
         x, y = overlay_position(source.corner)
         graph.append("[%s][%s]overlay=%s:%s[%s]" % (prev, cam, x, y, out))
+    step = len(overlays)
+    for widget in widgets:
+        step += 1
+        prev, out = label(step - 1), label(step)
+        if widget.kind == KIND_IMAGE:
+            more_inputs, text = image_stage(widget, prev, out, next_input,
+                                            settings.width, _even)
+            input_args += more_inputs
+            graph.append(text)
+            next_input += 1
+        else:
+            graph.append(drawtext_stage(widget, prev, out))
     if tail:
         graph.append("[%s]%s[%s]" % (label(steps - 1), tail, OUTPUT_LABEL))
     return input_args, ";".join(graph), "[%s]" % OUTPUT_LABEL
