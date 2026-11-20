@@ -264,6 +264,13 @@ All of this is optional and off or suggestion-only by default. Real FFmpeg, GPU 
 | Report content, no key, opt-in | VERIFIED | `tests/test_analytics.py` |
 | FFmpeg accepting `drawtext` clock/FPS/REC expressions and the PNG overlay | UNVERIFIED | no FFmpeg in the dev sandbox |
 | Stability gain on Intel HD / MX250 | UNVERIFIED | no such hardware, no measurements |
+| GUI page logic (page list, health cards, Apply/Dismiss, overlay preview text, scene save/duplicate/import/export) | VERIFIED | `tests/test_gui_pages.py` |
+| `gui.py` imports without a display | VERIFIED | `tests/test_gui_pages.py` |
+| Sidebar window rendering, ttk theme look, file dialogs, timer refresh | UNVERIFIED | no display in the dev sandbox |
+
+### Sidebar window (0.7.0)
+
+The window now has a sidebar (Dashboard, Setup wizard, Scenes, Overlays, Recording, Advanced) built from native `ttk` widgets only, with each page created the first time you open it. The Dashboard shows health cards and suggestions from the adaptive advisor; a suggestion changes a setting only after you press Apply (and takes effect at the next START), or you can Dismiss it. The Scenes page has Save Scene, Duplicate Scene, Import Scene and Export Scene (indented JSON). The Overlays page has position and scale controls and shows the resulting FFmpeg filter text as the preview; it does not draw video. The session report checkbox (Advanced) is off by default. Logic lives in `gui_pages.py` and `gui_controller.py`; layout in `gui.py` is UNVERIFIED (never run on a screen here).
 
 ## Stream key safety
 

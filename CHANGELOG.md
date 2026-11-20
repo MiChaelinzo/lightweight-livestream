@@ -9,6 +9,7 @@ Core engine for the ultra low-end studio. Real FFmpeg and hardware behavior is U
 - New: scene collections (`scenes export`, `scenes import`, `scenes example --collection`) and `scene_collections.py` save/duplicate helpers.
 - New: scene `overlays` (text, clock, FPS, REC indicator, PNG) compiled to FFmpeg filters in `overlays.py`.
 - New: opt-in session reports in `reports/session-YYYYMMDD.json` (`--analytics`), no stream key.
+- New: sidebar window (ttk only, lazy pages) with health cards, Apply/Dismiss suggestions, scene Save/Duplicate/Import/Export, overlay position/scale controls with filter text preview, hardware profile dropdown and an opt-in session report checkbox. Logic in `gui_pages.py`. Window rendering is UNVERIFIED (no display).
 - Refactor: overlay position helpers moved into `filtergraph.py`; `config.effective_preset_name`.
 
 ## 0.6.0
