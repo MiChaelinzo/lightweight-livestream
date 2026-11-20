@@ -17,3 +17,4 @@ ffmpeg/
 ffmpeg.exe
 portable.flag
 LightStreamPortable/
+*.whl
