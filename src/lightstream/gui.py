@@ -10,6 +10,7 @@ it has not been run on a screen in this repository's test environment.
 import io
 import os
 import sys
+import webbrowser
 
 try:
     import tkinter as tk
@@ -23,7 +24,8 @@ from . import gui_controller as gc
 from . import gui_pages as gp
 from .cli import cmd_doctor
 from .config import scenes_path
-from .portable import is_portable
+from .portable import (ffmpeg_download_url, ffmpeg_guidance, find_ffmpeg,
+                       is_portable, save_configured_ffmpeg, validate_ffmpeg)
 
 POLL_MS = 500
 CLOSE_WAIT_MS = 5000
@@ -410,6 +412,37 @@ class StreamWindow:
             ttk.Button(row, text="Dismiss", command=lambda r=rec: self.on_recommendation(
                 r, False)).pack(side="left")
 
+    def offer_ffmpeg_help(self):
+        """Friendly first-run dialog when FFmpeg is missing. Thin: logic is in portable.py."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("FFmpeg needed")
+        ttk.Label(dialog, text=ffmpeg_guidance(), font=TEXT_FONT, justify="left",
+                  wraplength=WRAP).pack(padx=16, pady=12)
+        status = ttk.Label(dialog, text="", wraplength=WRAP)
+        status.pack(padx=16)
+
+        def choose():
+            path = filedialog.askopenfilename(title="Choose ffmpeg file")
+            if not path:
+                return
+            ok, message = validate_ffmpeg(path)
+            if not ok:
+                status.config(text=message)
+                return
+            try:
+                save_configured_ffmpeg(path)
+            except (OSError, ValueError) as err:
+                status.config(text="Could not save the setting: %s" % err)
+                return
+            dialog.destroy()
+
+        row = ttk.Frame(dialog)
+        row.pack(pady=12)
+        ttk.Button(row, text="Open download page",
+                   command=lambda: webbrowser.open(ffmpeg_download_url())).pack(side="left", padx=4)
+        ttk.Button(row, text="Choose ffmpeg file...", command=choose).pack(side="left", padx=4)
+        ttk.Button(row, text="Close", command=dialog.destroy).pack(side="left", padx=4)
+
     def on_close(self, waited=0):
         """Ask ffmpeg to stop, then close once it has (or after a few seconds)."""
         self.controller.stop(wait=False)
@@ -428,7 +461,9 @@ def main(argv=None):
     except tk.TclError:
         print(NO_GUI_MESSAGE)
         return 1
-    StreamWindow(root)
+    window = StreamWindow(root)
+    if find_ffmpeg() is None:
+        root.after(200, window.offer_ffmpeg_help)
     root.mainloop()
     return 0
 

@@ -18,3 +18,7 @@ ffmpeg.exe
 portable.flag
 LightStreamPortable/
 *.whl
+*.dmg
+*.tar.gz
+*.exe
+*.app
