@@ -11,7 +11,7 @@ from . import __version__
 from .command import (build_command, numbered_recording_path,
                       prepare_recording_path)
 from .config import (config_path, detect_os, load_file_config, resolve_key,
-                     resolve_settings, scenes_path, write_example_config,
+                     resolve_settings, scenes_path, effective_preset_name, write_example_config,
                      DEFAULT_RECORDING_FILE)
 from .audio import NOISE_LEVELS
 from .bandwidth import measure_upload, mbps_to_kbps, recommend
@@ -19,6 +19,7 @@ from .encoders import (HARDWARE_ORDER, SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
 from .portable import find_ffmpeg, is_portable
 from .hardware import PROFILES, classify_gpus, detect_gpu_names, get_profile
+from .adaptive import AdaptiveAdvisor
 from .health import HealthTracker
 from .platforms import PLATFORMS, parse_audio_devices
 from .presets import PRESETS
@@ -200,7 +201,7 @@ def cmd_start(args, out, detect=detect_gpu_names):
     os_name = detect_os()
     file_cfg = load_file_config(config_path(os_name))
     hardware = resolve_hardware(args.hardware, file_cfg, os_name, detect)
-    settings = resolve_settings(
+    cli_values = (
         {"platform": args.platform, "url": args.url, "preset": args.preset,
          "force_preset": True if args.preset else None,
          "fps": args.fps, "resolution": args.resolution, "bitrate": args.bitrate,
@@ -211,7 +212,8 @@ def cmd_start(args, out, detect=detect_gpu_names):
          "scenes_file": args.scenes_file,
          "record": False if args.no_record else args.record,
          "noise": args.noise, "noise_model": args.noise_model,
-         "hardware": hardware}, file_cfg)
+         "hardware": hardware})
+    settings = resolve_settings(cli_values, file_cfg)
     record_path = args.test_local
     if settings.record_to and record_path:
         out.write("Note: --record is ignored with --test-local.\n")
@@ -250,9 +252,12 @@ def cmd_start(args, out, detect=detect_gpu_names):
     if args.dry_run:
         return 0
     tracker = HealthTracker(target_kbps=settings.video_kbps)
+    advisor = AdaptiveAdvisor(effective_preset_name(cli_values, file_cfg, hardware),
+                              settings.video_kbps, settings.fps)
 
     def on_status(state, detail):
         tracker.on_status(state, detail)
+        advisor.on_status(state, detail)
         if state == "live":
             out.write("fps=%s speed=%sx\r" % (detail.get("fps", "?"),
                                               detail.get("speed", "?")))
@@ -272,6 +277,8 @@ def cmd_start(args, out, detect=detect_gpu_names):
                                   key, os_name, enc, ffmpeg)))
         if tracker.samples or tracker.reconnects:
             out.write("\n" + "\n".join(tracker.report_lines()) + "\n")
+            for rec in advisor.recommendations():  # suggestions only, never applied
+                out.write("  suggestion (not applied): %s\n" % rec.message)
         return code
     except OSError as exc:
         out.write("Could not start ffmpeg: %s\n" % exc)

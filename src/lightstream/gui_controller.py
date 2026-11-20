@@ -13,9 +13,10 @@ import time
 from .command import (build_command, numbered_recording_path,
                       prepare_recording_path)
 from .portable import data_dir, find_ffmpeg
-from .config import config_path, detect_os, resolve_settings
+from .config import config_path, detect_os, effective_preset_name, resolve_settings
 from .config import scenes_path
 from .encoders import choose_working_encoder, probe_encoders
+from .adaptive import AdaptiveAdvisor
 from .health import HealthTracker
 from .scenes import load_scenes
 from .presets import DEFAULT_PRESET, PRESETS
@@ -252,6 +253,7 @@ class StreamController:
         self._stop = None
         self._key = ""
         self._health = HealthTracker()
+        self._advisor = AdaptiveAdvisor()
 
     # -- state for the GUI -------------------------------------------------
     def is_running(self):
@@ -274,9 +276,16 @@ class StreamController:
         with self._lock:
             return " ".join(self._health.diagnose())
 
+    def recommendations(self):
+        """Suggestions (list of adaptive.Recommendation). The GUI shows them;
+        only the user decides whether to change a setting."""
+        with self._lock:
+            return self._advisor.recommendations()
+
     def _on_status(self, state, detail):
         with self._lock:
             self._health.on_status(state, detail)
+            self._advisor.on_status(state, detail)
             self._banner = banner_for(state, detail)
             if state == STATUS_FAILED:
                 self._help = HELP_TEXT["failed"]
@@ -309,6 +318,11 @@ class StreamController:
         self._key = key
         with self._lock:
             self._health = HealthTracker(target_kbps=settings.video_kbps)
+            self._advisor = AdaptiveAdvisor(
+                effective_preset_name({"preset": prefs.get("preset"),
+                                       "hardware": _blank_to_none(prefs.get("hardware"))},
+                                      {}, _blank_to_none(prefs.get("hardware"))),
+                settings.video_kbps, settings.fps)
             self._help = ""
             self._banner = BANNER_STARTING
             self._log.clear()

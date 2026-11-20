@@ -102,16 +102,22 @@ def _positive_int(name, value):
     return number
 
 
+def effective_preset_name(cli, file_cfg, hardware=None):
+    """Preset name after the hardware profile's cap (unless forced)."""
+    preset_name = _pick("preset", cli, file_cfg, DEFAULT_PRESET)
+    get_preset(preset_name)  # raises a clear error for unknown names
+    if hardware:
+        preset_name = cap_preset_name(
+            hardware, preset_name, bool(_pick("force_preset", cli, file_cfg, False)))
+    return preset_name
+
+
 def resolve_settings(cli, file_cfg):
     """cli and file_cfg are dicts; None means 'not set'."""
     hardware = _pick("hardware", cli, file_cfg)
     if hardware:
         get_profile(hardware)  # raises a clear error for unknown names
-    preset_name = _pick("preset", cli, file_cfg, DEFAULT_PRESET)
-    if hardware:
-        get_preset(preset_name)
-        preset_name = cap_preset_name(
-            hardware, preset_name, bool(_pick("force_preset", cli, file_cfg, False)))
+    preset_name = effective_preset_name(cli, file_cfg, hardware)
     preset = get_preset(preset_name)
     noise = _pick("noise", cli, file_cfg, "off")
     if noise not in NOISE_LEVELS:
