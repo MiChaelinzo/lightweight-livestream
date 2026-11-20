@@ -176,7 +176,7 @@ class StudioFeatureTests(unittest.TestCase):
         fields, message = gc.one_click_setup(
             os_name="linux", platform="twitch", upload_mbps="3", cpu_count=8,
             ram_mb=4096, gpu_text="00:02.0 VGA compatible controller: Intel HD Graphics 620")
-        self.assertEqual(fields["hardware"], "intel_hd")
+        self.assertEqual(fields["hardware"], "intel_hd_optimized")
         self.assertIn(fields["preset"], ("potato", "light"))
         self.assertEqual(fields["noise"], "off")
         self.assertIn("intel hd", message)

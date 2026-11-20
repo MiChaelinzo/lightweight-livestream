@@ -218,7 +218,7 @@ def settings_from_prefs(prefs, display=None):
             "audio_device": _blank_to_none(prefs.get("audio_device")),
             "mute": bool(prefs.get("mute")) or None,
             "scene": _blank_to_none(prefs.get("scene")),
-            "record": recording_path() if prefs.get("record") else None,
+            "record": recording_path() if prefs.get("record") else False,
             "hardware": _blank_to_none(prefs.get("hardware")),
             "noise": _blank_to_none(prefs.get("noise")),
             "display": display,

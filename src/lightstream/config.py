@@ -6,7 +6,7 @@ import sys
 
 from .audio import NOISE_LEVELS, require_model_file
 from .command import StreamSettings
-from .hardware import cap_preset_name, get_profile
+from .hardware import cap_preset_name, cap_video_kbps, get_profile
 from .portable import data_dir, is_portable
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
 from .scenes import load_scenes, select_scene
@@ -31,6 +31,9 @@ EXAMPLE_CONFIG = {
     "hardware": None,
     "force_preset": False,
 }
+
+
+DEFAULT_RECORDING_FILE = "lightstream-recording.mkv"
 
 
 def config_path(os_name=None, environ=None, root=None):
@@ -115,6 +118,9 @@ def resolve_settings(cli, file_cfg):
         raise ValueError("Unknown noise level %r. Choose one of: %s"
                          % (noise, ", ".join(NOISE_LEVELS)))
     noise_model = _pick("noise_model", cli, file_cfg)
+    if noise == "ai" and hardware and not get_profile(hardware).allow_ai_audio \
+            and cli.get("noise") != "ai":
+        noise = "off"  # AI audio is off by default on this profile; --noise ai still works
     if noise == "ai":
         require_model_file(noise_model)
     scene = None
@@ -126,14 +132,19 @@ def resolve_settings(cli, file_cfg):
     resolution = _pick("resolution", cli, file_cfg)
     width, height = (parse_resolution(resolution) if resolution
                      else (preset.width, preset.height))
+    video_kbps = _positive_int("bitrate", _pick("bitrate", cli, file_cfg, preset.video_kbps))
+    if hardware and cli.get("bitrate") is None:
+        video_kbps = cap_video_kbps(hardware, video_kbps)  # explicit --bitrate is kept
+    record = _pick("record", cli, file_cfg)
+    if record is None and hardware and get_profile(hardware).record_by_default:
+        record = DEFAULT_RECORDING_FILE
     return StreamSettings(
         platform=_pick("platform", cli, file_cfg, "twitch"),
         custom_url=_pick("url", cli, file_cfg),
         width=width,
         height=height,
         fps=_positive_int("fps", _pick("fps", cli, file_cfg, preset.fps)),
-        video_kbps=_positive_int(
-            "bitrate", _pick("bitrate", cli, file_cfg, preset.video_kbps)),
+        video_kbps=video_kbps,
         audio_kbps=preset.audio_kbps,
         x264_preset=preset.x264_preset,
         window=_pick("window", cli, file_cfg),
@@ -146,7 +157,7 @@ def resolve_settings(cli, file_cfg):
         noise=noise,
         noise_model=noise_model,
         hardware_profile=hardware,
-        record_to=_pick("record", cli, file_cfg),
+        record_to=record or None,  # False (--no-record) turns recording off
     )
 
 

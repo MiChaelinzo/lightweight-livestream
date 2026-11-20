@@ -11,7 +11,8 @@ from . import __version__
 from .command import (build_command, numbered_recording_path,
                       prepare_recording_path)
 from .config import (config_path, detect_os, load_file_config, resolve_key,
-                     resolve_settings, scenes_path, write_example_config)
+                     resolve_settings, scenes_path, write_example_config,
+                     DEFAULT_RECORDING_FILE)
 from .audio import NOISE_LEVELS
 from .bandwidth import measure_upload, mbps_to_kbps, recommend
 from .encoders import (HARDWARE_ORDER, SOFTWARE_ENCODER, choose_encoder,
@@ -26,7 +27,6 @@ from .scenes import load_scenes, write_example_scenes
 
 
 DEFAULT_TEST_FILE = "lightstream-test.mkv"
-DEFAULT_RECORDING_FILE = "lightstream-recording.mkv"
 MAX_QUICK_FAILURES = 5  # consecutive quick failures before giving up
 
 
@@ -80,6 +80,8 @@ def build_parser():
     s.add_argument("--record", nargs="?", const=DEFAULT_RECORDING_FILE, metavar="FILE",
                    help="also save a local copy while streaming (default %s)"
                         % DEFAULT_RECORDING_FILE)
+    s.add_argument("--no-record", action="store_true",
+                   help="do not save a local copy (some hardware profiles record by default)")
     s.add_argument("--noise", choices=NOISE_LEVELS,
                    help="microphone noise suppression: off, light (afftdn), ai (arnndn model)")
     s.add_argument("--noise-model", help="path to an arnndn .rnnn model for --noise ai")
@@ -122,7 +124,9 @@ def cmd_doctor(out, detect=detect_gpu_names):
     out.write("OS: %s\n" % os_name)
     names = detect(os_name)
     out.write("GPU: %s\n" % (", ".join(names) or "not detected"))
-    out.write("Hardware profile: %s (UNVERIFIED on real hardware)\n" % classify_gpus(names))
+    profile = get_profile(classify_gpus(names))
+    out.write("Hardware profile: %s (UNVERIFIED on real hardware)\n" % profile.name)
+    out.write("  %s\n" % profile.description)
     if is_portable():
         out.write("Mode: portable (settings in %s)\n" % os.path.dirname(config_path(os_name)))
     ffmpeg = find_ffmpeg()
@@ -204,7 +208,8 @@ def cmd_start(args, out, detect=detect_gpu_names):
          "encoder": args.encoder, "video_device": args.video_device,
          "display": os.environ.get("DISPLAY"),
          "mute": args.mute or None, "scene": args.scene,
-         "scenes_file": args.scenes_file, "record": args.record,
+         "scenes_file": args.scenes_file,
+         "record": False if args.no_record else args.record,
          "noise": args.noise, "noise_model": args.noise_model,
          "hardware": hardware}, file_cfg)
     record_path = args.test_local

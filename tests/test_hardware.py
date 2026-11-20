@@ -36,10 +36,14 @@ class GpuParsingTests(unittest.TestCase):
 
     def test_classify(self):
         c = hardware.classify_gpus
-        self.assertEqual("intel_hd", c(["Intel(R) HD Graphics 620"]))
+        self.assertEqual("intel_hd_optimized", c(["Intel(R) HD Graphics 620"]))
+        self.assertEqual("intel_hd_optimized", c(["Intel(R) HD Graphics 4000"]))
+        self.assertEqual("intel_hd_optimized", c(["Intel(R) HD Graphics 520"]))
+        self.assertEqual("intel_hd", c(["Intel(R) HD Graphics 5500"]))
         self.assertEqual("intel_hd", c(["Intel(R) Iris(R) Xe Graphics"]))
-        self.assertEqual("nvidia_mx", c(["NVIDIA GeForce MX250"]))
-        self.assertEqual("nvidia_mx", c(["Intel(R) HD Graphics 620",
+        self.assertEqual("mx250_streamer", c(["NVIDIA GeForce MX250"]))
+        self.assertEqual("nvidia_mx", c(["NVIDIA GeForce MX150"]))
+        self.assertEqual("mx250_streamer", c(["Intel(R) HD Graphics 620",
                                          "NVIDIA GeForce MX250"]))
         self.assertEqual("nvidia", c(["NVIDIA GeForce GTX 1050"]))
         self.assertEqual("generic", c(["AMD Radeon R5"]))
@@ -150,6 +154,80 @@ class HardwareCommandTests(unittest.TestCase):
     def test_unknown_hardware_rejected(self):
         with self.assertRaises(ValueError):
             resolve_settings({"hardware": "voodoo"}, {})
+
+
+class UltraLowEndProfileTests(unittest.TestCase):
+    SCENE = {"scenes": [{"name": "cam", "sources": [
+        {"kind": "screen"},
+        {"kind": "webcam", "device": "Cam", "chromakey": {"color": "00ff00"}}]}]}
+
+    def _scene_settings(self, hardware_name, **extra):
+        from lightstream.scenes import parse_scenes
+        scene = parse_scenes(self.SCENE)["cam"]
+        s = resolve_settings(dict({"hardware": hardware_name, "preset": "balanced",
+                                   "force_preset": True}, **extra), {})
+        return s._replace(scene=scene)
+
+    def test_intel_hd_optimized_forces_light_preset(self):
+        s = resolve_settings({"preset": "720p60", "hardware": "intel_hd_optimized"}, {})
+        self.assertEqual((854, 480, 30), (s.width, s.height, s.fps))
+
+    def test_intel_hd_optimized_half_second_buffer(self):
+        s = resolve_settings({"hardware": "intel_hd_optimized"}, {})
+        argv = build_command(s, "K", "windows", "h264_qsv")
+        self.assertEqual("%dk" % (s.video_kbps // 2), argv[argv.index("-bufsize") + 1])
+        default = build_command(resolve_settings({"hardware": "generic"}, {}),
+                                "K", "windows", "libx264")
+        self.assertEqual("1000k", default[default.index("-bufsize") + 1])
+
+    def test_intel_hd_optimized_caps_webcam_and_drops_chromakey(self):
+        s = self._scene_settings("intel_hd_optimized")
+        argv = build_command(s, "K", "linux", "libx264")
+        graph = argv[argv.index("-filter_complex") + 1]
+        self.assertIn("fps=%d," % hardware.INTEL_HD_WEBCAM_MAX_FPS, graph)
+        self.assertNotIn("chromakey", graph)
+
+    def test_other_profiles_keep_chromakey_and_default_webcam_cap(self):
+        s = self._scene_settings("nvidia_mx")
+        graph = build_command(s, "K", "linux", "libx264")
+        graph = graph[graph.index("-filter_complex") + 1]
+        self.assertIn("chromakey", graph)
+        self.assertIn("fps=15,", graph)
+
+    def test_intel_hd_optimized_disables_ai_audio_unless_explicit_cli(self):
+        model = os.path.abspath(__file__)  # any existing file satisfies the model check
+        from_file = resolve_settings({"hardware": "intel_hd_optimized"},
+                                     {"noise": "ai", "noise_model": model})
+        self.assertEqual("off", from_file.noise)
+        explicit = resolve_settings({"hardware": "intel_hd_optimized", "noise": "ai",
+                                     "noise_model": model}, {})
+        self.assertEqual("ai", explicit.noise)
+        other = resolve_settings({"hardware": "intel_hd"},
+                                 {"noise": "ai", "noise_model": model})
+        self.assertEqual("ai", other.noise)
+
+    def test_mx250_prefers_nvenc_and_records_by_default(self):
+        profile = hardware.get_profile("mx250_streamer")
+        self.assertEqual("h264_nvenc", profile.encoder_order[0])
+        s = resolve_settings({"hardware": "mx250_streamer"}, {})
+        self.assertEqual("lightstream-recording.mkv", s.record_to)
+        off = resolve_settings({"hardware": "mx250_streamer", "record": False}, {})
+        self.assertIsNone(off.record_to)
+        self.assertIsNone(resolve_settings({"hardware": "intel_hd"}, {}).record_to)
+
+    def test_mx250_caps_bitrate_but_keeps_explicit_value(self):
+        s = resolve_settings({"hardware": "mx250_streamer", "preset": "720p60",
+                              "force_preset": True, "bitrate": None}, {"bitrate": 9000})
+        self.assertEqual(hardware.MX250_MAX_VIDEO_KBPS, s.video_kbps)
+        s = resolve_settings({"hardware": "mx250_streamer", "bitrate": 8000}, {})
+        self.assertEqual(8000, s.video_kbps)
+
+    def test_mx250_allows_webcam_overlay_filters(self):
+        s = self._scene_settings("mx250_streamer")
+        argv = build_command(s, "K", "windows", "h264_nvenc")
+        graph = argv[argv.index("-filter_complex") + 1]
+        self.assertIn("chromakey", graph)
+        self.assertIn("p1", argv)  # tuned NVENC args
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ import os
 import re
 from collections import namedtuple
 
+from .hardware import get_profile
 from .filtergraph import filter_path, filter_text, letterbox_filter
 
 CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
@@ -230,6 +231,12 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
         x, y, w, h = screen.crop
         base = "crop=%d:%d:%d:%d,%s" % (w, h, x, y, base)
 
+    profile = (get_profile(settings.hardware_profile)
+               if getattr(settings, "hardware_profile", None) else None)
+    webcam_fps_cap = min(WEBCAM_MAX_FPS, profile.webcam_max_fps or WEBCAM_MAX_FPS) \
+        if profile else WEBCAM_MAX_FPS
+    strip_filters = bool(profile and profile.strip_expensive_filters)
+
     input_args = []
     graph = []
     next_input = first_input
@@ -252,13 +259,14 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
         width = _even(settings.width * source.size_percent // 100)
         cam = "ov%d" % step
         if isinstance(source, WebcamSource):
-            cam_fps = min(settings.fps, WEBCAM_MAX_FPS)
+            cam_fps = min(settings.fps, webcam_fps_cap)
             input_args += _webcam_input(source.device, cam_fps, os_name)
             chain = "fps=%d,scale=%d:-2" % (cam_fps, width)
-            if source.chromakey_color:
+            # lean profiles skip chromakey and blur: they cost CPU on every frame
+            if source.chromakey_color and not strip_filters:
                 chain += ",chromakey=color=0x%s:similarity=%s:blend=0.0" % (
                     source.chromakey_color.lower(), source.similarity)
-            elif source.blur:
+            elif source.blur and not strip_filters:
                 chain += ",boxblur=%d:1" % source.blur
         else:
             input_args += ["-loop", "1", "-framerate", str(IMAGE_FPS), "-i", source.path]

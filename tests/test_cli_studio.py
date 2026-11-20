@@ -42,9 +42,9 @@ class ResolveHardwareTests(unittest.TestCase):
     def test_auto_detects(self):
         for flag in ("auto", None):
             self.assertEqual(cli.resolve_hardware(flag, {}, "linux",
-                             lambda _o: ["Intel(R) HD Graphics 620"]), "intel_hd")
+                             lambda _o: ["Intel(R) HD Graphics 620"]), "intel_hd_optimized")
         self.assertEqual(cli.resolve_hardware("auto", {"hardware": "nvidia"}, "linux",
-                         lambda _o: ["NVIDIA GeForce MX250"]), "nvidia_mx")
+                         lambda _o: ["NVIDIA GeForce MX250"]), "mx250_streamer")
 
     def test_nothing_detected_is_generic(self):
         self.assertEqual(cli.resolve_hardware(None, {}, "linux", lambda _o: []), "generic")
@@ -176,7 +176,7 @@ class DoctorTests(unittest.TestCase):
         out = io.StringIO()
         with mock.patch.object(cli, "find_ffmpeg", lambda: None):
             cli.cmd_doctor(out, detect=lambda _o: ["NVIDIA GeForce MX250"])
-        self.assertIn("Hardware profile: nvidia_mx", out.getvalue())
+        self.assertIn("Hardware profile: mx250_streamer", out.getvalue())
 
 
 if __name__ == "__main__":
