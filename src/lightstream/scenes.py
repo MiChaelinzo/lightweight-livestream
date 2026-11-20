@@ -12,15 +12,12 @@ import re
 from collections import namedtuple
 
 from .hardware import get_profile
-from .filtergraph import filter_path, filter_text, letterbox_filter
+from .filtergraph import (CORNERS, DEFAULT_FONT_SIZE, IMAGE_FPS, MAX_PERCENT, MIN_PERCENT,
+                          filter_path, filter_text, letterbox_filter,
+                          overlay_position, text_position)
 
-CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 DEFAULT_WEBCAM_PERCENT = 20
-MIN_PERCENT, MAX_PERCENT = 5, 35   # a small overlay keeps scaling work low
 WEBCAM_MAX_FPS = 15
-IMAGE_FPS = 2
-OVERLAY_MARGIN = 10
-DEFAULT_FONT_SIZE = 24
 DEFAULT_SIMILARITY = 0.3
 MAX_BLUR_RADIUS = 20
 OUTPUT_LABEL = "vout"
@@ -188,20 +185,6 @@ def _even(value):
     return max(2, value // 2 * 2)
 
 
-def _overlay_xy(corner):
-    m = OVERLAY_MARGIN
-    x = str(m) if corner.endswith("left") else "W-w-%d" % m
-    y = str(m) if corner.startswith("top") else "H-h-%d" % m
-    return x, y
-
-
-def _text_xy(corner):
-    m = OVERLAY_MARGIN
-    x = str(m) if corner.endswith("left") else "w-tw-%d" % m
-    y = str(m) if corner.startswith("top") else "h-th-%d" % m
-    return x, y
-
-
 def _webcam_input(device, fps, os_name):
     if os_name == "windows":
         return ["-f", "dshow", "-framerate", str(fps), "-i", "video=" + device]
@@ -249,7 +232,7 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
     for step, source in enumerate(overlays, start=1):
         prev, out = label(step - 1), label(step)
         if isinstance(source, TextSource):
-            x, y = _text_xy(source.corner)
+            x, y = text_position(source.corner)
             font = ("fontfile=%s:" % filter_path(source.font_file, "font_file")
                     if source.font_file else "")
             graph.append("[%s]drawtext=%stext='%s':x=%s:y=%s:fontsize=%d:fontcolor=white[%s]"
@@ -273,7 +256,7 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
             chain = "scale=%d:-2" % width
         graph.append("[%d:v]%s[%s]" % (next_input, chain, cam))
         next_input += 1
-        x, y = _overlay_xy(source.corner)
+        x, y = overlay_position(source.corner)
         graph.append("[%s][%s]overlay=%s:%s[%s]" % (prev, cam, x, y, out))
     if tail:
         graph.append("[%s]%s[%s]" % (label(steps - 1), tail, OUTPUT_LABEL))
