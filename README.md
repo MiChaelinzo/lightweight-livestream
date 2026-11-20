@@ -14,6 +14,22 @@
 - **Safe to try.** `--test-local` records 10 seconds to a file instead of going live. `--mute` sends silence.
 - Streams to Twitch, YouTube or any custom RTMP server.
 
+## Download (no Python, no Git)
+
+Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-livestream/releases). The release workflow is UNVERIFIED (never run yet), so a release may not exist until the maintainer publishes one.
+
+| Platform | Download | How to start |
+|---|---|---|
+| Windows | `LightStream-0.8.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
+| macOS | `LightStream-0.8.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open |
+| Linux | `LightStream-0.8.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session |
+
+- **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
+- **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.
+- Android, iOS, `.msi`, `.deb`, `.rpm` and AppImage are not provided. See [docs/RELEASING.md](docs/RELEASING.md).
+
+Prefer Python? Use the steps below instead.
+
 ## Quick start
 
 ```sh
@@ -31,7 +47,7 @@ Installing also gives you the `lightstream-gui` command. No install? Use `python
 
 No typing commands needed. If you are a kid, ask a parent to help with steps 1 to 3 once. After that it is just click and go.
 
-### One-time setup (Windows)
+### Alternative: one-time setup with Python (Windows)
 
 1. **Install Python.** Download it from [python.org](https://www.python.org/downloads/) (3.8 or newer). In the installer, tick **"Add Python to PATH"**, then click Install.
 2. **Install FFmpeg** (the part that sends your video). Download it from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), unzip it, and put `ffmpeg.exe` in a folder that is on your PATH.
@@ -342,6 +358,10 @@ python3 tools/export_presets.py --check  # fails if it is stale
 | Hardware encoder flags (NVENC, QSV, AMF, VAAPI, VideoToolbox) | UNVERIFIED | never run on real hardware |
 | Windows window capture, dshow audio, low priority | UNVERIFIED | not run on Windows |
 | Actual lag/CPU improvement vs OBS | UNVERIFIED | not measured |
+| Linux PyInstaller build (`tools/build_release.py`), tar.gz plus SHA256SUMS, runs headless and prints the no-screen message | VERIFIED | built and run locally (GUI itself not shown, no display) |
+| Windows `.exe` zip, macOS `.app` zip and `.dmg` | UNVERIFIED | only tested with a faked PyInstaller |
+| Release workflow `release.yml` | UNVERIFIED | YAML parses; Actions is billing-locked, never run |
+| First-run FFmpeg dialog on a real GUI | UNVERIFIED | no display; guidance and validator logic are unit tested |
 
 ## Known limitations
 

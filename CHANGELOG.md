@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0
+
+Release builds for people who do not want to install Python or Git. Windows, macOS and workflow parts are UNVERIFIED; see the README status table.
+- New: `tools/build_release.py` builds `LightStream-<ver>-windows-portable.zip`, `-macos.zip` (and `.dmg`), `-linux-x86_64.tar.gz` and `SHA256SUMS.txt` into `dist/release/`. Linux build VERIFIED locally; Windows and macOS packaging UNVERIFIED.
+- New: first-run FFmpeg helper (download guidance, "Choose ffmpeg file..." with validation, path saved in config). FFmpeg is not bundled. Dialog rendering UNVERIFIED.
+- New: `.github/workflows/release.yml` builds on three OSes on `v*.*.*` tags and publishes a GitHub release. UNVERIFIED (Actions billing lock).
+- New: `docs/RELEASING.md` (release steps, FFmpeg decision, SmartScreen and Gatekeeper workarounds, formats not shipped) and a README Download section.
+- Version bumped to 0.8.0.
+
 ## 0.7.0
 
 Ultra low-end studio: adaptive advisor, new hardware profiles, scene collections, overlays, analytics, sidebar window, browser companion, Windows portable builder and web showcase. Real FFmpeg, hardware, browser, Twitch and PyInstaller behavior is UNVERIFIED; see the README status table.
