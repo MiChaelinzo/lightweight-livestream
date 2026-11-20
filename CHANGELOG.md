@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 (in progress)
+
+Core engine for the ultra low-end studio. Real FFmpeg and hardware behavior is UNVERIFIED; see the README table.
+
+- New: `adaptive.py` advisor (preset downgrade, bitrate reduction and bandwidth suggestions; never applies anything). Printed at the end of a CLI session and exposed by `StreamController.recommendations()`.
+- New: hardware profiles `intel_hd_optimized` (HD 4000/520/620) and `mx250_streamer` (MX250). Behavior change: auto detection now picks these instead of `intel_hd` and `nvidia_mx` for those GPUs; the MX250 profile records a local copy by default (`--no-record` to disable) and caps bitrate at 4500 kbps unless `--bitrate` is given.
+- New: scene collections (`scenes export`, `scenes import`, `scenes example --collection`) and `scene_collections.py` save/duplicate helpers.
+- New: scene `overlays` (text, clock, FPS, REC indicator, PNG) compiled to FFmpeg filters in `overlays.py`.
+- New: opt-in session reports in `reports/session-YYYYMMDD.json` (`--analytics`), no stream key.
+- Refactor: overlay position helpers moved into `filtergraph.py`; `config.effective_preset_name`.
+
 ## 0.6.0
 
 Low-end studio release. Real FFmpeg, GPU and webcam behavior of everything below is UNVERIFIED (no FFmpeg, GPU, display or network in the dev sandbox); command text is checked by unit tests only.

@@ -244,6 +244,27 @@ The CLI prints a summary at the end of a session (speed, dropped frames, reconne
 | Lower CPU/RAM use than before | UNVERIFIED | mechanisms only, not measured |
 | AI background removal, mid-stream scene switching | NOT DONE | see Not done |
 
+## Ultra low-end studio core (0.7.0, in progress)
+
+All of this is optional and off or suggestion-only by default. Real FFmpeg, GPU and webcam behavior is UNVERIFIED (no FFmpeg, GPU or display in the dev sandbox); the tests check pure logic and command text. No CPU or RAM numbers are claimed.
+
+- **Adaptive advisor** (`adaptive.py`): watches speed, fps, dropped frames and reconnects. Speed under 0.90x for 30 seconds suggests the next lighter preset; more than 30 dropped frames in a minute suggests 20% less bitrate; 2 reconnects in 10 minutes suggests `lightstream bandwidth`. It only suggests: nothing is ever applied without you. The CLI prints suggestions at the end of a session; the window controller exposes `recommendations()` (window display comes with the UI refresh). CPU pressure is a proxy (slow speed plus low fps), not a CPU reading.
+- **`intel_hd_optimized` profile** (auto for Intel HD 4000/520/620; other Intel graphics keep `intel_hd`): preset capped at `light` (an explicit `--preset` still wins), half-second rate-control buffer, webcam capped at 10 fps, chroma key and blur skipped, AI noise suppression off unless you pass `--noise ai`.
+- **`mx250_streamer` profile** (auto for GeForce MX250): NVENC first, then Quick Sync; webcam overlay allowed; a local copy is recorded by default (`--no-record` or `"record": false` turns it off); video bitrate capped at 4500 kbps unless you pass `--bitrate`. For 1080p use `--res 1920x1080`; there is no 1080p preset yet and 1080p on an MX250 is UNVERIFIED.
+- **Scene collections**: `lightstream scenes export [NAME] [--to PATH]` (one scene to a file, or every scene to `scenes/NAME.json`), `lightstream scenes import PATH` (a file or a folder of `.json` scenes), `lightstream scenes example --collection` (writes `scenes/gaming.json`, `just-chatting.json`, `work.json`, `retro.json`). Files are indented JSON, every scene is validated, and nothing is replaced without `--force`. `scene_collections.py` also has save and duplicate helpers for the window.
+- **Overlay widgets** (`overlays.py`): add an `"overlays"` list to a scene with kinds `text`, `clock`, `fps` (average since start), `recording` (blinking REC) and `image` (PNG). Each has `corner`, `margin_x`, `margin_y` and a size (`font_size` or `size_percent`). They compile to FFmpeg `drawtext` or `overlay` filters; no browser, no HTML. A missing PNG is skipped with a warning. At most 6 overlays per scene.
+- **Session reports** (opt-in): `lightstream start --analytics` (or `"analytics": true` in `config.json`, or `analytics` in the window prefs) writes `reports/session-YYYYMMDD.json` with average speed, average bitrate, reconnect count, encoder, preset, profile and recording seconds. It never contains the stream key, URL or file paths, and is never uploaded. Recording seconds equal the session length when recording (approximation).
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Advisor rules, thresholds, no mutation | VERIFIED | `tests/test_adaptive.py` (fake clock) |
+| Profile selection, new classify cases, profile-specific argv | VERIFIED (as strings) | `tests/test_hardware.py` |
+| Scene export/import/duplicate/save, CLI flow | VERIFIED | `tests/test_scene_collections.py` |
+| Overlay filter text, validation, scene integration | VERIFIED (as strings) | `tests/test_overlays.py` |
+| Report content, no key, opt-in | VERIFIED | `tests/test_analytics.py` |
+| FFmpeg accepting `drawtext` clock/FPS/REC expressions and the PNG overlay | UNVERIFIED | no FFmpeg in the dev sandbox |
+| Stability gain on Intel HD / MX250 | UNVERIFIED | no such hardware, no measurements |
+
 ## Stream key safety
 
 The key is read from the `STREAM_KEY` environment variable or typed at a hidden prompt (asked by lightstream itself, also from the Windows launcher). It is never stored by lightstream, and it is hidden (`****`) in everything lightstream prints. Limitation: RTMP puts the key in the FFmpeg command line, so other local processes running as your user may be able to see it in the process list. Custom URLs that carry their own tokens are not redacted beyond the key. Never share your key or commit it.
