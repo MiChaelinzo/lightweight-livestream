@@ -7,8 +7,10 @@ default recordings to <app folder>/recordings instead of the per-user config loc
 folder can live on a USB stick and be deleted without leaving traces.
 """
 
+import json
 import os
 import shutil
+import subprocess
 import sys
 
 FLAG_FILE = "portable.flag"
@@ -59,9 +61,95 @@ def _ffmpeg_candidates(root):
             os.path.join(root, "bin", exe)]
 
 
-def find_ffmpeg(root=None, which=None):
-    """A copy bundled next to the app wins over the one on PATH."""
+CONFIG_KEY = "ffmpeg_path"
+FFMPEG_DOWNLOAD_URL = "https://ffmpeg.org/download.html"
+WINDOWS_BUILDS_URL = "https://www.gyan.dev/ffmpeg/builds/"
+VALIDATE_TIMEOUT_SECONDS = 10
+
+
+def configured_ffmpeg(config_file=None):
+    """The ffmpeg path the user chose in the first-run helper, or None.
+
+    Reads "ffmpeg_path" from config.json. A missing or unreadable file means None.
+    """
+    from .config import config_path
+    path = config_file or config_path()
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            value = json.load(fh).get(CONFIG_KEY)
+    except (OSError, ValueError, AttributeError):
+        return None
+    return value if isinstance(value, str) and os.path.isfile(value) else None
+
+
+def save_configured_ffmpeg(ffmpeg_path, config_file=None):
+    """Store the chosen ffmpeg in config.json, keeping every other setting."""
+    from .config import config_path
+    path = config_file or config_path()
+    data = {}
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        if not isinstance(data, dict):
+            raise ValueError("Config file %s must contain a JSON object" % path)
+    data[CONFIG_KEY] = ffmpeg_path
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+        fh.write("\n")
+
+
+def validate_ffmpeg(path, run=subprocess.run):
+    """Return (ok, message). ok is True when path is a file that answers -version."""
+    if not path or not os.path.isfile(path):
+        return False, "That file does not exist."
+    try:
+        result = run([path, "-version"], capture_output=True, text=True,
+                     timeout=VALIDATE_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError) as err:
+        return False, "That file could not be run: %s" % err
+    first_line = (result.stdout or "").strip().splitlines()[:1]
+    if result.returncode != 0 or not first_line or "ffmpeg" not in first_line[0].lower():
+        return False, "That file did not answer like FFmpeg (-version failed)."
+    return True, first_line[0]
+
+
+def ffmpeg_guidance(platform_name=None):
+    """Plain-words help for getting FFmpeg, chosen by sys.platform."""
+    name = platform_name or sys.platform
+    lines = ["LightStream needs FFmpeg to stream, and could not find it.", ""]
+    if name.startswith("win"):
+        lines += ["1. Download a Windows build from " + WINDOWS_BUILDS_URL,
+                  "2. Unzip it and pick bin\\ffmpeg.exe with 'Choose ffmpeg file...',",
+                  "   or copy ffmpeg.exe next to LightStream.exe."]
+    elif name == "darwin":
+        lines += ["Install it with Homebrew: brew install ffmpeg",
+                  "Then restart LightStream, or pick the file with 'Choose ffmpeg file...'."]
+    else:
+        lines += ["Install it with your package manager, for example:",
+                  "  sudo apt install ffmpeg   (Debian, Ubuntu)",
+                  "  sudo dnf install ffmpeg   (Fedora)",
+                  "Then restart LightStream, or pick the file with 'Choose ffmpeg file...'."]
+    lines += ["", "Official downloads: " + FFMPEG_DOWNLOAD_URL]
+    return "\n".join(lines)
+
+
+def ffmpeg_download_url(platform_name=None):
+    name = platform_name or sys.platform
+    return WINDOWS_BUILDS_URL if name.startswith("win") else FFMPEG_DOWNLOAD_URL
+
+
+def find_ffmpeg(root=None, which=None, configured=None):
+    """Order: copy next to the app, then the user's chosen file, then PATH.
+
+    The chosen file is read from config.json only for real app calls (no root);
+    pass configured to override it.
+    """
     for path in _ffmpeg_candidates(root or app_root()):
         if os.path.isfile(path):
             return path
+    if configured is None and root is None:
+        configured = configured_ffmpeg()
+    if configured and os.path.isfile(configured):
+        return configured
     return (which or shutil.which)("ffmpeg")
