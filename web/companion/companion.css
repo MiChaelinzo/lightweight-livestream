@@ -1,0 +1,10 @@
+body { margin: 0; background: transparent; color: #fff; font: 20px/1.4 system-ui, "Segoe UI", sans-serif; }
+.panel { max-width: 28rem; padding: 12px; background: rgba(7, 10, 20, .75); border-radius: 10px; }
+.stats { display: flex; justify-content: space-between; gap: 16px; margin: 0 0 8px; }
+.stats p { margin: 0; }
+.label { color: #9aa7cc; font-size: .7em; text-transform: uppercase; display: block; }
+progress { width: 100%; height: 14px; }
+#chat { list-style: none; margin: 8px 0; padding: 0; }
+#chat li { margin: 2px 0; overflow-wrap: anywhere; }
+#chat strong { color: #29e0ff; }
+#status { color: #9aa7cc; font-size: .7em; margin: 0; }

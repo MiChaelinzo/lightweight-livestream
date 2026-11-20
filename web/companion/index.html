@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>lightstream companion overlay</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="/companion/companion.css">
+</head>
+<body>
+  <main class="panel">
+    <div class="stats">
+      <p><span class="label">Viewers</span><span id="viewers">--</span></p>
+      <p><span class="label">Live for</span><span id="timer">00:00:00</span></p>
+    </div>
+    <p id="goal-label">Goal</p>
+    <progress id="goal-bar" max="100" value="0"></progress>
+    <ul id="chat" aria-live="polite"></ul>
+    <p id="status" role="status"></p>
+  </main>
+  <script type="module" src="/companion/companion.js"></script>
+</body>
+</html>
