@@ -66,3 +66,24 @@ test("formatViewerCount and demoSnapshot are deterministic", () => {
   assert.deepEqual(demoSnapshot(12), demoSnapshot(14));
   assert.notDeepEqual(demoSnapshot(0), demoSnapshot(5));
 });
+
+import { readFileSync } from "node:fs";
+
+test("vercel CSP allows exactly the hosts the companion uses", () => {
+  const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
+  const csp = config.headers[0].headers.find((h) => h.key === "Content-Security-Policy").value;
+  const connect = csp.split(";").map((d) => d.trim()).find((d) => d.startsWith("connect-src"));
+  assert.match(connect, /wss:\/\/irc-ws\.chat\.twitch\.tv/);
+  assert.match(connect, /https:\/\/api\.twitch\.tv/);
+  assert.doesNotMatch(connect, /\*/);
+});
+
+test("companion page and showcase carry no inline script or style and state mockups", () => {
+  const companion = readFileSync(new URL("../companion/index.html", import.meta.url), "utf8");
+  const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  for (const html of [companion, index]) {
+    assert.doesNotMatch(html, /\sstyle=/);
+    assert.doesNotMatch(html, /<script(?![^>]*src=)/);
+  }
+  assert.match(index, /not real screen captures/);
+});
