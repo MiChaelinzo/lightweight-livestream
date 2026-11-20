@@ -77,11 +77,28 @@ function connectSrc(config, source) {
 
 test("only the companion path may connect to Twitch; the showcase stays on 'self'", () => {
   const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
-  const companion = connectSrc(config, "/companion/(.*)");
+  const companion = connectSrc(config, "/companion(.*)");
   assert.match(companion, /wss:\/\/irc-ws\.chat\.twitch\.tv/);
   assert.match(companion, /https:\/\/api\.twitch\.tv/);
   assert.doesNotMatch(companion, /\*/);
-  assert.equal(connectSrc(config, "/(.*)"), "connect-src 'self'");
+  assert.equal(connectSrc(config, "/((?!companion).*)"), "connect-src 'self'");
+});
+
+test("the two CSP rules are complementary and both set the other security headers", () => {
+  const config = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
+  const rules = config.headers.filter((h) =>
+    h.headers.some((x) => x.key === "Content-Security-Policy"));
+  assert.equal(rules.length, 2);
+  const [showcase, companion] = rules.map((r) => new RegExp("^" + r.source + "$"));
+  for (const path of ["/", "/index", "/presets.json", "/companion", "/companion/", "/companion/app.js"]) {
+    assert.equal(showcase.test(path) !== companion.test(path), true, path);
+  }
+  assert.equal(companion.test("/companion"), true);
+  assert.equal(showcase.test("/companion/app.js"), false);
+  for (const rule of rules) {
+    const keys = rule.headers.map((x) => x.key);
+    assert.ok(keys.includes("X-Content-Type-Options") && keys.includes("Referrer-Policy"));
+  }
 });
 
 test("companion page and showcase carry no inline script or style and state mockups", () => {
