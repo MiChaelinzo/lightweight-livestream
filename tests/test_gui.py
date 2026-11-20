@@ -4,9 +4,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from lightstream import config
 from lightstream import gui_controller as gc
 from lightstream.runner import STATUS_FAILED, STATUS_LIVE
 
@@ -167,6 +169,103 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(text, gc.BANNER_PROBLEM[0])
         self.assertEqual(help_text, gc.HELP_TEXT["failed"])
         self.assertNotIn(SECRET, log)
+
+
+class StudioFeatureTests(unittest.TestCase):
+    def test_one_click_setup_intel_hd_low_ram(self):
+        fields, message = gc.one_click_setup(
+            os_name="linux", platform="twitch", upload_mbps="3", cpu_count=8,
+            ram_mb=4096, gpu_text="00:02.0 VGA compatible controller: Intel HD Graphics 620")
+        self.assertEqual(fields["hardware"], "intel_hd")
+        self.assertIn(fields["preset"], ("potato", "light"))
+        self.assertEqual(fields["noise"], "off")
+        self.assertIn("intel hd", message)
+        self.assertNotIn("key", " ".join(str(v) for v in fields.values()).lower())
+
+    def test_one_click_setup_without_upload_has_no_bitrate(self):
+        fields, _m = gc.one_click_setup(os_name="linux", cpu_count=4, ram_mb=8192,
+                                        gpu_text="")
+        self.assertEqual(fields["bitrate"], "")
+        self.assertEqual(fields["hardware"], "generic")
+
+    def test_scene_choices_missing_file_and_valid_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "scenes.json")
+            self.assertEqual(gc.scene_choices(path), [gc.NO_SCENE_LABEL])
+            with open(path, "w") as fh:
+                json.dump({"scenes": [{"name": "cam", "sources": [
+                    {"kind": "screen"}]}]}, fh)
+            self.assertEqual(gc.scene_choices(path), [gc.NO_SCENE_LABEL, "cam"])
+            with open(path, "w") as fh:
+                fh.write("{broken")
+            self.assertEqual(gc.scene_choices(path), [gc.NO_SCENE_LABEL])
+
+    def test_record_checkbox_reaches_settings(self):
+        path = gc.settings_from_prefs(dict(PREFS, record=True)).record_to
+        self.assertTrue(os.path.isabs(path))
+        self.assertIn(os.path.join(gc.data_dir(), gc.RECORDINGS_DIRNAME), path)
+        self.assertRegex(os.path.basename(path), r"^lightstream-\d{8}-\d{6}\.mkv$")
+        self.assertIsNone(gc.settings_from_prefs(dict(PREFS, record=False)).record_to)
+
+    def test_record_uses_tee_in_argv(self):
+        calls = []
+        c = make_controller(fake_runner_factory(calls))
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(gc, "recording_path",
+                                   lambda: os.path.join(d, "rec", "a.mkv")):
+                c.start(dict(PREFS, record=True), SECRET)
+                c._thread.join(0.3)
+                c.stop()
+            self.assertIn("tee", calls[0][0])
+            self.assertIn(os.path.join(d, "rec", "a.mkv").replace("\\", "/"),
+                          calls[0][0][-1])
+            self.assertTrue(os.path.isdir(os.path.join(d, "rec")))
+
+    def test_unknown_scene_gives_plain_error(self):
+        c = make_controller(fake_runner_factory([]))
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "scenes.json")
+            with open(path, "w") as fh:
+                json.dump({"scenes": [{"name": "cam", "sources": [
+                    {"kind": "screen"}]}]}, fh)
+            with mock.patch.object(config, "scenes_path", lambda *a, **k: path):
+                error = c.start(dict(PREFS, scene="nope"), SECRET)
+        self.assertIn("Unknown scene", error)
+
+    def test_missing_scenes_file_gives_plain_error(self):
+        c = make_controller(fake_runner_factory([]))
+        with mock.patch.object(config, "scenes_path", lambda *a, **k: "/nonexistent/s.json"):
+            error = c.start(dict(PREFS, scene="cam"), SECRET)
+        self.assertIn("scenes example", error)
+
+    def test_hardware_and_noise_prefs_saved_without_key(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "gui.json")
+            gc.save_prefs(path, dict(PREFS, hardware="intel_hd", noise="light",
+                                     record=True, scene="cam"), SECRET)
+            saved = gc.load_prefs(path)
+        self.assertEqual((saved["hardware"], saved["noise"], saved["record"], saved["scene"]),
+                         ("intel_hd", "light", True, "cam"))
+
+    def test_health_advice_when_encoding_too_slow(self):
+        def slow_runner(argv, key, os_name, **kw):
+            for _ in range(10):
+                kw["on_status"](STATUS_LIVE, {"speed": 0.5, "fps": 20})
+            kw["stop"].wait(5)
+            return 0
+        c = make_controller(slow_runner)
+        c.start(PREFS, SECRET)
+        c._thread.join(0.3)
+        advice = c.health_advice()
+        c.stop()
+        self.assertIn("cannot encode fast enough", advice)
+
+    def test_health_advice_empty_when_healthy(self):
+        c = make_controller(fake_runner_factory([]))
+        c.start(PREFS, SECRET)
+        c._thread.join(0.3)
+        self.assertEqual(c.health_advice(), "")
+        c.stop()
 
 
 class GuiModuleTests(unittest.TestCase):

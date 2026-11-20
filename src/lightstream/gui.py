@@ -85,6 +85,14 @@ class StreamWindow:
         tk.Label(frame, text="Not sure? Pick 'Old PC (light)'.",
                  font=TEXT_FONT, anchor="w").pack(fill="x", padx=16)
 
+        ttk.Button(frame, text="One-click setup: pick safe settings for this PC",
+                   command=self.on_setup).pack(anchor="w", **pad)
+        self.record = tk.BooleanVar(value=bool(saved.get("record")))
+        tk.Checkbutton(frame, text="Record a copy to a file while streaming",
+                       font=TEXT_FONT, variable=self.record).pack(anchor="w", padx=16)
+        # set by One-click setup, kept with the saved choices
+        self.detected = {k: saved.get(k) for k in ("hardware", "noise")}
+
         buttons = tk.Frame(frame)
         buttons.pack(fill="x", **pad)
         self.start_btn = tk.Button(buttons, text="START", font=BUTTON_FONT,
@@ -104,6 +112,9 @@ class StreamWindow:
         self.help = tk.Label(frame, text="", font=TEXT_FONT, wraplength=520,
                              justify="left", anchor="w", fg="#B00020")
         self.help.pack(fill="x", padx=16)
+        self.health = tk.Label(frame, text="", font=TEXT_FONT, wraplength=520,
+                               justify="left", anchor="w", fg="#B35900")
+        self.health.pack(fill="x", padx=16)
 
         ttk.Button(frame, text="Check my PC", command=self.on_doctor
                    ).pack(anchor="w", **pad)
@@ -126,6 +137,11 @@ class StreamWindow:
                      ).pack(fill="x")
             tk.Entry(self.advanced, textvariable=var, font=TEXT_FONT
                      ).pack(fill="x", pady=2)
+        tk.Label(self.advanced, text="Scene (used when you press START)",
+                 font=TEXT_FONT, anchor="w").pack(fill="x")
+        self.scene = tk.StringVar(value=saved.get("scene") or gc.NO_SCENE_LABEL)
+        ttk.Combobox(self.advanced, textvariable=self.scene, state="readonly",
+                     font=TEXT_FONT, values=gc.scene_choices()).pack(fill="x", pady=2)
         self.mute = tk.BooleanVar(value=bool(saved.get("mute")))
         tk.Checkbutton(self.advanced, text="Mute (send silence)", font=TEXT_FONT,
                        variable=self.mute).pack(anchor="w")
@@ -158,6 +174,10 @@ class StreamWindow:
             "audio_device": self.audio.get(),
             "keep_trying": self.keep_trying.get(),
             "mute": self.mute.get(),
+            "scene": "" if self.scene.get() == gc.NO_SCENE_LABEL else self.scene.get(),
+            "record": self.record.get(),
+            "hardware": self.detected.get("hardware"),
+            "noise": self.detected.get("noise"),
         }
 
     def on_start(self):
@@ -172,6 +192,14 @@ class StreamWindow:
     def on_test(self):
         self.controller.start(self.collect_prefs(), "", test_local=True)
 
+    def on_setup(self):
+        platform = gc.value_for(gc.PLATFORM_CHOICES, self.platform.get())
+        fields, message = gc.one_click_setup(platform=platform)
+        self.strength.set(gc.label_for(gc.STRENGTH_CHOICES, fields["preset"]))
+        self.bitrate.set(str(fields["bitrate"]))
+        self.detected = {k: fields[k] for k in ("hardware", "noise")}
+        self.help.config(text=message, fg="#222222")
+
     def on_stop(self):
         self.controller.stop(wait=False)
 
@@ -185,6 +213,7 @@ class StreamWindow:
         self.banner.config(text=text, bg=BANNER_COLORS[color])
         if help_text:
             self.help.config(text=help_text, fg="#B00020")
+        self.health.config(text=self.controller.health_advice() if running else "")
         self.start_btn.config(state="disabled" if running else "normal")
         self.test_btn.config(state="disabled" if running else "normal")
         self.stop_btn.config(state="normal" if running else "disabled")

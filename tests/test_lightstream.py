@@ -351,6 +351,19 @@ class ReliabilityTests(unittest.TestCase):
             **kwargs)
         return code, events, out.getvalue()
 
+    def test_argv_for_attempt_changes_argv_on_relaunch(self):
+        seen = []
+        procs = iter([FakeProc(1, []), FakeProc(1, []), FakeProc(0, [])])
+
+        def popen(argv, **k):
+            seen.append(list(argv))
+            return next(procs)
+        run_with_reconnect(["a"], KEY, "linux", popen=popen, sleep=lambda s: None,
+                           clock=lambda: 0, out=io.StringIO(),
+                           on_status=lambda *a: None,
+                           argv_for_attempt=lambda n, enc: ["a", str(n)])
+        self.assertEqual([["a"], ["a", "1"], ["a", "2"]], seen)
+
     def test_status_sequence_and_live_health(self):
         line = "frame=1 fps=30 bitrate=900.5kbits/s speed=1.0x\n"
         code, events, _ = self.run_runner(

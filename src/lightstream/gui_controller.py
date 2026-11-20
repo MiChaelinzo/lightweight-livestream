@@ -8,11 +8,16 @@ import collections
 import json
 import os
 import threading
+import time
 
-from .command import build_command
-from .portable import find_ffmpeg
+from .command import (build_command, numbered_recording_path,
+                      prepare_recording_path)
+from .portable import data_dir, find_ffmpeg
 from .config import config_path, detect_os, resolve_settings
+from .config import scenes_path
 from .encoders import choose_working_encoder, probe_encoders
+from .health import HealthTracker
+from .scenes import load_scenes
 from .presets import DEFAULT_PRESET, PRESETS
 from .runner import (STATUS_FALLBACK, STATUS_FAILED, STATUS_LIVE,
                      STATUS_RECONNECTING, STATUS_STARTING, STATUS_STOPPED,
@@ -20,12 +25,15 @@ from .runner import (STATUS_FALLBACK, STATUS_FAILED, STATUS_LIVE,
 
 MAX_QUICK_FAILURES = 5
 TEST_FILENAME = "lightstream-test.mkv"
+RECORDINGS_DIRNAME = "recordings"
+NO_SCENE_LABEL = "Just my screen"
 LOG_LINES = 200
 STOP_JOIN_SECONDS = 10
 MIN_SUBSTRING_KEY_LENGTH = 8
 PREFS_FILENAME = "gui.json"
 PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
-               "audio_device", "keep_trying", "mute")
+               "audio_device", "keep_trying", "mute", "scene", "record",
+               "hardware", "noise")
 
 # (label shown to the user, value used internally)
 PLATFORM_CHOICES = (("Twitch", "twitch"), ("YouTube", "youtube"),
@@ -149,9 +157,52 @@ def validate(prefs, key, ffmpeg, test_local=False):
     return None
 
 
+def scene_choices(path=None):
+    """Scene names for the dropdown, always starting with 'no scene'.
+
+    A missing or broken scenes file just gives no extra choices; 'lightstream
+    scenes validate' explains the problem."""
+    try:
+        names = list(load_scenes(path or scenes_path()))
+    except (OSError, ValueError):
+        names = []
+    return [NO_SCENE_LABEL] + names
+
+
+def one_click_setup(os_name=None, platform="twitch", upload_mbps=None,
+                    cpu_count=None, ram_mb=None, gpu_text=None):
+    """Safe settings for this PC as (fields, plain-words message).
+
+    fields uses the same names as the saved preferences. Nothing is written
+    here and no stream key is involved."""
+    from . import bandwidth, wizard  # lazy: wizard imports this module
+    from .hardware import detect_gpu_names
+    os_name = os_name or detect_os()
+    if gpu_text is None:
+        gpu_text = "\n".join(detect_gpu_names(os_name))
+    cpu_count = cpu_count if cpu_count is not None else (os.cpu_count() or 0)
+    ram_mb = ram_mb if ram_mb is not None else wizard.detect_ram_mb(os_name)
+    upload_kbps = bandwidth.mbps_to_kbps(upload_mbps) if upload_mbps else None
+    config = wizard.build_recommended_config(gpu_text, cpu_count, ram_mb,
+                                             upload_kbps, platform)
+    fields = {"preset": config["preset"], "hardware": config["hardware"],
+              "noise": config["noise"], "bitrate": config.get("bitrate", "")}
+    message = "Done. PC type: %s. Strength: %s." % (
+        config["hardware"].replace("_", " "), label_for(STRENGTH_CHOICES, config["preset"]))
+    if config.get("bitrate"):
+        message += " Video speed set to %d kbps for your internet." % config["bitrate"]
+    return fields, message
+
+
 def _blank_to_none(value):
     value = (value or "").strip() if isinstance(value, str) else value
     return value or None
+
+
+def recording_path(now=None):
+    """Timestamped file in the app data folder, one per session."""
+    stamp = time.strftime("%Y%m%d-%H%M%S", now or time.localtime())
+    return os.path.join(data_dir(), RECORDINGS_DIRNAME, "lightstream-%s.mkv" % stamp)
 
 
 def settings_from_prefs(prefs, display=None):
@@ -166,10 +217,14 @@ def settings_from_prefs(prefs, display=None):
             "window": _blank_to_none(prefs.get("window")),
             "audio_device": _blank_to_none(prefs.get("audio_device")),
             "mute": bool(prefs.get("mute")) or None,
+            "scene": _blank_to_none(prefs.get("scene")),
+            "record": recording_path() if prefs.get("record") else None,
+            "hardware": _blank_to_none(prefs.get("hardware")),
+            "noise": _blank_to_none(prefs.get("noise")),
             "display": display,
         }, {})
     except ValueError as exc:
-        raise ValueError("One of your numbers looks wrong (%s). Leave "
+        raise ValueError("One of your settings looks wrong (%s). Leave "
                          "Advanced boxes empty if unsure." % exc)
 
 
@@ -196,6 +251,7 @@ class StreamController:
         self._thread = None
         self._stop = None
         self._key = ""
+        self._health = HealthTracker()
 
     # -- state for the GUI -------------------------------------------------
     def is_running(self):
@@ -213,8 +269,14 @@ class StreamController:
         with self._lock:
             self._log.append(redact(text, self._key))
 
+    def health_advice(self):
+        """One plain-words line of advice, or '' when nothing looks wrong."""
+        with self._lock:
+            return " ".join(self._health.diagnose())
+
     def _on_status(self, state, detail):
         with self._lock:
+            self._health.on_status(state, detail)
             self._banner = banner_for(state, detail)
             if state == STATUS_FAILED:
                 self._help = HELP_TEXT["failed"]
@@ -246,6 +308,7 @@ class StreamController:
         key = key.strip() or "test"
         self._key = key
         with self._lock:
+            self._health = HealthTracker(target_kbps=settings.video_kbps)
             self._help = ""
             self._banner = BANNER_STARTING
             self._log.clear()
@@ -267,6 +330,9 @@ class StreamController:
                 available = set()
             encoder = self._pick_encoder(ffmpeg, available)
             self._write("Encoder: %s\n" % encoder)
+            if settings.record_to and not record_path:
+                prepare_recording_path(settings.record_to)
+                self._write("Recording a copy to %s\n" % settings.record_to)
             argv = build_command(settings, key, self._os_name, encoder, ffmpeg,
                                  record_path)
             self._runner(
@@ -276,7 +342,12 @@ class StreamController:
                 stop=self._stop, on_status=self._on_status, encoder=encoder,
                 out=self._LogSink(self._write),
                 argv_factory=lambda enc: build_command(
-                    settings, key, self._os_name, enc, ffmpeg, record_path))
+                    settings, key, self._os_name, enc, ffmpeg, record_path),
+                argv_for_attempt=(None if not settings.record_to or record_path else
+                                  lambda n, enc: build_command(
+                                      settings._replace(record_to=numbered_recording_path(
+                                          settings.record_to, n)),
+                                      key, self._os_name, enc, ffmpeg)))
         except (OSError, ValueError) as exc:
             self._write("Could not start: %s\n" % exc)
             self._on_status(STATUS_FAILED, None)

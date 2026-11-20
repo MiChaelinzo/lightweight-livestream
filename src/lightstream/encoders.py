@@ -22,11 +22,12 @@ def parse_encoders(ffmpeg_output):
     return names
 
 
-def choose_encoder(available, prefer_hardware=True, forced=None):
+def choose_encoder(available, prefer_hardware=True, forced=None,
+                   order=HARDWARE_ORDER):
     if forced:
         return forced
     if prefer_hardware:
-        for name in HARDWARE_ORDER:
+        for name in order:
             if name in available:
                 return name
     return SOFTWARE_ENCODER
@@ -57,11 +58,11 @@ def encoder_works(ffmpeg, encoder, run=subprocess.run):
 
 
 def choose_working_encoder(ffmpeg, available, prefer_hardware=True, forced=None,
-                           run=subprocess.run):
+                           run=subprocess.run, order=HARDWARE_ORDER):
     """Like choose_encoder, but skips hardware encoders that fail a test encode."""
     if forced or not prefer_hardware:
-        return choose_encoder(available, prefer_hardware, forced)
-    candidates = [n for n in HARDWARE_ORDER if n in available]
+        return choose_encoder(available, prefer_hardware, forced, order)
+    candidates = [n for n in order if n in available]
     if not candidates:
         return SOFTWARE_ENCODER
     # Test all at once so startup waits for the slowest probe, not the sum.
