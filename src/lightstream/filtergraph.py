@@ -2,6 +2,12 @@
 
 import re
 
+CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
+OVERLAY_MARGIN = 10
+MIN_PERCENT, MAX_PERCENT = 5, 35   # a small overlay keeps scaling work low
+IMAGE_FPS = 2
+DEFAULT_FONT_SIZE = 24
+
 # Characters that would end or split a filter option; refused instead of
 # escaped, so no two-level FFmpeg escaping rules are needed.
 _UNSAFE_PATH_CHARS = set("',;[]|")
@@ -32,3 +38,17 @@ def filter_text(text):
             "Text %r may only use letters, digits, spaces and . ! ? # @ ( ) + - / &"
             % (text,))
     return text
+
+
+def overlay_position(corner, margin_x=OVERLAY_MARGIN, margin_y=OVERLAY_MARGIN):
+    """x, y expressions for the overlay filter (W/H main size, w/h overlay size)."""
+    x = str(margin_x) if corner.endswith("left") else "W-w-%d" % margin_x
+    y = str(margin_y) if corner.startswith("top") else "H-h-%d" % margin_y
+    return x, y
+
+
+def text_position(corner, margin_x=OVERLAY_MARGIN, margin_y=OVERLAY_MARGIN):
+    """x, y expressions for drawtext (w/h frame size, tw/th text size)."""
+    x = str(margin_x) if corner.endswith("left") else "w-tw-%d" % margin_x
+    y = str(margin_y) if corner.startswith("top") else "h-th-%d" % margin_y
+    return x, y

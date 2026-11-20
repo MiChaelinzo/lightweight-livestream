@@ -1,4 +1,11 @@
-"""Friendly window for starting a stream in 3 steps. Thin: logic is in gui_controller."""
+"""Sidebar window for streaming. Thin: logic is in gui_controller and gui_pages.
+
+Native ttk widgets only, no canvas drawing and no embedded browser. Each page
+is built the first time it is opened, so unused pages cost no memory.
+tkinter is imported guarded so this module imports (and the tests run) on
+machines without a display or without tkinter. Window rendering is UNVERIFIED:
+it has not been run on a screen in this repository's test environment.
+"""
 
 import io
 import os
@@ -6,22 +13,26 @@ import sys
 
 try:
     import tkinter as tk
-    from tkinter import ttk
+    from tkinter import filedialog, ttk
 except ImportError:  # some Linux Pythons ship without tkinter
     tk = None
     ttk = None
+    filedialog = None
 
 from . import gui_controller as gc
+from . import gui_pages as gp
 from .cli import cmd_doctor
+from .config import scenes_path
 from .portable import is_portable
 
 POLL_MS = 500
 CLOSE_WAIT_MS = 5000
-TITLE_FONT = ("Segoe UI", 20, "bold")
-STEP_FONT = ("Segoe UI", 14, "bold")
-TEXT_FONT = ("Segoe UI", 13)
-BUTTON_FONT = ("Segoe UI", 22, "bold")
+TITLE_FONT = ("Segoe UI", 18, "bold")
+STEP_FONT = ("Segoe UI", 12, "bold")
+TEXT_FONT = ("Segoe UI", 11)
+BUTTON_FONT = ("Segoe UI", 20, "bold")
 LOG_FONT = ("Consolas", 10)
+WRAP = 480
 BANNER_COLORS = {"grey": "#555555", "orange": "#B35900",
                  "green": "#1B7F3B", "red": "#B00020"}
 NO_GUI_MESSAGE = ("The window could not open. This computer has no screen "
@@ -35,133 +46,204 @@ class StreamWindow:
         self._shown_log = None
         self.controller = gc.StreamController(display=os.environ.get("DISPLAY"))
         self.prefs_file = gc.prefs_path()
+        self.scenes_file = scenes_path()
+        self.inbox = gp.RecommendationInbox()
+        self.overlays = gp.OverlayList()
         saved = gc.load_prefs(self.prefs_file)
-        root.title("Lightstream - easy streaming"
-                   + (" (portable)" if is_portable() else ""))
-        root.minsize(560, 640)
-        self._build(saved)
+        root.title("Lightstream" + (" (portable)" if is_portable() else ""))
+        root.minsize(720, 560)
+        self._init_variables(saved)
+        self._pages = {}
+        self._build_shell()
+        self.show_page(gp.DEFAULT_PAGE)
         root.protocol("WM_DELETE_WINDOW", self.on_close)
-        root.bind("<Return>", lambda _e: self.on_start())
         self.poll()
 
-    def _build(self, saved):
-        pad = {"padx": 16, "pady": 6}
-        frame = ttk.Frame(self.root, padding=8)
-        frame.pack(fill="both", expand=True)
-        tk.Label(frame, text="Let's go live!", font=TITLE_FONT).pack(**pad)
-
-        tk.Label(frame, text="1. Where do you want to stream?",
-                 font=STEP_FONT, anchor="w").pack(fill="x", **pad)
+    def _init_variables(self, saved):
         self.platform = tk.StringVar(value=gc.label_for(
             gc.PLATFORM_CHOICES, saved.get("platform", "twitch")))
-        ttk.Combobox(frame, textvariable=self.platform, state="readonly",
-                     font=TEXT_FONT, values=[l for l, _ in gc.PLATFORM_CHOICES]
-                     ).pack(fill="x", **pad)
         self.url = tk.StringVar(value=saved.get("url") or "")
-        tk.Label(frame, text="(Other site only) address starting with rtmp://",
-                 font=TEXT_FONT, anchor="w").pack(fill="x", padx=16)
-        tk.Entry(frame, textvariable=self.url, font=TEXT_FONT).pack(fill="x", **pad)
-
-        tk.Label(frame, text="2. Paste your secret stream key",
-                 font=STEP_FONT, anchor="w").pack(fill="x", **pad)
-        self.key = tk.StringVar()
-        self.key_entry = tk.Entry(frame, textvariable=self.key, show="*",
-                                  font=TEXT_FONT)
-        self.key_entry.pack(fill="x", **pad)
+        self.key = tk.StringVar()  # never saved
         self.show_key = tk.BooleanVar(value=False)
-        tk.Checkbutton(frame, text="Show the key", font=TEXT_FONT,
-                       variable=self.show_key, command=self.toggle_key
-                       ).pack(anchor="w", padx=16)
-        tk.Label(frame, text="Never show your key to anyone. It is not saved.",
-                 font=TEXT_FONT, anchor="w").pack(fill="x", padx=16)
-
-        tk.Label(frame, text="3. How good is your PC?", font=STEP_FONT,
-                 anchor="w").pack(fill="x", **pad)
         self.strength = tk.StringVar(value=gc.label_for(
-            gc.STRENGTH_CHOICES, saved.get("preset") or gc.suggest_strength(os.cpu_count())))
-        ttk.Combobox(frame, textvariable=self.strength, state="readonly",
-                     font=TEXT_FONT, values=[l for l, _ in gc.STRENGTH_CHOICES]
-                     ).pack(fill="x", **pad)
-        tk.Label(frame, text="Not sure? Pick 'Old PC (light)'.",
-                 font=TEXT_FONT, anchor="w").pack(fill="x", padx=16)
-
-        ttk.Button(frame, text="One-click setup: pick safe settings for this PC",
-                   command=self.on_setup).pack(anchor="w", **pad)
+            gc.STRENGTH_CHOICES,
+            saved.get("preset") or gc.suggest_strength(os.cpu_count())))
         self.record = tk.BooleanVar(value=bool(saved.get("record")))
-        tk.Checkbutton(frame, text="Record a copy to a file while streaming",
-                       font=TEXT_FONT, variable=self.record).pack(anchor="w", padx=16)
-        # set by One-click setup, kept with the saved choices
-        self.detected = {k: saved.get(k) for k in ("hardware", "noise")}
-
-        buttons = tk.Frame(frame)
-        buttons.pack(fill="x", **pad)
-        self.start_btn = tk.Button(buttons, text="START", font=BUTTON_FONT,
-                                   bg="#1B7F3B", fg="white", command=self.on_start)
-        self.start_btn.pack(side="left", expand=True, fill="x", padx=4)
-        self.stop_btn = tk.Button(buttons, text="STOP", font=BUTTON_FONT,
-                                  bg="#B00020", fg="white", command=self.on_stop,
-                                  state="disabled")
-        self.stop_btn.pack(side="left", expand=True, fill="x", padx=4)
-        self.test_btn = ttk.Button(frame, text="Test first: record 10 seconds "
-                                   "to a file (not live)", command=self.on_test)
-        self.test_btn.pack(anchor="w", **pad)
-
-        self.banner = tk.Label(frame, text="", font=STEP_FONT, fg="white",
-                               wraplength=520, pady=10)
-        self.banner.pack(fill="x", **pad)
-        self.help = tk.Label(frame, text="", font=TEXT_FONT, wraplength=520,
-                             justify="left", anchor="w", fg="#B00020")
-        self.help.pack(fill="x", padx=16)
-        self.health = tk.Label(frame, text="", font=TEXT_FONT, wraplength=520,
-                               justify="left", anchor="w", fg="#B35900")
-        self.health.pack(fill="x", padx=16)
-
-        ttk.Button(frame, text="Check my PC", command=self.on_doctor
-                   ).pack(anchor="w", **pad)
-
-        self.advanced_open = False
-        self.advanced_btn = ttk.Button(frame, text="Show advanced options",
-                                       command=self.toggle_advanced)
-        self.advanced_btn.pack(anchor="w", **pad)
-        self.advanced = tk.Frame(frame)
         self.fps = tk.StringVar(value=str(saved.get("fps") or ""))
         self.bitrate = tk.StringVar(value=str(saved.get("bitrate") or ""))
         self.window_title = tk.StringVar(value=saved.get("window") or "")
         self.audio = tk.StringVar(value=saved.get("audio_device") or "")
         self.keep_trying = tk.BooleanVar(value=bool(saved.get("keep_trying")))
+        self.mute = tk.BooleanVar(value=bool(saved.get("mute")))
+        self.scene = tk.StringVar(value=saved.get("scene") or gc.NO_SCENE_LABEL)
+        self.hardware = tk.StringVar(value=gp.hardware_label(saved.get("hardware")))
+        self.analytics = tk.BooleanVar(value=saved.get("analytics") is True)
+        self.noise = saved.get("noise")
+        self.status = tk.StringVar(value="")
+
+    # -- shell: sidebar, page area, always-visible banner ---------------------
+    def _build_shell(self):
+        outer = ttk.Frame(self.root)
+        outer.pack(fill="both", expand=True)
+        sidebar = ttk.Frame(outer, padding=6)
+        sidebar.pack(side="left", fill="y")
+        ttk.Label(sidebar, text="Lightstream", font=TITLE_FONT).pack(pady=(0, 8))
+        self.page_var = tk.StringVar()
+        for page_id, label in gp.PAGES:
+            ttk.Radiobutton(sidebar, text=label, value=page_id, variable=self.page_var,
+                            style="Toolbutton",
+                            command=lambda p=page_id: self.show_page(p)
+                            ).pack(fill="x", pady=1)
+        right = ttk.Frame(outer, padding=8)
+        right.pack(side="left", fill="both", expand=True)
+        self.banner = tk.Label(right, text="", font=STEP_FONT, fg="white",
+                               wraplength=WRAP, pady=8)
+        self.banner.pack(fill="x")
+        self.page_area = ttk.Frame(right)
+        self.page_area.pack(fill="both", expand=True, pady=6)
+        ttk.Label(right, textvariable=self.status, wraplength=WRAP,
+                  justify="left").pack(fill="x")
+
+    def show_page(self, page_id):
+        page_id = gp.resolve_page(page_id)
+        self.page_var.set(page_id)
+        for frame in self._pages.values():
+            frame.pack_forget()
+        if page_id not in self._pages:
+            frame = ttk.Frame(self.page_area, padding=4)
+            getattr(self, "_build_" + page_id)(frame)
+            self._pages[page_id] = frame
+        self._pages[page_id].pack(fill="both", expand=True)
+
+    def _label(self, parent, text, font=TEXT_FONT):
+        label = ttk.Label(parent, text=text, font=font, wraplength=WRAP, justify="left")
+        label.pack(anchor="w", pady=(6, 0))
+        return label
+
+    def _entry(self, parent, label, variable, show=None):
+        self._label(parent, label)
+        entry = ttk.Entry(parent, textvariable=variable, show=show or "")
+        entry.pack(fill="x")
+        return entry
+
+    def _combo(self, parent, label, variable, values):
+        self._label(parent, label)
+        ttk.Combobox(parent, textvariable=variable, state="readonly",
+                     values=values).pack(fill="x")
+
+    # -- pages ----------------------------------------------------------------
+    def _build_dashboard(self, frame):
+        self._combo(frame, "Where do you want to stream?", self.platform,
+                    [l for l, _ in gc.PLATFORM_CHOICES])
+        self._entry(frame, "(Other site only) address starting with rtmp://", self.url)
+        self.key_entry = self._entry(
+            frame, "Paste your secret stream key (it is not saved)", self.key, show="*")
+        ttk.Checkbutton(frame, text="Show the key", variable=self.show_key,
+                        command=self.toggle_key).pack(anchor="w")
+        self._combo(frame, "How good is your PC?", self.strength,
+                    [l for l, _ in gc.STRENGTH_CHOICES])
+        buttons = ttk.Frame(frame)
+        buttons.pack(fill="x", pady=8)
+        self.start_btn = tk.Button(buttons, text="START", font=BUTTON_FONT, bg="#1B7F3B",
+                                   fg="white", command=self.on_start)
+        self.start_btn.pack(side="left", expand=True, fill="x", padx=4)
+        self.stop_btn = tk.Button(buttons, text="STOP", font=BUTTON_FONT, bg="#B00020",
+                                  fg="white", command=self.on_stop, state="disabled")
+        self.stop_btn.pack(side="left", expand=True, fill="x", padx=4)
+        self.test_btn = ttk.Button(frame, text="Test first: record 10 seconds to a "
+                                   "file (not live)", command=self.on_test)
+        self.test_btn.pack(anchor="w")
+        self.cards_frame = ttk.LabelFrame(frame, text="Stream health", padding=6)
+        self.cards_frame.pack(fill="x", pady=6)
+        self.card_values = []
+        for index, card in enumerate(gp.health_cards({})):
+            ttk.Label(self.cards_frame, text=card.title).grid(row=0, column=index, padx=6)
+            value = ttk.Label(self.cards_frame, text=card.value, font=STEP_FONT)
+            value.grid(row=1, column=index, padx=6)
+            self.card_values.append(value)
+        self.advice = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
+        self.advice.pack(fill="x")
+        self.rec_frame = ttk.LabelFrame(
+            frame, text="Suggestions (nothing changes unless you press Apply)", padding=6)
+        self.rec_frame.pack(fill="x", pady=6)
+        self._shown_recs = None
+        self.log = tk.Text(frame, height=5, font=LOG_FONT, state="disabled")
+        self.log.pack(fill="both", expand=True)
+
+    def _build_setup(self, frame):
+        self._label(frame, "Setup wizard", STEP_FONT)
+        self._label(frame, "Looks at this PC and picks safe settings. You can still "
+                    "change everything afterwards.")
+        ttk.Button(frame, text="One-click setup: pick safe settings for this PC",
+                   command=self.on_setup).pack(anchor="w", pady=6)
+        ttk.Button(frame, text="Check my PC", command=self.on_doctor).pack(anchor="w")
+        self._combo(frame, "PC type (hardware profile)", self.hardware,
+                    gp.hardware_choices())
+
+    def _build_scenes(self, frame):
+        self._label(frame, "Scenes", STEP_FONT)
+        self.scene_list = tk.Listbox(frame, height=8, exportselection=False)
+        self.scene_list.pack(fill="x", pady=4)
+        self.scene_name = tk.StringVar()
+        self._entry(frame, "Scene name (for Save Scene)", self.scene_name)
+        row = ttk.Frame(frame)
+        row.pack(anchor="w", pady=6)
+        for text, command in (("Save Scene", self.on_scene_save),
+                              ("Duplicate Scene", self.on_scene_duplicate),
+                              ("Import Scene", self.on_scene_import),
+                              ("Export Scene", self.on_scene_export)):
+            ttk.Button(row, text=text, command=command).pack(side="left", padx=2)
+        self._combo(frame, "Scene used when you press START", self.scene,
+                    gc.scene_choices(self.scenes_file))
+        self._refresh_scene_list()
+
+    def _build_overlays(self, frame):
+        self._label(frame, "Overlays (drawn by FFmpeg, saved with Save Scene)", STEP_FONT)
+        self.ov_kind = tk.StringVar(value="text")
+        self.ov_text = tk.StringVar()
+        self.ov_corner = tk.StringVar(value="top-left")
+        self.ov_size = tk.IntVar(value=gp.size_range("text")[0] * 3)
+        self.ov_path = tk.StringVar()
+        self._combo(frame, "Kind", self.ov_kind, gp.OVERLAY_KIND_CHOICES)
+        self._entry(frame, "Text (text overlays) or PNG path (image overlays)", self.ov_text)
+        self._combo(frame, "Position", self.ov_corner, gp.CORNER_CHOICES)
+        self._label(frame, "Scale (font size, or percent of width for images)")
+        ttk.Scale(frame, from_=8, to=200, variable=self.ov_size, orient="horizontal",
+                  command=lambda _v: self.update_overlay_preview()).pack(fill="x")
+        for variable in (self.ov_kind, self.ov_text, self.ov_corner):
+            variable.trace_add("write", lambda *_a: self.update_overlay_preview())
+        self.ov_preview = ttk.Label(frame, text=gp.PREVIEW_PLACEHOLDER,
+                                    wraplength=WRAP, justify="left")
+        self._label(frame, "Preview (filter text, not a picture)")
+        self.ov_preview.pack(anchor="w")
+        ttk.Button(frame, text="Add to scene being built",
+                   command=self.on_overlay_add).pack(anchor="w", pady=6)
+        self.update_overlay_preview()
+
+    def _build_recording(self, frame):
+        self._label(frame, "Recording", STEP_FONT)
+        ttk.Checkbutton(frame, text="Record a copy to a file while streaming",
+                        variable=self.record).pack(anchor="w")
+        self._label(frame, "Files go to the recordings folder in the app data folder.")
+
+    def _build_advanced(self, frame):
         for label, var in (("Frames per second (empty = automatic)", self.fps),
                            ("Video kbps (empty = automatic)", self.bitrate),
                            ("Window title (Windows only)", self.window_title),
                            ("Audio device (empty = automatic)", self.audio)):
-            tk.Label(self.advanced, text=label, font=TEXT_FONT, anchor="w"
-                     ).pack(fill="x")
-            tk.Entry(self.advanced, textvariable=var, font=TEXT_FONT
-                     ).pack(fill="x", pady=2)
-        tk.Label(self.advanced, text="Scene (used when you press START)",
-                 font=TEXT_FONT, anchor="w").pack(fill="x")
-        self.scene = tk.StringVar(value=saved.get("scene") or gc.NO_SCENE_LABEL)
-        ttk.Combobox(self.advanced, textvariable=self.scene, state="readonly",
-                     font=TEXT_FONT, values=gc.scene_choices()).pack(fill="x", pady=2)
-        self.mute = tk.BooleanVar(value=bool(saved.get("mute")))
-        tk.Checkbutton(self.advanced, text="Mute (send silence)", font=TEXT_FONT,
-                       variable=self.mute).pack(anchor="w")
-        tk.Checkbutton(self.advanced, text="Keep trying if the internet drops",
-                       font=TEXT_FONT, variable=self.keep_trying).pack(anchor="w")
+            self._entry(frame, label, var)
+        self._combo(frame, "Hardware profile", self.hardware, gp.hardware_choices())
+        ttk.Checkbutton(frame, text="Mute (send silence)", variable=self.mute
+                        ).pack(anchor="w")
+        ttk.Checkbutton(frame, text="Keep trying if the internet drops",
+                        variable=self.keep_trying).pack(anchor="w")
+        ttk.Checkbutton(frame, text="Save a session report after streaming (off by "
+                        "default, stays on this PC, never contains your key)",
+                        variable=self.analytics).pack(anchor="w")
 
-        self.log = tk.Text(frame, height=6, font=LOG_FONT, state="disabled")
-        self.log.pack(fill="both", expand=True, **pad)
-
+    # -- actions --------------------------------------------------------------
     def toggle_key(self):
         self.key_entry.config(show="" if self.show_key.get() else "*")
-
-    def toggle_advanced(self):
-        self.advanced_open = not self.advanced_open
-        if self.advanced_open:
-            self.advanced.pack(fill="x", padx=16, after=self.advanced_btn)
-            self.advanced_btn.config(text="Hide advanced options")
-        else:
-            self.advanced.pack_forget()
-            self.advanced_btn.config(text="Show advanced options")
 
     def collect_prefs(self):
         return {
@@ -176,9 +258,15 @@ class StreamWindow:
             "mute": self.mute.get(),
             "scene": "" if self.scene.get() == gc.NO_SCENE_LABEL else self.scene.get(),
             "record": self.record.get(),
-            "hardware": self.detected.get("hardware"),
-            "noise": self.detected.get("noise"),
+            "hardware": gp.hardware_pref(self.hardware.get()),
+            "noise": self.noise,
+            "analytics": self.analytics.get(),
         }
+
+    def apply_prefs(self, prefs):
+        """Show changed prefs in the controls (used by the Apply button)."""
+        self.strength.set(gc.label_for(gc.STRENGTH_CHOICES, prefs.get("preset")))
+        self.bitrate.set(str(prefs.get("bitrate") or ""))
 
     def on_start(self):
         prefs = self.collect_prefs()
@@ -188,6 +276,8 @@ class StreamWindow:
                 gc.save_prefs(self.prefs_file, prefs, self.key.get().strip())
             except OSError:
                 pass  # remembering choices is optional
+        else:
+            self.status.set(error)
 
     def on_test(self):
         self.controller.start(self.collect_prefs(), "", test_local=True)
@@ -197,8 +287,9 @@ class StreamWindow:
         fields, message = gc.one_click_setup(platform=platform)
         self.strength.set(gc.label_for(gc.STRENGTH_CHOICES, fields["preset"]))
         self.bitrate.set(str(fields["bitrate"]))
-        self.detected = {k: fields[k] for k in ("hardware", "noise")}
-        self.help.config(text=message, fg="#222222")
+        self.hardware.set(gp.hardware_label(fields["hardware"]))
+        self.noise = fields["noise"]
+        self.status.set(message)
 
     def on_stop(self):
         self.controller.stop(wait=False)
@@ -206,17 +297,91 @@ class StreamWindow:
     def on_doctor(self):
         buffer = io.StringIO()
         cmd_doctor(buffer)
-        self.help.config(text=buffer.getvalue().strip(), fg="#222222")
+        self.status.set(buffer.getvalue().strip())
 
+    def on_recommendation(self, rec, apply):
+        if apply:
+            prefs, message = gp.apply_recommendation(rec, self.collect_prefs())
+            self.apply_prefs(prefs)
+            self.status.set(message)
+        self.inbox.dismiss(rec)
+        self._shown_recs = None
+
+    def _refresh_scene_list(self):
+        self.scene_list.delete(0, "end")
+        for name in gp.scene_names(self.scenes_file):
+            self.scene_list.insert("end", name)
+
+    def _selected_scene(self):
+        chosen = self.scene_list.curselection()
+        return self.scene_list.get(chosen[0]) if chosen else self.scene_name.get().strip()
+
+    def _scene_result(self, result):
+        self.status.set(result[1])
+        self._refresh_scene_list()
+
+    def on_scene_save(self):
+        self._scene_result(gp.save_scene_action(
+            self.scenes_file, self.scene_name.get(), self.overlays.drafts))
+
+    def on_scene_duplicate(self):
+        self._scene_result(gp.duplicate_scene_action(self.scenes_file, self._selected_scene()))
+
+    def on_scene_import(self):
+        source = filedialog.askopenfilename(title="Import a scene file",
+                                            filetypes=[("Scene JSON", "*.json")])
+        if source:
+            self._scene_result(gp.import_scene_action(self.scenes_file, source))
+
+    def on_scene_export(self):
+        name = self._selected_scene()
+        dest = filedialog.asksaveasfilename(title="Export scene", defaultextension=".json",
+                                            initialfile=name + ".json")
+        if dest:  # the file dialog already asked about replacing an existing file
+            self._scene_result(gp.export_scene_action(
+                self.scenes_file, name, dest, force=True))
+
+    def current_overlay_draft(self):
+        kind = self.ov_kind.get()
+        draft = gp.OverlayDraft(kind=kind, corner=self.ov_corner.get(),
+                                size=int(self.ov_size.get()))
+        if kind == "image":
+            draft.path = self.ov_text.get()
+            draft.size = max(gp.MIN_PERCENT, min(gp.MAX_PERCENT, draft.size // 4))
+        else:
+            draft.text = self.ov_text.get()
+        return draft
+
+    def update_overlay_preview(self):
+        self.ov_preview.config(text=gp.overlay_preview(self.current_overlay_draft()))
+
+    def on_overlay_add(self):
+        try:
+            self.overlays.add(self.current_overlay_draft())
+            self.status.set("%d overlay(s) ready. Press Save Scene on the Scenes page."
+                            % len(self.overlays.drafts))
+        except ValueError as exc:
+            self.status.set(str(exc))
+
+    # -- timer ----------------------------------------------------------------
     def poll(self):
         text, color, help_text, log_text, running = self.controller.snapshot()
         self.banner.config(text=text, bg=BANNER_COLORS[color])
         if help_text:
-            self.help.config(text=help_text, fg="#B00020")
-        self.health.config(text=self.controller.health_advice() if running else "")
+            self.status.set(help_text)
+        if "dashboard" in self._pages:
+            self._poll_dashboard(running, log_text)
+        self.root.after(POLL_MS, self.poll)
+
+    def _poll_dashboard(self, running, log_text):
+        for label, card in zip(self.card_values,
+                               gp.health_cards(self.controller.health_summary())):
+            label.config(text=card.value)
+        self.advice.config(text=self.controller.health_advice() if running else "")
         self.start_btn.config(state="disabled" if running else "normal")
         self.test_btn.config(state="disabled" if running else "normal")
         self.stop_btn.config(state="normal" if running else "disabled")
+        self._show_recommendations(self.inbox.visible(self.controller.recommendations()))
         if log_text != self._shown_log:
             self._shown_log = log_text
             self.log.config(state="normal")
@@ -224,7 +389,26 @@ class StreamWindow:
             self.log.insert("end", log_text)
             self.log.see("end")
             self.log.config(state="disabled")
-        self.root.after(POLL_MS, self.poll)
+
+    def _show_recommendations(self, recs):
+        """Rebuild the suggestion rows only when the list changed."""
+        if recs == self._shown_recs:
+            return
+        self._shown_recs = recs
+        for child in self.rec_frame.winfo_children():
+            child.destroy()
+        if not recs:
+            ttk.Label(self.rec_frame, text="None right now.").pack(anchor="w")
+        for rec in recs:
+            row = ttk.Frame(self.rec_frame)
+            row.pack(fill="x", pady=2)
+            ttk.Label(row, text=rec.message, wraplength=WRAP - 120,
+                      justify="left").pack(side="left", fill="x", expand=True)
+            if gp.can_apply(rec):
+                ttk.Button(row, text="Apply", command=lambda r=rec: self.on_recommendation(
+                    r, True)).pack(side="left", padx=2)
+            ttk.Button(row, text="Dismiss", command=lambda r=rec: self.on_recommendation(
+                r, False)).pack(side="left")
 
     def on_close(self, waited=0):
         """Ask ffmpeg to stop, then close once it has (or after a few seconds)."""

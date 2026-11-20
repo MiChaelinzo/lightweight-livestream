@@ -11,15 +11,15 @@ import os
 import re
 from collections import namedtuple
 
-from .filtergraph import filter_path, filter_text, letterbox_filter
+from .hardware import get_profile
+from .overlays import (KIND_IMAGE, drawtext_stage, image_stage, parse_overlays,
+                       usable_overlays)
+from .filtergraph import (CORNERS, DEFAULT_FONT_SIZE, IMAGE_FPS, MAX_PERCENT, MIN_PERCENT,
+                          filter_path, filter_text, letterbox_filter,
+                          overlay_position, text_position)
 
-CORNERS = ("top-left", "top-right", "bottom-left", "bottom-right")
 DEFAULT_WEBCAM_PERCENT = 20
-MIN_PERCENT, MAX_PERCENT = 5, 35   # a small overlay keeps scaling work low
 WEBCAM_MAX_FPS = 15
-IMAGE_FPS = 2
-OVERLAY_MARGIN = 10
-DEFAULT_FONT_SIZE = 24
 DEFAULT_SIMILARITY = 0.3
 MAX_BLUR_RADIUS = 20
 OUTPUT_LABEL = "vout"
@@ -29,7 +29,7 @@ WebcamSource = namedtuple(
     "WebcamSource", "device corner size_percent chromakey_color similarity blur")
 ImageSource = namedtuple("ImageSource", "path corner size_percent")
 TextSource = namedtuple("TextSource", "text corner font_file font_size")
-Scene = namedtuple("Scene", "name sources")
+Scene = namedtuple("Scene", "name sources overlays", defaults=((),))
 
 DEFAULT_SCENE = Scene("default", (ScreenSource(None, None),))
 
@@ -146,7 +146,7 @@ def parse_scene(raw):
         _fail(name, "use exactly one screen, window or browser source")
     if sum(isinstance(s, WebcamSource) for s in sources) > 1:
         _fail(name, "only one webcam per scene (keeps CPU and RAM low)")
-    return Scene(name, sources)
+    return Scene(name, sources, parse_overlays(name, raw.get("overlays")))
 
 
 def parse_scenes(data):
@@ -187,20 +187,6 @@ def _even(value):
     return max(2, value // 2 * 2)
 
 
-def _overlay_xy(corner):
-    m = OVERLAY_MARGIN
-    x = str(m) if corner.endswith("left") else "W-w-%d" % m
-    y = str(m) if corner.startswith("top") else "H-h-%d" % m
-    return x, y
-
-
-def _text_xy(corner):
-    m = OVERLAY_MARGIN
-    x = str(m) if corner.endswith("left") else "w-tw-%d" % m
-    y = str(m) if corner.startswith("top") else "h-th-%d" % m
-    return x, y
-
-
 def _webcam_input(device, fps, os_name):
     if os_name == "windows":
         return ["-f", "dshow", "-framerate", str(fps), "-i", "video=" + device]
@@ -216,12 +202,14 @@ def scene_window(scene, fallback):
     return scene.sources[0].window or fallback
 
 
-def compile_scene(scene, settings, os_name, first_input, tail=""):
+def compile_scene(scene, settings, os_name, first_input, tail="", exists=os.path.isfile):
     """-> (extra input args, filter_complex text, output map label).
 
     first_input is the index of the first input this function adds (after the
     screen/audio inputs). tail is an optional last filter such as the VAAPI
-    upload. Deterministic: same arguments give the same text.
+    upload. Scene overlays (text, clock, fps, REC, PNG) are drawn after the
+    sources; a PNG that does not exist (per exists) is skipped. Deterministic:
+    same arguments give the same text.
     """
     screen = scene.sources[0]
     overlays = scene.sources[1:]
@@ -230,10 +218,17 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
         x, y, w, h = screen.crop
         base = "crop=%d:%d:%d:%d,%s" % (w, h, x, y, base)
 
+    profile = (get_profile(settings.hardware_profile)
+               if getattr(settings, "hardware_profile", None) else None)
+    webcam_fps_cap = min(WEBCAM_MAX_FPS, profile.webcam_max_fps or WEBCAM_MAX_FPS) \
+        if profile else WEBCAM_MAX_FPS
+    strip_filters = bool(profile and profile.strip_expensive_filters)
+
     input_args = []
     graph = []
     next_input = first_input
-    steps = len(overlays) + (1 if tail else 0)
+    widgets = usable_overlays(scene.overlays, exists)
+    steps = len(overlays) + len(widgets) + (1 if tail else 0)
 
     def label(step):  # step 0 is the base; the last step is the output
         return OUTPUT_LABEL if step == steps else "v%d" % step
@@ -242,7 +237,7 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
     for step, source in enumerate(overlays, start=1):
         prev, out = label(step - 1), label(step)
         if isinstance(source, TextSource):
-            x, y = _text_xy(source.corner)
+            x, y = text_position(source.corner)
             font = ("fontfile=%s:" % filter_path(source.font_file, "font_file")
                     if source.font_file else "")
             graph.append("[%s]drawtext=%stext='%s':x=%s:y=%s:fontsize=%d:fontcolor=white[%s]"
@@ -252,21 +247,34 @@ def compile_scene(scene, settings, os_name, first_input, tail=""):
         width = _even(settings.width * source.size_percent // 100)
         cam = "ov%d" % step
         if isinstance(source, WebcamSource):
-            cam_fps = min(settings.fps, WEBCAM_MAX_FPS)
+            cam_fps = min(settings.fps, webcam_fps_cap)
             input_args += _webcam_input(source.device, cam_fps, os_name)
             chain = "fps=%d,scale=%d:-2" % (cam_fps, width)
-            if source.chromakey_color:
+            # lean profiles skip chromakey and blur: they cost CPU on every frame
+            if source.chromakey_color and not strip_filters:
                 chain += ",chromakey=color=0x%s:similarity=%s:blend=0.0" % (
                     source.chromakey_color.lower(), source.similarity)
-            elif source.blur:
+            elif source.blur and not strip_filters:
                 chain += ",boxblur=%d:1" % source.blur
         else:
             input_args += ["-loop", "1", "-framerate", str(IMAGE_FPS), "-i", source.path]
             chain = "scale=%d:-2" % width
         graph.append("[%d:v]%s[%s]" % (next_input, chain, cam))
         next_input += 1
-        x, y = _overlay_xy(source.corner)
+        x, y = overlay_position(source.corner)
         graph.append("[%s][%s]overlay=%s:%s[%s]" % (prev, cam, x, y, out))
+    step = len(overlays)
+    for widget in widgets:
+        step += 1
+        prev, out = label(step - 1), label(step)
+        if widget.kind == KIND_IMAGE:
+            more_inputs, text = image_stage(widget, prev, out, next_input,
+                                            settings.width, _even)
+            input_args += more_inputs
+            graph.append(text)
+            next_input += 1
+        else:
+            graph.append(drawtext_stage(widget, prev, out))
     if tail:
         graph.append("[%s]%s[%s]" % (label(steps - 1), tail, OUTPUT_LABEL))
     return input_args, ";".join(graph), "[%s]" % OUTPUT_LABEL

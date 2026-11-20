@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0
+
+Ultra low-end studio: adaptive advisor, new hardware profiles, scene collections, overlays, analytics, sidebar window, browser companion, Windows portable builder and web showcase. Real FFmpeg, hardware, browser, Twitch and PyInstaller behavior is UNVERIFIED; see the README status table.
+- Version bumped to 0.7.0.
+- Known limitations: a later session can overwrite an earlier recording with the same name; a stalled webcam may block the stream; `drawtext` `font_file` and Windows `C\:` escaping are unverified; 1080p on MX250 is unverified; YouTube companion is not implemented.
+
+- New: `adaptive.py` advisor (preset downgrade, bitrate reduction and bandwidth suggestions; never applies anything). Printed at the end of a CLI session and exposed by `StreamController.recommendations()`.
+- New: hardware profiles `intel_hd_optimized` (HD 4000/520/620) and `mx250_streamer` (MX250). Behavior change: auto detection now picks these instead of `intel_hd` and `nvidia_mx` for those GPUs; the MX250 profile records a local copy by default (`--no-record` to disable) and caps bitrate at 4500 kbps unless `--bitrate` is given.
+- New: scene collections (`scenes export`, `scenes import`, `scenes example --collection`) and `scene_collections.py` save/duplicate helpers.
+- New: scene `overlays` (text, clock, FPS, REC indicator, PNG) compiled to FFmpeg filters in `overlays.py`.
+- New: opt-in session reports in `reports/session-YYYYMMDD.json` (`--analytics`), no stream key.
+- New: sidebar window (ttk only, lazy pages) with health cards, Apply/Dismiss suggestions, scene Save/Duplicate/Import/Export, overlay position/scale controls with filter text preview, hardware profile dropdown and an opt-in session report checkbox. Logic in `gui_pages.py`. Window rendering is UNVERIFIED (no display).
+- New: `web/companion/` browser overlay (chat, viewer count, stream timer, goal bar). Demo mode without credentials; Twitch chat and viewer count optional, client ID and token read from the URL fragment only and never stored. CSP `connect-src` allows `wss://irc-ws.chat.twitch.tv` and `https://api.twitch.tv`. Twitch/YouTube connections are UNVERIFIED (no network); YouTube is not implemented.
+- New: `tools/build_windows_portable.py` builds `LightStreamPortable/` (exe via PyInstaller when installed, `--layout-only` otherwise). No binaries or FFmpeg are bundled. The exe build is UNVERIFIED. Layout: `LightStream.exe`, `portable.flag`, `ffmpeg/`, `scenes/`, `recordings/`, `config/`. In portable mode scene collections use `scenes/` and the default recording uses `recordings/`; `config/` is created but not read yet (settings stay in `data/`).
+- New: web showcase upgrade: animated hero title, illustrative SVG mockups (labeled as not real captures), design-difference comparison with OBS (no measurements), Intel HD and MX250 guides.
+- Refactor: overlay position helpers moved into `filtergraph.py`; `config.effective_preset_name`.
+
 ## 0.6.0
 
 Low-end studio release. Real FFmpeg, GPU and webcam behavior of everything below is UNVERIFIED (no FFmpeg, GPU, display or network in the dev sandbox); command text is checked by unit tests only.

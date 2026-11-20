@@ -6,27 +6,35 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 from . import __version__
 from .command import (build_command, numbered_recording_path,
                       prepare_recording_path)
 from .config import (config_path, detect_os, load_file_config, resolve_key,
-                     resolve_settings, scenes_path, write_example_config)
+                     resolve_settings, scenes_path, effective_preset_name, write_example_config,
+                     DEFAULT_RECORDING_FILE)
 from .audio import NOISE_LEVELS
 from .bandwidth import measure_upload, mbps_to_kbps, recommend
 from .encoders import (HARDWARE_ORDER, SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
 from .portable import find_ffmpeg, is_portable
 from .hardware import PROFILES, classify_gpus, detect_gpu_names, get_profile
+from .adaptive import AdaptiveAdvisor
+from .analytics import (analytics_enabled, build_session_report, reports_dir,
+                        write_session_report)
 from .health import HealthTracker
 from .platforms import PLATFORMS, parse_audio_devices
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
+from .overlays import missing_images
+from .scene_collections import (collection_dir, export_collection, export_scene,
+                                import_scenes, scene_filename,
+                                write_example_collection)
 from .scenes import load_scenes, write_example_scenes
 
 
 DEFAULT_TEST_FILE = "lightstream-test.mkv"
-DEFAULT_RECORDING_FILE = "lightstream-recording.mkv"
 MAX_QUICK_FAILURES = 5  # consecutive quick failures before giving up
 
 
@@ -50,7 +58,17 @@ def build_parser():
     b.add_argument("--measure-url", help="a URL you control that accepts a POST upload")
     b.add_argument("--hardware", help="hardware profile, e.g. intel_hd")
     sc = sub.add_parser("scenes", help="list, check or create a scenes file")
-    sc.add_argument("action", choices=("list", "validate", "example"))
+    sc.add_argument("action", choices=("list", "validate", "example", "export", "import"))
+    sc.add_argument("target", nargs="?",
+                    help="export: scene name (omit to export every scene); "
+                         "import: a scene file or a folder of .json files")
+    sc.add_argument("--to", help="export: file (one scene) or folder (all scenes); "
+                                 "default is scenes/ next to the scenes file")
+    sc.add_argument("--collection", action="store_true",
+                    help="example: write scenes/gaming.json, just-chatting.json, "
+                         "work.json, retro.json instead of scenes.json")
+    sc.add_argument("--force", action="store_true",
+                    help="export/import: replace existing files or scenes")
     sc.add_argument("--scenes-file", help="scenes file (default: scenes.json next to config.json)")
     s = sub.add_parser("start", help="start streaming")
     s.add_argument("--platform", choices=PLATFORMS)
@@ -80,6 +98,10 @@ def build_parser():
     s.add_argument("--record", nargs="?", const=DEFAULT_RECORDING_FILE, metavar="FILE",
                    help="also save a local copy while streaming (default %s)"
                         % DEFAULT_RECORDING_FILE)
+    s.add_argument("--no-record", action="store_true",
+                   help="do not save a local copy (some hardware profiles record by default)")
+    s.add_argument("--analytics", action="store_true",
+                   help="opt in: save a session report (numbers only, no key) to reports/")
     s.add_argument("--noise", choices=NOISE_LEVELS,
                    help="microphone noise suppression: off, light (afftdn), ai (arnndn model)")
     s.add_argument("--noise-model", help="path to an arnndn .rnnn model for --noise ai")
@@ -99,8 +121,32 @@ def resolve_hardware(cli_value, file_cfg, os_name, detect=detect_gpu_names):
     return classify_gpus(detect(os_name))
 
 
+def _cmd_scene_transfer(args, path, out):
+    if args.action == "import":
+        if not args.target:
+            raise ValueError("Tell import where to read from: lightstream scenes import PATH")
+        added, replaced = import_scenes(path, args.target, args.force)
+        out.write("Imported %d new, replaced %d: %s\n"
+                  % (len(added), len(replaced), ", ".join(added + replaced) or "nothing"))
+        return 0
+    folder = args.to or collection_dir(path)
+    if args.target:
+        dest = args.to or os.path.join(folder, scene_filename(args.target))
+        out.write("Wrote %s\n" % export_scene(path, args.target, dest, args.force))
+    else:
+        for written in export_collection(path, folder, args.force):
+            out.write("Wrote %s\n" % written)
+    return 0
+
+
 def cmd_scenes(args, out):
     path = args.scenes_file or scenes_path()
+    if args.action in ("export", "import"):
+        return _cmd_scene_transfer(args, path, out)
+    if args.action == "example" and args.collection:
+        for written in write_example_collection(collection_dir(path)):
+            out.write("Wrote %s\n" % written)
+        return 0
     if args.action == "example":
         write_example_scenes(path)  # raises FileExistsError, never overwrites
         out.write("Wrote %s\n" % path)
@@ -122,7 +168,9 @@ def cmd_doctor(out, detect=detect_gpu_names):
     out.write("OS: %s\n" % os_name)
     names = detect(os_name)
     out.write("GPU: %s\n" % (", ".join(names) or "not detected"))
-    out.write("Hardware profile: %s (UNVERIFIED on real hardware)\n" % classify_gpus(names))
+    profile = get_profile(classify_gpus(names))
+    out.write("Hardware profile: %s (UNVERIFIED on real hardware)\n" % profile.name)
+    out.write("  %s\n" % profile.description)
     if is_portable():
         out.write("Mode: portable (settings in %s)\n" % os.path.dirname(config_path(os_name)))
     ffmpeg = find_ffmpeg()
@@ -192,11 +240,12 @@ def cmd_bandwidth(args, out, post=None):
     return 0
 
 
-def cmd_start(args, out, detect=detect_gpu_names):
+def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
+              report_dir=None):
     os_name = detect_os()
     file_cfg = load_file_config(config_path(os_name))
     hardware = resolve_hardware(args.hardware, file_cfg, os_name, detect)
-    settings = resolve_settings(
+    cli_values = (
         {"platform": args.platform, "url": args.url, "preset": args.preset,
          "force_preset": True if args.preset else None,
          "fps": args.fps, "resolution": args.resolution, "bitrate": args.bitrate,
@@ -204,10 +253,15 @@ def cmd_start(args, out, detect=detect_gpu_names):
          "encoder": args.encoder, "video_device": args.video_device,
          "display": os.environ.get("DISPLAY"),
          "mute": args.mute or None, "scene": args.scene,
-         "scenes_file": args.scenes_file, "record": args.record,
+         "scenes_file": args.scenes_file,
+         "record": False if args.no_record else args.record,
          "noise": args.noise, "noise_model": args.noise_model,
-         "hardware": hardware}, file_cfg)
+         "hardware": hardware})
+    settings = resolve_settings(cli_values, file_cfg)
     record_path = args.test_local
+    if settings.scene:
+        for path in missing_images(settings.scene.overlays):
+            out.write("Warning: overlay image %s not found; that overlay is skipped.\n" % path)
     if settings.record_to and record_path:
         out.write("Note: --record is ignored with --test-local.\n")
     elif settings.record_to:
@@ -245,13 +299,17 @@ def cmd_start(args, out, detect=detect_gpu_names):
     if args.dry_run:
         return 0
     tracker = HealthTracker(target_kbps=settings.video_kbps)
+    advisor = AdaptiveAdvisor(effective_preset_name(cli_values, file_cfg, hardware),
+                              settings.video_kbps, settings.fps)
 
     def on_status(state, detail):
         tracker.on_status(state, detail)
+        advisor.on_status(state, detail)
         if state == "live":
             out.write("fps=%s speed=%sx\r" % (detail.get("fps", "?"),
                                               detail.get("speed", "?")))
 
+    started = clock()
     try:
         code = run_with_reconnect(
             argv, key, os_name, on_status=on_status,
@@ -267,6 +325,17 @@ def cmd_start(args, out, detect=detect_gpu_names):
                                   key, os_name, enc, ffmpeg)))
         if tracker.samples or tracker.reconnects:
             out.write("\n" + "\n".join(tracker.report_lines()) + "\n")
+            for rec in advisor.recommendations():  # suggestions only, never applied
+                out.write("  suggestion (not applied): %s\n" % rec.message)
+            if not record_path and analytics_enabled(args.analytics, file_cfg):
+                path = write_session_report(
+                    report_dir or reports_dir(os_name),
+                    build_session_report(
+                        tracker.summary(), encoder, clock() - started,
+                        bool(settings.record_to),
+                        preset=effective_preset_name(cli_values, file_cfg, hardware),
+                        hardware_profile=settings.hardware_profile))
+                out.write("Session report saved to %s (no stream key inside)\n" % path)
         return code
     except OSError as exc:
         out.write("Could not start ffmpeg: %s\n" % exc)

@@ -5,7 +5,8 @@ from collections import namedtuple
 
 from .audio import noise_filter_args
 from .filtergraph import letterbox_filter
-from .hardware import low_resource_input_args, low_resource_output_args, tuned_encoder_args
+from .hardware import (low_resource_input_args, low_resource_output_args,
+                       rate_control_bufsize_kbps, tuned_encoder_args)
 from .platforms import capture_inputs, ingest_url, silent_audio_input
 from .scenes import compile_scene, scene_window
 
@@ -122,7 +123,8 @@ def build_command(s, key, os_name, encoder, ffmpeg="ffmpeg", record_path=None):
     args += [
         "-b:v", "%dk" % s.video_kbps,
         "-maxrate", "%dk" % s.video_kbps,
-        "-bufsize", "%dk" % s.video_kbps,  # about 1 second: small buffer, low delay
+        # about 1 second (half for lean profiles): small buffer, low delay
+        "-bufsize", "%dk" % rate_control_bufsize_kbps(s.hardware_profile, s.video_kbps),
         "-g", str(s.fps * 2),              # keyframe every 2 seconds
         "-bf", "0",                        # no B-frames: less delay and CPU
         "-c:a", "aac", "-b:a", "%dk" % s.audio_kbps, "-ar", "44100", "-ac", "2",

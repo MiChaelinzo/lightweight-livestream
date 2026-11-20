@@ -6,8 +6,8 @@ import sys
 
 from .audio import NOISE_LEVELS, require_model_file
 from .command import StreamSettings
-from .hardware import cap_preset_name, get_profile
-from .portable import data_dir, is_portable
+from .hardware import cap_preset_name, cap_video_kbps, get_profile
+from .portable import data_dir, is_portable, recordings_dir
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
 from .scenes import load_scenes, select_scene
 
@@ -31,6 +31,16 @@ EXAMPLE_CONFIG = {
     "hardware": None,
     "force_preset": False,
 }
+
+
+DEFAULT_RECORDING_FILE = "lightstream-recording.mkv"
+
+
+def default_recording_path(root=None, environ=None):
+    """recordings/ in the app folder in portable mode, else the plain file name."""
+    if is_portable(root, environ):
+        return os.path.join(recordings_dir(root), DEFAULT_RECORDING_FILE)
+    return DEFAULT_RECORDING_FILE
 
 
 def config_path(os_name=None, environ=None, root=None):
@@ -99,22 +109,31 @@ def _positive_int(name, value):
     return number
 
 
+def effective_preset_name(cli, file_cfg, hardware=None):
+    """Preset name after the hardware profile's cap (unless forced)."""
+    preset_name = _pick("preset", cli, file_cfg, DEFAULT_PRESET)
+    get_preset(preset_name)  # raises a clear error for unknown names
+    if hardware:
+        preset_name = cap_preset_name(
+            hardware, preset_name, bool(_pick("force_preset", cli, file_cfg, False)))
+    return preset_name
+
+
 def resolve_settings(cli, file_cfg):
     """cli and file_cfg are dicts; None means 'not set'."""
     hardware = _pick("hardware", cli, file_cfg)
     if hardware:
         get_profile(hardware)  # raises a clear error for unknown names
-    preset_name = _pick("preset", cli, file_cfg, DEFAULT_PRESET)
-    if hardware:
-        get_preset(preset_name)
-        preset_name = cap_preset_name(
-            hardware, preset_name, bool(_pick("force_preset", cli, file_cfg, False)))
+    preset_name = effective_preset_name(cli, file_cfg, hardware)
     preset = get_preset(preset_name)
     noise = _pick("noise", cli, file_cfg, "off")
     if noise not in NOISE_LEVELS:
         raise ValueError("Unknown noise level %r. Choose one of: %s"
                          % (noise, ", ".join(NOISE_LEVELS)))
     noise_model = _pick("noise_model", cli, file_cfg)
+    if noise == "ai" and hardware and not get_profile(hardware).allow_ai_audio \
+            and cli.get("noise") != "ai":
+        noise = "off"  # AI audio is off by default on this profile; --noise ai still works
     if noise == "ai":
         require_model_file(noise_model)
     scene = None
@@ -126,14 +145,21 @@ def resolve_settings(cli, file_cfg):
     resolution = _pick("resolution", cli, file_cfg)
     width, height = (parse_resolution(resolution) if resolution
                      else (preset.width, preset.height))
+    video_kbps = _positive_int("bitrate", _pick("bitrate", cli, file_cfg, preset.video_kbps))
+    if hardware and cli.get("bitrate") is None:
+        video_kbps = cap_video_kbps(hardware, video_kbps)  # explicit --bitrate is kept
+    record = _pick("record", cli, file_cfg)
+    if record is None and hardware and get_profile(hardware).record_by_default:
+        record = DEFAULT_RECORDING_FILE
+    if record == DEFAULT_RECORDING_FILE:
+        record = default_recording_path()
     return StreamSettings(
         platform=_pick("platform", cli, file_cfg, "twitch"),
         custom_url=_pick("url", cli, file_cfg),
         width=width,
         height=height,
         fps=_positive_int("fps", _pick("fps", cli, file_cfg, preset.fps)),
-        video_kbps=_positive_int(
-            "bitrate", _pick("bitrate", cli, file_cfg, preset.video_kbps)),
+        video_kbps=video_kbps,
         audio_kbps=preset.audio_kbps,
         x264_preset=preset.x264_preset,
         window=_pick("window", cli, file_cfg),
@@ -146,7 +172,7 @@ def resolve_settings(cli, file_cfg):
         noise=noise,
         noise_model=noise_model,
         hardware_profile=hardware,
-        record_to=_pick("record", cli, file_cfg),
+        record_to=record or None,  # False (--no-record) turns recording off
     )
 
 

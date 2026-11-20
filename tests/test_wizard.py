@@ -17,14 +17,14 @@ MX = "Name\nNVIDIA GeForce MX250\nIntel(R) UHD Graphics 620\n"
 class BuildTests(unittest.TestCase):
     def test_intel_hd_low_end(self):
         cfg = wizard.build_recommended_config(INTEL, 2, 4096, None, "twitch")
-        self.assertEqual(cfg["hardware"], "intel_hd")
+        self.assertEqual(cfg["hardware"], "intel_hd_optimized")
         self.assertEqual(cfg["preset"], "potato")
         self.assertEqual(cfg["noise"], "off")
         self.assertNotIn("scene", cfg)
 
     def test_mx250(self):
         cfg = wizard.build_recommended_config(MX, 4, 8192, None, "youtube")
-        self.assertEqual(cfg["hardware"], "nvidia_mx")
+        self.assertEqual(cfg["hardware"], "mx250_streamer")
         self.assertEqual(cfg["preset"], "light")
 
     def test_low_ram_caps_preset(self):

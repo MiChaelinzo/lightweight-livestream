@@ -84,3 +84,88 @@ class DoctorPortableTests(unittest.TestCase):
             else:
                 os.environ["LIGHTSTREAM_PORTABLE"] = old
         self.assertIn("Mode: portable", out.getvalue())
+
+
+class WindowsPortableBuilderTests(unittest.TestCase):
+    def setUp(self):
+        from tools import build_windows_portable
+        self.builder = build_windows_portable
+        self.tmp = tempfile.TemporaryDirectory()
+        self.out = os.path.join(self.tmp.name, "LightStreamPortable")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_layout_creates_expected_structure(self):
+        self.builder.create_layout(self.out)
+        for name in ("ffmpeg", "scenes", "recordings", "config"):
+            self.assertTrue(os.path.isdir(os.path.join(self.out, name)), name)
+        self.assertEqual(sorted(os.listdir(self.out)),
+                         ["config", "ffmpeg", "portable.flag", "recordings", "scenes"])
+        self.assertTrue(os.path.isfile(os.path.join(self.out, "portable.flag")))
+        self.assertFalse(os.path.exists(os.path.join(self.out, "LightStream.exe")))
+
+    def test_layout_never_bundles_ffmpeg(self):
+        self.builder.create_layout(self.out)
+        self.assertEqual(os.listdir(os.path.join(self.out, "ffmpeg")), ["PUT-FFMPEG-HERE.txt"])
+
+    def test_layout_flag_name_matches_runtime(self):
+        self.builder.create_layout(self.out)
+        self.assertTrue(os.path.exists(os.path.join(self.out, portable.FLAG_FILE)))
+        self.assertTrue(portable.is_portable(root=self.out, environ={}))
+
+    def test_layout_is_repeatable(self):
+        first = self.builder.create_layout(self.out)
+        self.assertEqual(self.builder.create_layout(self.out), first)
+
+    def test_missing_pyinstaller_gives_clear_error(self):
+        os.makedirs(self.out)
+        with self.assertRaises(self.builder.BuildError) as ctx:
+            self.builder.build_exe(self.out, find_module=lambda name: None)
+        self.assertIn("pip install pyinstaller", str(ctx.exception))
+
+    def test_layout_only_cli_exits_zero_without_exe(self):
+        self.assertEqual(self.builder.main(["--layout-only", "--output", self.out]), 0)
+        self.assertFalse(os.path.exists(os.path.join(self.out, "LightStream.exe")))
+
+    def test_failed_pyinstaller_run_is_reported(self):
+        os.makedirs(self.out)
+
+        class Result:
+            returncode = 3
+
+        with self.assertRaises(self.builder.BuildError):
+            self.builder.build_exe(self.out, run=lambda cmd: Result(), find_module=lambda name: object())
+
+
+class PortableFoldersTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+        open(os.path.join(self.root, "portable.flag"), "w").close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_collection_dir_uses_portable_scenes_folder(self):
+        from lightstream.scene_collections import collection_dir
+        self.assertEqual(collection_dir("/x/scenes.json", root=self.root, environ={}),
+                         os.path.join(self.root, "scenes"))
+
+    def test_collection_dir_normal_when_not_portable(self):
+        from lightstream.scene_collections import collection_dir
+        other = os.path.join(self.root, "none")
+        os.makedirs(other)
+        self.assertEqual(collection_dir("/x/scenes.json", root=other, environ={}),
+                         os.path.join("/x", "scenes"))
+
+    def test_default_recording_goes_to_recordings_when_portable(self):
+        from lightstream.config import DEFAULT_RECORDING_FILE, default_recording_path
+        self.assertEqual(default_recording_path(self.root, {}),
+                         os.path.join(self.root, "recordings", DEFAULT_RECORDING_FILE))
+
+    def test_default_recording_plain_when_not_portable(self):
+        from lightstream.config import DEFAULT_RECORDING_FILE, default_recording_path
+        other = os.path.join(self.root, "none")
+        os.makedirs(other)
+        self.assertEqual(default_recording_path(other, {}), DEFAULT_RECORDING_FILE)

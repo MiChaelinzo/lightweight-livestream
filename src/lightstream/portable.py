@@ -2,7 +2,8 @@
 
 Portable mode is on when the environment variable LIGHTSTREAM_PORTABLE=1 is set,
 or when a file named portable.flag exists in the app folder. Then settings go
-to <app folder>/data instead of the per-user config location, so the whole
+to <app folder>/data, scene collections to <app folder>/scenes and
+default recordings to <app folder>/recordings instead of the per-user config location, so the whole
 folder can live on a USB stick and be deleted without leaving traces.
 """
 
@@ -12,6 +13,8 @@ import sys
 
 FLAG_FILE = "portable.flag"
 DATA_DIRNAME = "data"
+SCENES_DIRNAME = "scenes"
+RECORDINGS_DIRNAME = "recordings"
 ENV_VAR = "LIGHTSTREAM_PORTABLE"
 
 
@@ -36,6 +39,16 @@ def is_portable(root=None, environ=None):
 
 def data_dir(root=None):
     return os.path.join(root or app_root(), DATA_DIRNAME)
+
+
+def scenes_dir(root=None):
+    """Portable scene collections folder (the shareable one-scene files)."""
+    return os.path.join(root or app_root(), SCENES_DIRNAME)
+
+
+def recordings_dir(root=None):
+    """Portable default folder for local recordings."""
+    return os.path.join(root or app_root(), RECORDINGS_DIRNAME)
 
 
 def _ffmpeg_candidates(root):

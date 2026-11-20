@@ -13,9 +13,11 @@ import time
 from .command import (build_command, numbered_recording_path,
                       prepare_recording_path)
 from .portable import data_dir, find_ffmpeg
-from .config import config_path, detect_os, resolve_settings
+from .config import config_path, detect_os, effective_preset_name, resolve_settings
 from .config import scenes_path
 from .encoders import choose_working_encoder, probe_encoders
+from .adaptive import AdaptiveAdvisor
+from .analytics import build_session_report, reports_dir, write_session_report
 from .health import HealthTracker
 from .scenes import load_scenes
 from .presets import DEFAULT_PRESET, PRESETS
@@ -33,7 +35,7 @@ MIN_SUBSTRING_KEY_LENGTH = 8
 PREFS_FILENAME = "gui.json"
 PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
                "audio_device", "keep_trying", "mute", "scene", "record",
-               "hardware", "noise")
+               "hardware", "noise", "analytics")
 
 # (label shown to the user, value used internally)
 PLATFORM_CHOICES = (("Twitch", "twitch"), ("YouTube", "youtube"),
@@ -218,7 +220,7 @@ def settings_from_prefs(prefs, display=None):
             "audio_device": _blank_to_none(prefs.get("audio_device")),
             "mute": bool(prefs.get("mute")) or None,
             "scene": _blank_to_none(prefs.get("scene")),
-            "record": recording_path() if prefs.get("record") else None,
+            "record": recording_path() if prefs.get("record") else False,
             "hardware": _blank_to_none(prefs.get("hardware")),
             "noise": _blank_to_none(prefs.get("noise")),
             "display": display,
@@ -237,13 +239,18 @@ class StreamController:
 
     def __init__(self, runner=run_with_reconnect, which=lambda _name: find_ffmpeg(),
                  os_name=None, display=None, probe=probe_encoders,
-                 pick_encoder=choose_working_encoder):
+                 pick_encoder=choose_working_encoder, clock=time.monotonic,
+                 report_dir=None):
         self._runner = runner
         self._which = which
         self._os_name = os_name or detect_os()
         self._display = display
         self._probe = probe
         self._pick_encoder = pick_encoder
+        self._clock = clock
+        self._report_dir = report_dir
+        self._analytics = False
+        self._preset_name = None
         self._lock = threading.Lock()
         self._log = collections.deque(maxlen=LOG_LINES)
         self._banner = BANNER_OFFLINE
@@ -252,6 +259,7 @@ class StreamController:
         self._stop = None
         self._key = ""
         self._health = HealthTracker()
+        self._advisor = AdaptiveAdvisor()
 
     # -- state for the GUI -------------------------------------------------
     def is_running(self):
@@ -274,9 +282,21 @@ class StreamController:
         with self._lock:
             return " ".join(self._health.diagnose())
 
+    def health_summary(self):
+        """Running health numbers for the dashboard cards."""
+        with self._lock:
+            return self._health.summary()
+
+    def recommendations(self):
+        """Suggestions (list of adaptive.Recommendation). The GUI shows them;
+        only the user decides whether to change a setting."""
+        with self._lock:
+            return self._advisor.recommendations()
+
     def _on_status(self, state, detail):
         with self._lock:
             self._health.on_status(state, detail)
+            self._advisor.on_status(state, detail)
             self._banner = banner_for(state, detail)
             if state == STATUS_FAILED:
                 self._help = HELP_TEXT["failed"]
@@ -309,6 +329,11 @@ class StreamController:
         self._key = key
         with self._lock:
             self._health = HealthTracker(target_kbps=settings.video_kbps)
+            self._preset_name = effective_preset_name(
+                {"preset": prefs.get("preset")}, {}, _blank_to_none(prefs.get("hardware")))
+            self._advisor = AdaptiveAdvisor(
+                self._preset_name, settings.video_kbps, settings.fps)
+            self._analytics = prefs.get("analytics") is True  # opt-in only
             self._help = ""
             self._banner = BANNER_STARTING
             self._log.clear()
@@ -322,6 +347,8 @@ class StreamController:
         return None
 
     def _work(self, settings, key, ffmpeg, keep_trying, record_path=None):
+        started = self._clock()
+        encoder = None
         try:
             try:
                 available = self._probe(ffmpeg)
@@ -353,6 +380,23 @@ class StreamController:
             self._on_status(STATUS_FAILED, None)
         finally:
             self._key = ""
+            self._save_report(settings, encoder, self._clock() - started, record_path)
+
+    def _save_report(self, settings, encoder, seconds, test_file):
+        """Opt-in session report; failures go to the log, never crash the worker."""
+        with self._lock:
+            summary = self._health.summary()
+        if not self._analytics or test_file or not (summary["samples"] or summary["reconnects"]):
+            return
+        try:
+            path = write_session_report(
+                self._report_dir or reports_dir(self._os_name),
+                build_session_report(summary, encoder, seconds, bool(settings.record_to),
+                                     preset=self._preset_name,
+                                     hardware_profile=settings.hardware_profile))
+            self._write("Session report saved to %s (no stream key inside)\n" % path)
+        except OSError as exc:
+            self._write("Could not save the session report: %s\n" % exc)
 
     def stop(self, wait=True):
         """Stop the stream. wait=False returns at once (for the GUI thread);
