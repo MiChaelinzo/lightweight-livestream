@@ -304,6 +304,10 @@ python3 tools/export_presets.py --check  # fails if it is stale
 | WebGL rendering, shaders, layout, CSS | UNVERIFIED | no browser or GPU in the dev sandbox |
 | Screen capture and recording | UNVERIFIED | needs a real browser |
 | Vercel deployment and headers (CSP) | UNVERIFIED | not deployed yet |
+| Companion logic (timer, goal, URL parsing, chat parsing/sanitizing) | VERIFIED | node tests |
+| Companion rendering, Twitch chat and viewer API | UNVERIFIED | no browser or network in the dev sandbox; YouTube not implemented |
+| `build_windows_portable.py` folder layout | VERIFIED | unit tests and a `--layout-only` run |
+| `LightStream.exe` build with PyInstaller | UNVERIFIED | needs Windows and PyInstaller |
 
 ## Verification status
 
@@ -347,6 +351,11 @@ Unzip anywhere, put `ffmpeg.exe` (or `ffmpeg`) into the `ffmpeg/` folder, then r
 
 - VERIFIED (Linux): the zip builds, unzips, and `init` from the unzipped copy wrote `data/config.json` and nothing in the home folder; unit tests cover flag, env var, config path and ffmpeg lookup.
 - UNVERIFIED: running from a Windows USB stick, and the GUI in portable mode (no display in the dev sandbox; the GUI has still never been rendered).
+
+## Browser companion and Windows portable folder
+
+- `web/companion/` is a static overlay page (chat, viewers, timer, goal). Open `/companion` in a browser and capture that window with a browser-source scene. Settings go in the URL fragment, for example `/companion#channel=name&goal=200`; `clientId` and `token` (optional, for viewer counts) are read from the fragment only, so they are not sent to the host and never stored. With no channel it shows demo data.
+- `python tools/build_windows_portable.py` creates `LightStreamPortable/` with `LightStream.exe` (needs `pip install pyinstaller`, run on Windows), `portable.flag`, `ffmpeg/`, `scenes/`, `recordings/`, `config/`. Use `--layout-only` to skip the exe. FFmpeg is not bundled; put your own in `ffmpeg/`.
 
 ## Build a standalone app (optional)
 

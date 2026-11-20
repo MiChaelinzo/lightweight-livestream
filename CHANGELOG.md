@@ -10,6 +10,9 @@ Core engine for the ultra low-end studio. Real FFmpeg and hardware behavior is U
 - New: scene `overlays` (text, clock, FPS, REC indicator, PNG) compiled to FFmpeg filters in `overlays.py`.
 - New: opt-in session reports in `reports/session-YYYYMMDD.json` (`--analytics`), no stream key.
 - New: sidebar window (ttk only, lazy pages) with health cards, Apply/Dismiss suggestions, scene Save/Duplicate/Import/Export, overlay position/scale controls with filter text preview, hardware profile dropdown and an opt-in session report checkbox. Logic in `gui_pages.py`. Window rendering is UNVERIFIED (no display).
+- New: `web/companion/` browser overlay (chat, viewer count, stream timer, goal bar). Demo mode without credentials; Twitch chat and viewer count optional, client ID and token read from the URL fragment only and never stored. CSP `connect-src` allows `wss://irc-ws.chat.twitch.tv` and `https://api.twitch.tv`. Twitch/YouTube connections are UNVERIFIED (no network); YouTube is not implemented.
+- New: `tools/build_windows_portable.py` builds `LightStreamPortable/` (exe via PyInstaller when installed, `--layout-only` otherwise). No binaries or FFmpeg are bundled. The exe build is UNVERIFIED.
+- New: web showcase upgrade: animated hero title, illustrative SVG mockups (labeled as not real captures), design-difference comparison with OBS (no measurements), Intel HD and MX250 guides.
 - Refactor: overlay position helpers moved into `filtergraph.py`; `config.effective_preset_name`.
 
 ## 0.6.0
