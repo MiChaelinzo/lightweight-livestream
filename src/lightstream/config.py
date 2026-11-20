@@ -7,7 +7,7 @@ import sys
 from .audio import NOISE_LEVELS, require_model_file
 from .command import StreamSettings
 from .hardware import cap_preset_name, cap_video_kbps, get_profile
-from .portable import data_dir, is_portable
+from .portable import data_dir, is_portable, recordings_dir
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
 from .scenes import load_scenes, select_scene
 
@@ -34,6 +34,13 @@ EXAMPLE_CONFIG = {
 
 
 DEFAULT_RECORDING_FILE = "lightstream-recording.mkv"
+
+
+def default_recording_path(root=None, environ=None):
+    """recordings/ in the app folder in portable mode, else the plain file name."""
+    if is_portable(root, environ):
+        return os.path.join(recordings_dir(root), DEFAULT_RECORDING_FILE)
+    return DEFAULT_RECORDING_FILE
 
 
 def config_path(os_name=None, environ=None, root=None):
@@ -144,6 +151,8 @@ def resolve_settings(cli, file_cfg):
     record = _pick("record", cli, file_cfg)
     if record is None and hardware and get_profile(hardware).record_by_default:
         record = DEFAULT_RECORDING_FILE
+    if record == DEFAULT_RECORDING_FILE:
+        record = default_recording_path()
     return StreamSettings(
         platform=_pick("platform", cli, file_cfg, "twitch"),
         custom_url=_pick("url", cli, file_cfg),

@@ -265,7 +265,7 @@ The window now has a sidebar (Dashboard, Setup wizard, Scenes, Overlays, Recordi
 
 ### Windows portable builder (0.7.0)
 
-`python tools/build_windows_portable.py` creates `LightStreamPortable/` with `portable.flag`, `ffmpeg/` and `data/` (settings, scenes and reports are stored in `data/`). `LightStream.exe` is built with PyInstaller only if PyInstaller is installed; otherwise use `--layout-only`. FFmpeg is never bundled: the `ffmpeg/` folder gets a note telling you to add your own copy. The folder layout is tested; the exe build is UNVERIFIED.
+`python tools/build_windows_portable.py` creates `LightStreamPortable/` with `portable.flag`, `ffmpeg/`, `scenes/`, `recordings/` and `config/`. In portable mode scene collections go to `scenes/` and the default recording to `recordings/`. `config/` is created but NOT used yet: settings, `scenes.json` and reports are still stored in `data/`, which the app creates on first run. `LightStream.exe` is built with PyInstaller only if PyInstaller is installed; otherwise use `--layout-only`. FFmpeg is never bundled: the `ffmpeg/` folder gets a note telling you to add your own copy. The folder layout is tested; the exe build is UNVERIFIED.
 
 ### Web showcase upgrade (0.7.0)
 
@@ -375,7 +375,7 @@ Unzip anywhere, put `ffmpeg.exe` (or `ffmpeg`) into the `ffmpeg/` folder, then r
 ## Browser companion and Windows portable folder
 
 - `web/companion/` is a static overlay page (chat, viewers, timer, goal). Open `/companion` in a browser and capture that window with a browser-source scene. Settings go in the URL fragment, for example `/companion#channel=name&goal=200`; `clientId` and `token` (optional, for viewer counts) are read from the fragment only, so they are not sent to the host and never stored. With no channel it shows demo data.
-- `python tools/build_windows_portable.py` creates `LightStreamPortable/` with `LightStream.exe` (needs `pip install pyinstaller`, run on Windows), `portable.flag`, `ffmpeg/`, `data/`. Use `--layout-only` to skip the exe. FFmpeg is not bundled; put your own in `ffmpeg/`.
+- `python tools/build_windows_portable.py` creates `LightStreamPortable/` with `LightStream.exe` (needs `pip install pyinstaller`, run on Windows), `portable.flag`, `ffmpeg/`, `scenes/`, `recordings/`, `config/` (`config/` is not read yet; settings stay in `data/`). Use `--layout-only` to skip the exe. FFmpeg is not bundled; put your own in `ffmpeg/`.
 
 ## Build a standalone app (optional)
 

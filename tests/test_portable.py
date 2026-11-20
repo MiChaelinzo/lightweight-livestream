@@ -98,10 +98,10 @@ class WindowsPortableBuilderTests(unittest.TestCase):
 
     def test_layout_creates_expected_structure(self):
         self.builder.create_layout(self.out)
-        for name in ("ffmpeg", "data"):
+        for name in ("ffmpeg", "scenes", "recordings", "config"):
             self.assertTrue(os.path.isdir(os.path.join(self.out, name)), name)
-        for name in ("scenes", "recordings", "config"):
-            self.assertFalse(os.path.exists(os.path.join(self.out, name)), name)
+        self.assertEqual(sorted(os.listdir(self.out)),
+                         ["config", "ffmpeg", "portable.flag", "recordings", "scenes"])
         self.assertTrue(os.path.isfile(os.path.join(self.out, "portable.flag")))
         self.assertFalse(os.path.exists(os.path.join(self.out, "LightStream.exe")))
 
@@ -136,3 +136,36 @@ class WindowsPortableBuilderTests(unittest.TestCase):
 
         with self.assertRaises(self.builder.BuildError):
             self.builder.build_exe(self.out, run=lambda cmd: Result(), find_module=lambda name: object())
+
+
+class PortableFoldersTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+        open(os.path.join(self.root, "portable.flag"), "w").close()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_collection_dir_uses_portable_scenes_folder(self):
+        from lightstream.scene_collections import collection_dir
+        self.assertEqual(collection_dir("/x/scenes.json", root=self.root, environ={}),
+                         os.path.join(self.root, "scenes"))
+
+    def test_collection_dir_normal_when_not_portable(self):
+        from lightstream.scene_collections import collection_dir
+        other = os.path.join(self.root, "none")
+        os.makedirs(other)
+        self.assertEqual(collection_dir("/x/scenes.json", root=other, environ={}),
+                         os.path.join("/x", "scenes"))
+
+    def test_default_recording_goes_to_recordings_when_portable(self):
+        from lightstream.config import DEFAULT_RECORDING_FILE, default_recording_path
+        self.assertEqual(default_recording_path(self.root, {}),
+                         os.path.join(self.root, "recordings", DEFAULT_RECORDING_FILE))
+
+    def test_default_recording_plain_when_not_portable(self):
+        from lightstream.config import DEFAULT_RECORDING_FILE, default_recording_path
+        other = os.path.join(self.root, "none")
+        os.makedirs(other)
+        self.assertEqual(default_recording_path(other, {}), DEFAULT_RECORDING_FILE)

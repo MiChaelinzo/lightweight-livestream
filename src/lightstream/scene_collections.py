@@ -10,6 +10,8 @@ or replaces a scene unless force is set.
 
 import json
 import os
+
+from .portable import is_portable, scenes_dir
 import re
 
 from .scenes import parse_scene, parse_scenes
@@ -60,8 +62,10 @@ def scene_filename(name):
     return slug + COLLECTION_SUFFIX
 
 
-def collection_dir(scenes_file):
-    """scenes/ next to the working scenes file."""
+def collection_dir(scenes_file, root=None, environ=None):
+    """Portable mode: scenes/ in the app folder. Otherwise scenes/ next to the working scenes file."""
+    if is_portable(root, environ):
+        return scenes_dir(root)
     return os.path.join(os.path.dirname(os.path.abspath(scenes_file)), COLLECTION_DIRNAME)
 
 
