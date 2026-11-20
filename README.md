@@ -261,11 +261,11 @@ The window now has a sidebar (Dashboard, Setup wizard, Scenes, Overlays, Recordi
 
 ### Browser companion overlay (0.7.0)
 
-`web/companion/` is a static page you add as a browser source or open in a window: chat, viewer count, stream timer and goal bar. With no credentials it runs in demo mode. Twitch chat uses anonymous IRC; the viewer count needs a client ID and token that you pass in the URL fragment (after `#`). They are read at runtime, never stored and never committed. YouTube is not implemented. Chat text is inserted with `textContent`. The CSP in `web/vercel.json` allows `wss://irc-ws.chat.twitch.tv` and `https://api.twitch.tv`. Logic is tested with node; rendering and the Twitch connection are UNVERIFIED.
+`web/companion/` is a static page you add as a browser source or open in a window: chat, viewer count, stream timer and goal bar. With no credentials it runs in demo mode. Twitch chat uses anonymous IRC; the viewer count needs a client ID and token that you pass in the URL fragment (after `#`). They are read at runtime, never stored and never committed. YouTube is not implemented. Chat text is inserted with `textContent`. The CSP in `web/vercel.json` allows `wss://irc-ws.chat.twitch.tv` and `https://api.twitch.tv` only for `/companion/*`; the showcase keeps `connect-src 'self'`. OBS stores a browser-source URL in its scene file, so a token in the fragment is saved there: use a limited-scope token and do not share the scene file. Logic is tested with node; rendering and the Twitch connection are UNVERIFIED.
 
 ### Windows portable builder (0.7.0)
 
-`python tools/build_windows_portable.py` creates `LightStreamPortable/` with `portable.flag`, `ffmpeg/`, `scenes/`, `recordings/` and `config/`. `LightStream.exe` is built with PyInstaller only if PyInstaller is installed; otherwise use `--layout-only`. FFmpeg is never bundled: the `ffmpeg/` folder gets a note telling you to add your own copy. The folder layout is tested; the exe build is UNVERIFIED.
+`python tools/build_windows_portable.py` creates `LightStreamPortable/` with `portable.flag`, `ffmpeg/` and `data/` (settings, scenes and reports are stored in `data/`). `LightStream.exe` is built with PyInstaller only if PyInstaller is installed; otherwise use `--layout-only`. FFmpeg is never bundled: the `ffmpeg/` folder gets a note telling you to add your own copy. The folder layout is tested; the exe build is UNVERIFIED.
 
 ### Web showcase upgrade (0.7.0)
 
@@ -292,7 +292,7 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|nvidia_mx|nvidia|generic] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|nvidia|generic] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 
@@ -375,7 +375,7 @@ Unzip anywhere, put `ffmpeg.exe` (or `ffmpeg`) into the `ffmpeg/` folder, then r
 ## Browser companion and Windows portable folder
 
 - `web/companion/` is a static overlay page (chat, viewers, timer, goal). Open `/companion` in a browser and capture that window with a browser-source scene. Settings go in the URL fragment, for example `/companion#channel=name&goal=200`; `clientId` and `token` (optional, for viewer counts) are read from the fragment only, so they are not sent to the host and never stored. With no channel it shows demo data.
-- `python tools/build_windows_portable.py` creates `LightStreamPortable/` with `LightStream.exe` (needs `pip install pyinstaller`, run on Windows), `portable.flag`, `ffmpeg/`, `scenes/`, `recordings/`, `config/`. Use `--layout-only` to skip the exe. FFmpeg is not bundled; put your own in `ffmpeg/`.
+- `python tools/build_windows_portable.py` creates `LightStreamPortable/` with `LightStream.exe` (needs `pip install pyinstaller`, run on Windows), `portable.flag`, `ffmpeg/`, `data/`. Use `--layout-only` to skip the exe. FFmpeg is not bundled; put your own in `ffmpeg/`.
 
 ## Build a standalone app (optional)
 

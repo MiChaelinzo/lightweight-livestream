@@ -98,8 +98,10 @@ class WindowsPortableBuilderTests(unittest.TestCase):
 
     def test_layout_creates_expected_structure(self):
         self.builder.create_layout(self.out)
-        for name in ("ffmpeg", "scenes", "recordings", "config"):
+        for name in ("ffmpeg", "data"):
             self.assertTrue(os.path.isdir(os.path.join(self.out, name)), name)
+        for name in ("scenes", "recordings", "config"):
+            self.assertFalse(os.path.exists(os.path.join(self.out, name)), name)
         self.assertTrue(os.path.isfile(os.path.join(self.out, "portable.flag")))
         self.assertFalse(os.path.exists(os.path.join(self.out, "LightStream.exe")))
 

@@ -7,6 +7,12 @@
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "no-referrer" },
         { "key": "Permissions-Policy", "value": "display-capture=(self), camera=(), geolocation=()" },
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; media-src 'self' blob:; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'" }
+      ]
+    },
+    {
+      "source": "/companion/(.*)",
+      "headers": [
         { "key": "Content-Security-Policy", "value": "default-src 'self'; media-src 'self' blob:; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' wss://irc-ws.chat.twitch.tv https://api.twitch.tv; base-uri 'none'; frame-ancestors 'none'" }
       ]
     },

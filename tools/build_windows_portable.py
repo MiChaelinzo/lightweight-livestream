@@ -1,7 +1,7 @@
 """Build the Windows portable folder: python tools/build_windows_portable.py [--layout-only] [--output DIR]
 
-Creates LightStreamPortable/ with LightStream.exe, portable.flag, ffmpeg/, scenes/,
-recordings/ and config/. The exe is built with PyInstaller, which must already be
+Creates LightStreamPortable/ with LightStream.exe, portable.flag, ffmpeg/ and data/
+(settings, scenes and reports live in data/). The exe is built with PyInstaller, which must already be
 installed (pip install pyinstaller) and must run on Windows to produce a Windows exe.
 FFmpeg is never bundled: ffmpeg/ gets a note telling the user to add their own copy.
 --layout-only (alias --dry-run) creates the folders and text files without the exe.
@@ -17,7 +17,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_OUTPUT = "LightStreamPortable"
 EXE_NAME = "LightStream.exe"
-SUBFOLDERS = ("ffmpeg", "scenes", "recordings", "config")
+SUBFOLDERS = ("ffmpeg", "data")
 FLAG_TEXT = "Settings are stored in ./data next to LightStream.exe\n"
 FFMPEG_NOTE = ("LightStream does not include FFmpeg.\n"
                "Download ffmpeg.exe yourself (https://ffmpeg.org/download.html) and put it in this folder.\n"
