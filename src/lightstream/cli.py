@@ -28,6 +28,9 @@ from .platforms import PLATFORMS, parse_audio_devices
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
 from .overlays import missing_images
+from .scene_collections import (collection_dir, export_collection, export_scene,
+                                import_scenes, scene_filename,
+                                write_example_collection)
 from .scenes import load_scenes, write_example_scenes
 
 
@@ -55,7 +58,17 @@ def build_parser():
     b.add_argument("--measure-url", help="a URL you control that accepts a POST upload")
     b.add_argument("--hardware", help="hardware profile, e.g. intel_hd")
     sc = sub.add_parser("scenes", help="list, check or create a scenes file")
-    sc.add_argument("action", choices=("list", "validate", "example"))
+    sc.add_argument("action", choices=("list", "validate", "example", "export", "import"))
+    sc.add_argument("target", nargs="?",
+                    help="export: scene name (omit to export every scene); "
+                         "import: a scene file or a folder of .json files")
+    sc.add_argument("--to", help="export: file (one scene) or folder (all scenes); "
+                                 "default is scenes/ next to the scenes file")
+    sc.add_argument("--collection", action="store_true",
+                    help="example: write scenes/gaming.json, just-chatting.json, "
+                         "work.json, retro.json instead of scenes.json")
+    sc.add_argument("--force", action="store_true",
+                    help="export/import: replace existing files or scenes")
     sc.add_argument("--scenes-file", help="scenes file (default: scenes.json next to config.json)")
     s = sub.add_parser("start", help="start streaming")
     s.add_argument("--platform", choices=PLATFORMS)
@@ -108,8 +121,32 @@ def resolve_hardware(cli_value, file_cfg, os_name, detect=detect_gpu_names):
     return classify_gpus(detect(os_name))
 
 
+def _cmd_scene_transfer(args, path, out):
+    if args.action == "import":
+        if not args.target:
+            raise ValueError("Tell import where to read from: lightstream scenes import PATH")
+        added, replaced = import_scenes(path, args.target, args.force)
+        out.write("Imported %d new, replaced %d: %s\n"
+                  % (len(added), len(replaced), ", ".join(added + replaced) or "nothing"))
+        return 0
+    folder = args.to or collection_dir(path)
+    if args.target:
+        dest = args.to or os.path.join(folder, scene_filename(args.target))
+        out.write("Wrote %s\n" % export_scene(path, args.target, dest, args.force))
+    else:
+        for written in export_collection(path, folder, args.force):
+            out.write("Wrote %s\n" % written)
+    return 0
+
+
 def cmd_scenes(args, out):
     path = args.scenes_file or scenes_path()
+    if args.action in ("export", "import"):
+        return _cmd_scene_transfer(args, path, out)
+    if args.action == "example" and args.collection:
+        for written in write_example_collection(collection_dir(path)):
+            out.write("Wrote %s\n" % written)
+        return 0
     if args.action == "example":
         write_example_scenes(path)  # raises FileExistsError, never overwrites
         out.write("Wrote %s\n" % path)
