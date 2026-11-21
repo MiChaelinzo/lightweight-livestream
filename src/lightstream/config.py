@@ -36,6 +36,7 @@ EXAMPLE_CONFIG = {
     "profile": None,
     "stream_preset": None,
     "audio_profile": None,
+    "auto_scale": False,
 }
 
 
