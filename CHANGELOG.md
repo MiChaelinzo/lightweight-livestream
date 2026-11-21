@@ -11,6 +11,8 @@
 - New: opt-in `--auto-scale` (config `auto_scale`, GUI checkbox). Steps a quality ladder down and up with hysteresis, one step at a time, by restarting ffmpeg through the runner's reconnect path (`run_with_reconnect(restart=...)`). Off by default. See `docs/ARCHITECTURE-NOTES.md` for the alternatives evaluated.
 - New: with `--analytics`, `reports/history.json` keeps the newest 30 sessions (no key, URL or paths) and lets the optimizer raise confidence.
 - Fix: starting from the window now passes the performance profile, microphone profile and CPU affinity (Gaming First) to ffmpeg. The window gains Performance profile, Microphone profile and Auto-scale controls.
+- New: `lightstream bench` writes a JSON report of startup time, memory, per-tick CPU cost, command build time and a synthetic encode per profile (each metric labelled measured or unavailable). Results from the dev sandbox are in `docs/BENCHMARKS.md`, including import time and memory against v0.8.0.
+- New: `lightstream readiness` gives a 0 to 100 stream readiness score with points and a plain fix per factor (optional `--upload-mbps`, `--platform`/`--url` connection test). It is also printed by `lightstream setup` and the window's one-click setup.
 
 ## 0.8.0
 
