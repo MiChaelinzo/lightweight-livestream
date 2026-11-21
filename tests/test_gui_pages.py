@@ -163,5 +163,24 @@ class TelemetryCardTests(unittest.TestCase):
         self.assertEqual("200 MB", cards["ffmpeg memory"])
 
 
+class ProfileChoiceTests(unittest.TestCase):
+    def test_profile_choices_roundtrip(self):
+        self.assertEqual(gp.AUTO_PROFILE_LABEL, gp.profile_choices()[0])
+        self.assertIn("competitive", gp.profile_choices())
+        self.assertEqual("", gp.profile_pref(gp.AUTO_PROFILE_LABEL))
+        self.assertEqual("potato", gp.profile_pref(gp.profile_label("potato")))
+        self.assertEqual(gp.AUTO_PROFILE_LABEL, gp.profile_label("bogus"))
+
+    def test_audio_profile_choices_roundtrip(self):
+        self.assertEqual(gp.NO_AUDIO_PROFILE_LABEL, gp.audio_profile_choices()[0])
+        self.assertEqual("", gp.audio_profile_pref(gp.NO_AUDIO_PROFILE_LABEL))
+        self.assertEqual("asmr", gp.audio_profile_pref(gp.audio_profile_label("asmr")))
+
+    def test_applying_a_preset_suggestion_clears_the_profile(self):
+        rec = Recommendation(KIND_PRESET_DOWNGRADE, "light", "x")
+        prefs, _ = gp.apply_recommendation(rec, {"preset": "balanced", "profile": "quality"})
+        self.assertEqual(("light", ""), (prefs["preset"], prefs["profile"]))
+
+
 if __name__ == "__main__":
     unittest.main()

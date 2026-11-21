@@ -81,6 +81,10 @@ class StreamWindow:
         self.scene = tk.StringVar(value=saved.get("scene") or gc.NO_SCENE_LABEL)
         self.hardware = tk.StringVar(value=gp.hardware_label(saved.get("hardware")))
         self.analytics = tk.BooleanVar(value=saved.get("analytics") is True)
+        self.profile = tk.StringVar(value=gp.profile_label(saved.get("profile")))
+        self.audio_profile = tk.StringVar(
+            value=gp.audio_profile_label(saved.get("audio_profile")))
+        self.auto_scale = tk.BooleanVar(value=saved.get("auto_scale") is True)
         self.noise = saved.get("noise")
         self.status = tk.StringVar(value="")
 
@@ -245,6 +249,14 @@ class StreamWindow:
                            ("Audio device (empty = automatic)", self.audio)):
             self._entry(frame, label, var)
         self._combo(frame, "Hardware profile", self.hardware, gp.hardware_choices())
+        self._combo(frame, "Performance profile (replaces Strength when chosen)",
+                    self.profile, gp.profile_choices())
+        self._combo(frame, "Microphone profile", self.audio_profile,
+                    gp.audio_profile_choices())
+        ttk.Checkbutton(frame, text="Auto-scale quality (off by default). When the "
+                        "stream struggles it steps quality down, and back up when "
+                        "healthy. Each step restarts the stream for a moment.",
+                        variable=self.auto_scale).pack(anchor="w")
         ttk.Checkbutton(frame, text="Mute (send silence)", variable=self.mute
                         ).pack(anchor="w")
         ttk.Checkbutton(frame, text="Keep trying if the internet drops",
@@ -273,12 +285,16 @@ class StreamWindow:
             "hardware": gp.hardware_pref(self.hardware.get()),
             "noise": self.noise,
             "analytics": self.analytics.get(),
+            "profile": gp.profile_pref(self.profile.get()),
+            "audio_profile": gp.audio_profile_pref(self.audio_profile.get()),
+            "auto_scale": self.auto_scale.get(),
         }
 
     def apply_prefs(self, prefs):
         """Show changed prefs in the controls (used by the Apply button)."""
         self.strength.set(gc.label_for(gc.STRENGTH_CHOICES, prefs.get("preset")))
         self.bitrate.set(str(prefs.get("bitrate") or ""))
+        self.profile.set(gp.profile_label(prefs.get("profile")))
 
     def on_start(self):
         prefs = self.collect_prefs()
@@ -394,7 +410,9 @@ class StreamWindow:
         for label, card in zip(self.card_values,
                                gp.health_cards(self.controller.health_summary())):
             label.config(text=card.value)
-        self.advice.config(text=self.controller.health_advice() if running else "")
+        self.advice.config(text="\n".join(
+            filter(None, [self.controller.health_advice()]
+                   + self.controller.insight_lines())) if running else "")
         self.start_btn.config(state="disabled" if running else "normal")
         self.test_btn.config(state="disabled" if running else "normal")
         self.stop_btn.config(state="normal" if running else "disabled")

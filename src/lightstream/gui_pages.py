@@ -17,6 +17,8 @@ from .overlays import (CLOCK_FORMATS, DEFAULT_IMAGE_PERCENT, KIND_CLOCK, KIND_IM
                        KIND_TEXT, MAX_FONT_SIZE, MAX_OVERLAYS, MIN_FONT_SIZE,
                        OVERLAY_KINDS, drawtext_stage, image_stage,
                        parse_overlay)
+from .audio import AUDIO_PROFILES
+from .perf_profiles import PERF_PROFILES
 from .presets import PRESETS
 
 # (page id, sidebar label). Pages are built lazily by gui.py on first visit.
@@ -68,6 +70,36 @@ def hardware_pref(label):
 
 def hardware_label(pref):
     return pref if pref in PROFILES else AUTO_HARDWARE_LABEL
+
+
+AUTO_PROFILE_LABEL = "Automatic (use Strength above)"
+NO_AUDIO_PROFILE_LABEL = "None"
+
+
+def profile_choices():
+    """Dropdown labels for the performance profile, 'automatic' first."""
+    return [AUTO_PROFILE_LABEL] + list(PERF_PROFILES)
+
+
+def profile_pref(label):
+    """Saved value for a profile label ('' means none chosen)."""
+    return label if label in PERF_PROFILES else ""
+
+
+def profile_label(pref):
+    return pref if pref in PERF_PROFILES else AUTO_PROFILE_LABEL
+
+
+def audio_profile_choices():
+    return [NO_AUDIO_PROFILE_LABEL] + list(AUDIO_PROFILES)
+
+
+def audio_profile_pref(label):
+    return label if label in AUDIO_PROFILES else ""
+
+
+def audio_profile_label(pref):
+    return pref if pref in AUDIO_PROFILES else NO_AUDIO_PROFILE_LABEL
 
 
 # -- dashboard ---------------------------------------------------------------
@@ -141,6 +173,7 @@ def apply_recommendation(rec, prefs):
         if rec.value not in PRESETS:
             raise ValueError("Unknown preset %r" % (rec.value,))
         updated["preset"] = rec.value
+        updated["profile"] = ""  # a chosen profile would override the new strength
         return updated, "Strength set to %s. It applies the next time you press START." % rec.value
     updated["bitrate"] = str(rec.value)
     return updated, "Video speed set to %d kbps. It applies the next time you press START." % rec.value
