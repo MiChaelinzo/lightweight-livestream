@@ -22,6 +22,7 @@ except ImportError:  # some Linux Pythons ship without tkinter
 
 from . import gui_controller as gc
 from . import gui_pages as gp
+from .telemetry import TelemetrySampler, UNKNOWN_SAMPLE
 from .cli import cmd_doctor
 from .config import scenes_path
 from .portable import (ffmpeg_download_url, ffmpeg_guidance, find_ffmpeg,
@@ -163,6 +164,15 @@ class StreamWindow:
             value = ttk.Label(self.cards_frame, text=card.value, font=STEP_FONT)
             value.grid(row=1, column=index, padx=6)
             self.card_values.append(value)
+        self.telemetry_frame = ttk.LabelFrame(frame, text="This PC", padding=6)
+        self.telemetry_frame.pack(fill="x", pady=6)
+        self.telemetry_values = []
+        for index, card in enumerate(gp.telemetry_cards(UNKNOWN_SAMPLE)):
+            ttk.Label(self.telemetry_frame, text=card.title).grid(row=0, column=index, padx=6)
+            value = ttk.Label(self.telemetry_frame, text=card.value)
+            value.grid(row=1, column=index, padx=6)
+            self.telemetry_values.append(value)
+        self.telemetry = TelemetrySampler()
         self.advice = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
         self.advice.pack(fill="x")
         self.rec_frame = ttk.LabelFrame(
@@ -376,6 +386,11 @@ class StreamWindow:
         self.root.after(POLL_MS, self.poll)
 
     def _poll_dashboard(self, running, log_text):
+        if self.root.winfo_viewable():  # sampler skips ticks until 2 s have passed
+            sample = self.telemetry.tick_if_due()
+            if sample is not None:
+                for label, card in zip(self.telemetry_values, gp.telemetry_cards(sample)):
+                    label.config(text=card.value)
         for label, card in zip(self.card_values,
                                gp.health_cards(self.controller.health_summary())):
             label.config(text=card.value)

@@ -148,5 +148,20 @@ class ImportTests(unittest.TestCase):
         self.assertTrue(hasattr(gui, "StreamWindow"))
 
 
+class TelemetryCardTests(unittest.TestCase):
+    def test_unknown_fields_show_n_a(self):
+        from lightstream.telemetry import UNKNOWN_SAMPLE
+        self.assertEqual({"n/a"}, {c.value for c in gp.telemetry_cards(UNKNOWN_SAMPLE)})
+
+    def test_known_fields_are_formatted(self):
+        from lightstream.telemetry import Sample
+        cards = {c.title: c.value for c in gp.telemetry_cards(
+            Sample(12.4, 50.0, 4096.0, 61.0, None, None, 200.0))}
+        self.assertEqual("12%", cards["CPU"])
+        self.assertEqual("61 C", cards["CPU temp"])
+        self.assertEqual("n/a", cards["GPU"])
+        self.assertEqual("200 MB", cards["ffmpeg memory"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -59,11 +59,21 @@ def backoff_delay(failures):
     return min(2 ** max(failures - 1, 0), BACKOFF_CAP_SECONDS)
 
 
-def priority_kwargs(os_name):
-    """Popen kwargs that make ffmpeg yield to the game."""
+def priority_kwargs(os_name, cpu_affinity=None, nice=os.nice,
+                    set_affinity=getattr(os, "sched_setaffinity", None)):
+    """Popen kwargs that make ffmpeg yield to the game.
+
+    cpu_affinity is a set of CPU ids to confine ffmpeg to. It is applied only
+    where os.sched_setaffinity exists (Linux); elsewhere it is a no-op.
+    """
     if os_name == "windows":
         return {"creationflags": WINDOWS_BELOW_NORMAL}
-    return {"preexec_fn": lambda: os.nice(10)}
+
+    def lower_priority():
+        nice(10)
+        if cpu_affinity and set_affinity is not None:
+            set_affinity(0, set(cpu_affinity))
+    return {"preexec_fn": lower_priority}
 
 
 def parse_progress(line):
@@ -104,7 +114,7 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
                        sleep=None, clock=time.monotonic,
                        out=sys.stderr, max_failures=None, stop=None,
                        on_status=None, encoder=None, argv_factory=None,
-                       argv_for_attempt=None):
+                       argv_for_attempt=None, cpu_affinity=None):
     """Run ffmpeg until it exits cleanly, is stopped, or fails too often.
 
     max_failures=None keeps trying forever. stop is a threading.Event; setting
@@ -117,6 +127,7 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
     trigger it. Without on_status, progress lines are echoed to out.
     argv_for_attempt(attempt, encoder), when given, returns the argv for each
     relaunch (attempt 1, 2, ...), e.g. a new recording file name per attempt.
+    cpu_affinity (a set of CPU ids) confines ffmpeg to those cores on Linux.
     Returns an exit code.
     """
     def report(state, detail=None):
@@ -136,7 +147,7 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
         report(STATUS_STARTING)
         proc = popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                      stderr=subprocess.PIPE, universal_newlines=True,
-                     **priority_kwargs(os_name))
+                     **priority_kwargs(os_name, cpu_affinity))
         finished = threading.Event()
         encoder_blamed = False
         if stop is not None:

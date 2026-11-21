@@ -14,7 +14,7 @@ from .command import (build_command, numbered_recording_path,
 from .config import (config_path, detect_os, load_file_config, resolve_key,
                      resolve_settings, scenes_path, effective_preset_name, write_example_config,
                      DEFAULT_RECORDING_FILE)
-from .audio import NOISE_LEVELS
+from .audio import AUDIO_PROFILES, NOISE_LEVELS
 from .bandwidth import measure_upload, mbps_to_kbps, recommend
 from .encoders import (HARDWARE_ORDER, SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
@@ -25,6 +25,7 @@ from .analytics import (analytics_enabled, build_session_report, reports_dir,
                         write_session_report)
 from .health import HealthTracker
 from .platforms import PLATFORMS, parse_audio_devices
+from .perf_profiles import (PERF_PROFILES, STREAM_PRESETS, affinity_cpus)
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
 from .overlays import missing_images
@@ -45,6 +46,8 @@ def build_parser():
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("doctor", help="check ffmpeg and available encoders")
     sub.add_parser("presets", help="list quality presets")
+    sub.add_parser("profiles", help="list performance profiles, stream presets "
+                                    "and audio profiles")
     sub.add_parser("init", help="write an example config file")
     sub.add_parser("devices", help="list audio devices (Windows and macOS)")
     sub.add_parser("gui", help="open the easy window (3 steps, for beginners)")
@@ -74,6 +77,12 @@ def build_parser():
     s.add_argument("--platform", choices=PLATFORMS)
     s.add_argument("--url", help="RTMP base URL for --platform custom")
     s.add_argument("--preset", choices=sorted(PRESETS))
+    s.add_argument("--profile", choices=sorted(PERF_PROFILES),
+                   help="performance profile (see: lightstream profiles)")
+    s.add_argument("--stream-preset", choices=sorted(STREAM_PRESETS),
+                   help="platform + profile + audio bundle (see: lightstream profiles)")
+    s.add_argument("--audio-profile", choices=sorted(AUDIO_PROFILES),
+                   help="microphone filter chain; --noise light/ai takes priority")
     s.add_argument("--fps", type=int)
     s.add_argument("--res", dest="resolution", help="for example 854x480")
     s.add_argument("--bitrate", type=int, help="video kbps")
@@ -224,6 +233,20 @@ def cmd_presets(out):
     return 0
 
 
+def cmd_profiles(out):
+    out.write("Performance profiles (--profile):\n")
+    for p in PERF_PROFILES.values():
+        out.write("  %-12s preset %-8s %s\n" % (p.name, p.preset_name, p.description))
+    out.write("Stream presets (--stream-preset):\n")
+    for p in STREAM_PRESETS.values():
+        out.write("  %-14s %-8s profile %-12s audio %-10s %s\n" % (
+            p.name, p.platform, p.perf_profile, p.audio_profile, p.description))
+    out.write("Audio profiles (--audio-profile):\n")
+    for p in AUDIO_PROFILES.values():
+        out.write("  %-11s %s\n              %s\n" % (p.name, p.description, p.cost_note))
+    return 0
+
+
 def cmd_bandwidth(args, out, post=None):
     if args.upload_mbps:
         kbps = mbps_to_kbps(args.upload_mbps)
@@ -256,8 +279,11 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
          "scenes_file": args.scenes_file,
          "record": False if args.no_record else args.record,
          "noise": args.noise, "noise_model": args.noise_model,
+         "profile": args.profile, "stream_preset": args.stream_preset,
+         "audio_profile": args.audio_profile,
          "hardware": hardware})
     settings = resolve_settings(cli_values, file_cfg)
+    cpu_affinity = affinity_cpus(os.cpu_count() or 1, settings.reserved_cores)
     record_path = args.test_local
     if settings.scene:
         for path in missing_images(settings.scene.overlays):
@@ -315,7 +341,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
             argv, key, os_name, on_status=on_status,
             max_failures=(1 if record_path else
                           None if args.keep_trying else MAX_QUICK_FAILURES),
-            encoder=encoder,
+            encoder=encoder, cpu_affinity=cpu_affinity,
             argv_factory=lambda enc: build_command(
                 settings, key, os_name, enc, ffmpeg, record_path),
             argv_for_attempt=(None if not settings.record_to or record_path else
@@ -351,6 +377,8 @@ def main(argv=None, out=sys.stdout):
             return cmd_devices(out)
         if args.command == "presets":
             return cmd_presets(out)
+        if args.command == "profiles":
+            return cmd_profiles(out)
         if args.command == "gui":
             from .gui import main as gui_main  # lazy: tkinter is optional
             return gui_main()

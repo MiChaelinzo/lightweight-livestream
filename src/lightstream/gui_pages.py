@@ -86,6 +86,25 @@ def health_cards(summary):
     ]
 
 
+UNKNOWN_TEXT = "n/a"
+
+
+def _telemetry_text(value, template):
+    return UNKNOWN_TEXT if value is None else template % value
+
+
+def telemetry_cards(sample):
+    """Cards for the telemetry row from a telemetry.Sample ('n/a' when unknown)."""
+    return [
+        HealthCard("CPU", _telemetry_text(sample.cpu_percent, "%.0f%%")),
+        HealthCard("RAM", _telemetry_text(sample.ram_percent, "%.0f%%")),
+        HealthCard("CPU temp", _telemetry_text(sample.cpu_temp_c, "%.0f C")),
+        HealthCard("GPU", _telemetry_text(sample.gpu_percent, "%.0f%%")),
+        HealthCard("GPU temp", _telemetry_text(sample.gpu_temp_c, "%.0f C")),
+        HealthCard("ffmpeg memory", _telemetry_text(sample.process_rss_mb, "%.0f MB")),
+    ]
+
+
 class RecommendationInbox:
     """Recommendations shown on the dashboard, minus the dismissed ones.
 
