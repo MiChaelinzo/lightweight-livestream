@@ -6,6 +6,9 @@ Performance core: telemetry, profiles, audio profiles, optimizer, opt-in auto-sc
 - Version bumped to 0.9.0.
 - Behavior change: starting from the window with a performance profile chosen replaces the Strength dropdown, and applying a preset suggestion clears the profile.
 - Behavior change: with `--analytics`, `reports/` also holds `history.json` (newest 30 sessions).
+- Fix: after an auto-scale step the health tracker and advisor are retargeted to the new bitrate and fps, so later readings are not scored as a network shortfall.
+- Fix: a step down caused by Gaming First CPU pressure is not undone for 10 minutes (`GAMING_STEP_UP_HOLDOFF_SECONDS`), which stops a down, up, down cycle. The 600 s value is a design choice, UNVERIFIED on real games.
+- Fix: telemetry sampling runs outside the GUI controller lock, so a slow `nvidia-smi` cannot freeze the window.
 - Known limitations: auto-scale restarts ffmpeg on each step (viewers see a short interruption); the network stability score is an inference, not packet loss; the bench numbers come from one Linux sandbox and are not representative of low-end laptops; the TCP latency helper is only wired into `readiness` when `--platform` or `--url` is given.
 
 - New: `lightstream profiles` lists performance profiles (`potato`, `balanced`, `quality`, `competitive`, `low_latency`), stream presets (`youtube_gaming`, `twitch_gaming`, `kick`, `podcast`, `just_chatting`, `tutorial`, `esports`) and audio profiles (`gaming`, `podcast`, `music`, `commentary`, `asmr`, each with a light and a full filter chain).

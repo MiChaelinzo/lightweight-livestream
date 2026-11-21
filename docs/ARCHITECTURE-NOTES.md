@@ -26,6 +26,7 @@ These are design conclusions from ffmpeg's documented behavior; none were benchm
 | --- | --- |
 | Step down after stress lasted | `DOWNSCALE_AFTER_SECONDS` |
 | Step up one step after health lasted (longer) | `UPSCALE_AFTER_SECONDS` |
+| No step up after a Gaming First CPU step down for | `GAMING_STEP_UP_HOLDOFF_SECONDS` |
 | Pause after any change | `COOLDOWN_SECONDS` |
 | Changes per hour | `MAX_CHANGES_PER_HOUR` |
 

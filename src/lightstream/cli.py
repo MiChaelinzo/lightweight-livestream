@@ -396,7 +396,8 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         settings, advisor, AutoScaler(build_ladder(top_step(settings)), clock,
                                       enabled=auto_scale),
         threading.Event(), out.write, sampler,
-        gaming_first=bool(settings.reserved_cores))
+        gaming_first=bool(settings.reserved_cores),
+        monitors=(tracker, advisor))
     if auto_scale:
         out.write("Auto-scale is ON: quality steps down when the stream struggles "
                   "and back up when it is healthy. Each step restarts ffmpeg briefly.\n")

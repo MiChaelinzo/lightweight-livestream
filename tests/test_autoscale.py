@@ -143,6 +143,44 @@ class ScalerTests(unittest.TestCase):
         self.assertEqual(runs[0], runs[1])
 
 
+class GamingFirstHoldoffTests(unittest.TestCase):
+    CPU = au.ScaleSignal(au.STRESSED, "cpu", cpu_bound=True)
+
+    def test_no_step_up_right_after_cpu_triggered_step_down(self):
+        clock, scaler = make()
+        self.assertEqual(1, len(hold(clock, scaler, self.CPU, 21)))
+        taken = hold(clock, scaler, GOOD, int(au.GAMING_STEP_UP_HOLDOFF_SECONDS) - 60)
+        self.assertEqual([], taken)
+        self.assertEqual(1, scaler.index)
+        taken = hold(clock, scaler, GOOD, 120)
+        self.assertEqual([au.UP], [d.direction for d in taken])
+
+    def test_slow_encoder_step_down_can_step_up_after_normal_wait(self):
+        clock, scaler = make()
+        self.assertEqual(1, len(hold(clock, scaler, STRESS, 21)))
+        taken = hold(clock, scaler, GOOD, 200)
+        self.assertEqual([au.UP], [d.direction for d in taken])
+
+    def test_alternating_cpu_stress_and_recovery_is_bounded(self):
+        clock, scaler = make()
+        taken = []
+        for _ in range(4):
+            taken += hold(clock, scaler, self.CPU, 30)
+            taken += hold(clock, scaler, GOOD, 200)
+        self.assertEqual([], [d for d in taken if d.direction == au.UP])
+
+    def test_assess_marks_gaming_first_cpu_stress(self):
+        clock = Clock()
+        adv = AdaptiveAdvisor("balanced", 2500, 30, clock=clock)
+        adv.observe({"speed": 1.0, "fps": 30.0, "dropped": 0})
+        busy = type("S", (), {"cpu_percent": 95.0})()
+        self.assertTrue(au.assess(adv, busy, gaming_first=True).cpu_bound)
+        adv.observe({"speed": 0.4, "fps": 30.0, "dropped": 0})
+        clock.now += 1
+        adv.observe({"speed": 0.4, "fps": 30.0, "dropped": 0})
+        self.assertFalse(au.assess(adv, busy, gaming_first=True).cpu_bound)
+
+
 class AssessTests(unittest.TestCase):
     def advisor(self, speed, dropped=0):
         clock = Clock()
@@ -224,6 +262,51 @@ class SessionAndRunnerTests(unittest.TestCase):
         self.assertIn("Restarting ffmpeg", out.getvalue())
         self.assertNotIn(SECRET, out.getvalue())
         self.assertFalse(restart.is_set())
+
+    def test_step_retargets_monitors(self):
+        from lightstream.health import HealthTracker
+        settings = self.settings(False)
+        clock = Clock()
+        advisor = AdaptiveAdvisor("720p60", settings.video_kbps, settings.fps, clock=clock)
+        tracker = HealthTracker(target_kbps=settings.video_kbps)
+        scaler = au.AutoScaler(au.build_ladder(au.top_step(settings)), clock, enabled=True)
+        session = au.AutoScaleSession(settings, advisor, scaler, threading.Event(),
+                                      lambda t: None, monitors=(tracker, advisor))
+        for _ in range(40):
+            clock.now += 1
+            advisor.observe({"speed": 0.5, "fps": 20.0, "dropped": 0})
+            session.on_status("live", {})
+        step = session.decisions[0].step
+        self.assertEqual(step.kbps, tracker.target_kbps)
+        self.assertEqual(step.kbps, advisor.video_kbps)
+        self.assertEqual(step.fps, advisor.target_fps)
+        self.assertLess(step.kbps, settings.video_kbps)
+
+    def test_restart_resets_failure_count(self):
+        """crash, restart, crash must not reach max_failures=2."""
+        restart = threading.Event()
+        runs = []
+
+        def popen(argv, **kw):
+            runs.append(argv)
+            n = len(runs)
+            if n == 2:
+                restart.set()
+
+            class Proc:
+                stderr = iter([])
+
+                def wait(self):
+                    return 0 if n == 4 else 1
+
+                def terminate(self):
+                    pass
+            return Proc()
+        code = runner.run_with_reconnect(
+            ["ffmpeg"], SECRET, "linux", popen=popen, sleep=lambda _s: None,
+            out=io.StringIO(), restart=restart, max_failures=2, encoder="libx264")
+        self.assertEqual(0, code)
+        self.assertEqual(4, len(runs))
 
     def test_disabled_session_never_restarts(self):
         settings = self.settings(False)

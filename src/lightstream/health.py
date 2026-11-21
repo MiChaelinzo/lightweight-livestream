@@ -43,6 +43,11 @@ STABILITY_BASIS = ("Estimated from ffmpeg bitrate and speed readings and reconne
 class HealthTracker:
     """Collects progress readings. Use on_status as the runner's on_status."""
 
+    def retarget(self, video_kbps=None, fps=None):
+        """Judge later readings against a new target (after an auto-scale step)."""
+        if video_kbps:
+            self.target_kbps = video_kbps
+
     def __init__(self, target_kbps=None, window=WINDOW_SAMPLES, clock=time.monotonic):
         self.target_kbps = target_kbps
         self._clock = clock

@@ -35,6 +35,13 @@ Recommendation = namedtuple("Recommendation", "kind value message")
 class AdaptiveAdvisor:
     """Tracks pressure signals and reports recommendations on demand."""
 
+    def retarget(self, video_kbps=None, fps=None):
+        """Judge later readings against a new target (after an auto-scale step)."""
+        if video_kbps:
+            self.video_kbps = video_kbps
+        if fps:
+            self.target_fps = fps
+
     def __init__(self, preset_name=None, video_kbps=None, target_fps=None,
                  clock=time.monotonic):
         self.preset_name = preset_name

@@ -26,7 +26,10 @@ Hysteresis
     is measured). At most MAX_CHANGES_PER_HOUR changes. A neutral reading
     (unknown speed, recent reconnects) resets both timers, so oscillating
     input cannot cause flapping. Never below the ladder floor or above the
-    top step the person chose. The numbers are design choices, UNVERIFIED on
+    top step the person chose. A step down caused by Gaming First CPU pressure
+    is not undone for GAMING_STEP_UP_HOLDOFF_SECONDS, because the step itself
+    lowers CPU and would otherwise look healthy, then step back up into the
+    same stress (a down, up, down cycle). The numbers are design choices, UNVERIFIED on
     real streams; the state machine is tested with a fake clock.
 """
 
@@ -36,7 +39,7 @@ from collections import namedtuple
 from .presets import PRESETS
 
 LadderStep = namedtuple("LadderStep", "width height fps kbps")
-ScaleSignal = namedtuple("ScaleSignal", "state reason")
+ScaleSignal = namedtuple("ScaleSignal", "state reason cpu_bound", defaults=(False,))
 ScaleDecision = namedtuple("ScaleDecision", "direction from_index to_index step reason")
 
 STRESSED = "stressed"
@@ -51,6 +54,7 @@ COOLDOWN_SECONDS = 60.0
 MAX_CHANGES_PER_HOUR = 6
 HOUR_SECONDS = 3600.0
 GAMING_CPU_STEP_DOWN_PERCENT = 90.0   # system CPU that makes Gaming First step down
+GAMING_STEP_UP_HOLDOFF_SECONDS = 600.0   # no step up this soon after a CPU-triggered step down
 
 BITRATE_STEP_FACTOR = 0.8
 BITRATE_STEPS = 2               # bitrate steps before fps and resolution change
@@ -114,6 +118,7 @@ class AutoScaler:
         self._healthy_since = None
         self._last_change = None
         self._changes = []
+        self._cpu_down_at = None
 
     @property
     def step(self):
@@ -142,10 +147,14 @@ class AutoScaler:
         if (self._stress_since is not None
                 and now - self._stress_since >= DOWNSCALE_AFTER_SECONDS
                 and self.index < len(self.ladder) - 1):
-            return self._move(DOWN, 1, now, signal.reason)
+            decision = self._move(DOWN, 1, now, signal.reason)
+            self._cpu_down_at = now if signal.cpu_bound else None
+            return decision
         if (self._healthy_since is not None
                 and now - self._healthy_since >= UPSCALE_AFTER_SECONDS
-                and self.index > 0):
+                and self.index > 0
+                and (self._cpu_down_at is None
+                     or now - self._cpu_down_at >= GAMING_STEP_UP_HOLDOFF_SECONDS)):
             return self._move(UP, -1, now,
                               "Stream stayed healthy for %d seconds."
                               % int(now - self._healthy_since))
@@ -177,7 +186,7 @@ def assess(advisor, sample=None, gaming_first=False):
     if gaming_first and cpu is not None and cpu >= GAMING_CPU_STEP_DOWN_PERCENT:
         return ScaleSignal(STRESSED, "Gaming First: system CPU is at %.0f%% while the "
                            "stream is fine, so the stream steps down to protect your "
-                           "game." % cpu)
+                           "game." % cpu, cpu_bound=True)
     if advisor.last_speed() is None or advisor.reconnect_pressure():
         return ScaleSignal(NEUTRAL, "")
     return ScaleSignal(HEALTHY, "")
@@ -186,7 +195,10 @@ def assess(advisor, sample=None, gaming_first=False):
 class AutoScaleSession:
     """Glue shared by the CLI and the GUI controller.
 
-    Feed it runner statuses with on_status. When the scaler takes a step it
+    Feed it runner statuses with on_status. The caller ticks the sampler
+    (the session only reads sampler.latest). After a step, monitors (health
+    tracker, advisor) are retargeted so later readings are judged against the
+    new bitrate and fps. When the scaler takes a step it
     updates current_settings and sets restart (a threading.Event the runner
     watches). The runner thread both calls on_status and reads
     current_settings, so no lock is needed. write(text) receives plain
@@ -194,7 +206,7 @@ class AutoScaleSession:
     """
 
     def __init__(self, settings, advisor, scaler, restart, write,
-                 sampler=None, gaming_first=False):
+                 sampler=None, gaming_first=False, monitors=()):
         self.current_settings = settings
         self.advisor = advisor
         self.scaler = scaler
@@ -202,13 +214,12 @@ class AutoScaleSession:
         self.write = write
         self.sampler = sampler
         self.gaming_first = gaming_first
+        self.monitors = list(monitors)   # objects with retarget(video_kbps, fps)
         self.decisions = []
 
     def on_status(self, state, detail=None):
         if not self.scaler.enabled or state != "live":
             return
-        if self.sampler is not None:
-            self.sampler.tick_if_due()
         sample = self.sampler.latest if self.sampler is not None else None
         decision = self.scaler.update(assess(self.advisor, sample, self.gaming_first))
         if decision is None:
@@ -216,6 +227,8 @@ class AutoScaleSession:
         self.decisions.append(decision)
         self.current_settings = apply_step(self.current_settings, decision.step)
         step = decision.step
+        for monitor in self.monitors:
+            monitor.retarget(step.kbps, step.fps)
         self.write("Auto-scale %s: %dx%d at %d fps, %d kbps. %s Restarting ffmpeg "
                    "(a brief interruption).\n"
                    % (decision.direction, step.width, step.height, step.fps,

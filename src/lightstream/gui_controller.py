@@ -340,11 +340,11 @@ class StreamController:
         return [insight_line(i) for i in self.insights()]
 
     def _on_status(self, state, detail):
+        if state == STATUS_LIVE:
+            self._sampler.tick_if_due()  # outside the lock: nvidia-smi can block
         with self._lock:
             self._health.on_status(state, detail)
             self._advisor.on_status(state, detail)
-            if state == STATUS_LIVE:
-                self._sampler.tick_if_due()
             if self._scale is not None:
                 self._scale.on_status(state, detail)
             self._banner = banner_for(state, detail)
@@ -391,7 +391,8 @@ class StreamController:
                 settings, self._advisor,
                 AutoScaler(build_ladder(top_step(settings)), self._clock, enabled=enabled),
                 self._restart, self._write_locked, self._sampler,
-                gaming_first=bool(settings.reserved_cores))
+                gaming_first=bool(settings.reserved_cores),
+                monitors=(self._health, self._advisor))
             self._context = OptimizerContext(self._preset_name, settings.video_kbps,
                                              settings.fps, None, settings.noise)
             self._analytics = prefs.get("analytics") is True  # opt-in only

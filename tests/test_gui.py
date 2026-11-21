@@ -181,6 +181,50 @@ class ProfileWiringTests(unittest.TestCase):
         self.assertIn("Auto-scale down", c.snapshot()[3])
         self.assertTrue(c.insights())
 
+    def test_gaming_first_follows_reserved_cores(self):
+        for prefs, expected in ((dict(PREFS, profile="competitive"), True),
+                                (PREFS, False)):
+            c = make_controller(fake_runner_factory([]))
+            c.start(dict(prefs, auto_scale=True), SECRET)
+            c._thread.join(0.3)
+            c.stop()
+            self.assertIs(expected, c._scale.gaming_first)
+
+    def test_step_retargets_health_and_advisor(self):
+        clock = [0.0]
+
+        def runner(argv, key, os_name, **kw):
+            for _ in range(40):
+                clock[0] += 1
+                kw["on_status"](STATUS_LIVE, {"speed": 0.5, "fps": 10.0})
+            return 0
+        c = gc.StreamController(
+            runner=runner, which=lambda _n: "/bin/ffmpeg", os_name="linux",
+            probe=lambda _f: set(), pick_encoder=lambda *a, **k: "libx264",
+            clock=lambda: clock[0])
+        c.start(dict(PREFS, preset="balanced", auto_scale=True), SECRET)
+        c._thread.join(2)
+        step = c._scale.decisions[0].step
+        self.assertEqual(step.kbps, c._health.target_kbps)
+        self.assertEqual(step.kbps, c._advisor.video_kbps)
+        self.assertEqual(step.fps, c._advisor.target_fps)
+
+    def test_sampler_ticks_without_controller_lock(self):
+        held = []
+
+        class Sampler:
+            latest = None
+            history = ()
+
+            def tick_if_due(self_inner):
+                held.append(c._lock.locked())
+        c = make_controller(fake_runner_factory([]))
+        c._sampler = Sampler()
+        c.start(PREFS, SECRET)
+        c._thread.join(0.3)
+        c.stop()
+        self.assertEqual([False], held)
+
 
 class ControllerTests(unittest.TestCase):
     def test_start_stop_and_log_redaction(self):
