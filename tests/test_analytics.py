@@ -102,8 +102,12 @@ class WiringTests(unittest.TestCase):
             self.assertFalse(os.path.exists(reports))
             code, text = self.run_start(["start", "--analytics"], home)
             self.assertEqual(0, code)
-            names = os.listdir(reports)
+            names = [n for n in os.listdir(reports) if n.startswith("session-")]
             self.assertEqual(1, len(names))
+            self.assertIn(analytics.HISTORY_FILENAME, os.listdir(reports))
+            with open(os.path.join(reports, analytics.HISTORY_FILENAME),
+                      encoding="utf-8") as fh:
+                self.assertNotIn(SECRET, fh.read())
             with open(os.path.join(reports, names[0]), encoding="utf-8") as fh:
                 raw = fh.read()
             self.assertNotIn(SECRET, raw)
@@ -142,3 +146,24 @@ class WiringTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HistoryTests(unittest.TestCase):
+    def test_bounded_and_no_secrets(self):
+        with tempfile.TemporaryDirectory() as folder:
+            for i in range(analytics.HISTORY_LIMIT + 5):
+                analytics.append_history(folder, analytics.history_entry(
+                    {"avg_speed": 1.0, "dropped_frames": i, "reconnects": 0},
+                    "cpu", "light"))
+            rows = analytics.load_history(folder)
+            self.assertEqual(analytics.HISTORY_LIMIT, len(rows))
+            self.assertEqual(analytics.HISTORY_LIMIT + 4, rows[-1]["dropped_frames"])
+            self.assertEqual({"date", "preset", "bottleneck", "avg_speed",
+                              "dropped_frames", "reconnect_count"}, set(rows[0]))
+
+    def test_unreadable_history_is_empty(self):
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertEqual([], analytics.load_history(folder))
+            with open(os.path.join(folder, analytics.HISTORY_FILENAME), "w") as fh:
+                fh.write("not json")
+            self.assertEqual([], analytics.load_history(folder))

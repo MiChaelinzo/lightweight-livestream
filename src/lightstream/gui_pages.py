@@ -17,6 +17,8 @@ from .overlays import (CLOCK_FORMATS, DEFAULT_IMAGE_PERCENT, KIND_CLOCK, KIND_IM
                        KIND_TEXT, MAX_FONT_SIZE, MAX_OVERLAYS, MIN_FONT_SIZE,
                        OVERLAY_KINDS, drawtext_stage, image_stage,
                        parse_overlay)
+from .audio import AUDIO_PROFILES
+from .perf_profiles import PERF_PROFILES
 from .presets import PRESETS
 
 # (page id, sidebar label). Pages are built lazily by gui.py on first visit.
@@ -70,6 +72,36 @@ def hardware_label(pref):
     return pref if pref in PROFILES else AUTO_HARDWARE_LABEL
 
 
+AUTO_PROFILE_LABEL = "Automatic (use Strength above)"
+NO_AUDIO_PROFILE_LABEL = "None"
+
+
+def profile_choices():
+    """Dropdown labels for the performance profile, 'automatic' first."""
+    return [AUTO_PROFILE_LABEL] + list(PERF_PROFILES)
+
+
+def profile_pref(label):
+    """Saved value for a profile label ('' means none chosen)."""
+    return label if label in PERF_PROFILES else ""
+
+
+def profile_label(pref):
+    return pref if pref in PERF_PROFILES else AUTO_PROFILE_LABEL
+
+
+def audio_profile_choices():
+    return [NO_AUDIO_PROFILE_LABEL] + list(AUDIO_PROFILES)
+
+
+def audio_profile_pref(label):
+    return label if label in AUDIO_PROFILES else ""
+
+
+def audio_profile_label(pref):
+    return pref if pref in AUDIO_PROFILES else NO_AUDIO_PROFILE_LABEL
+
+
 # -- dashboard ---------------------------------------------------------------
 def _number(value, template):
     return MISSING_VALUE if value is None else template % value
@@ -83,6 +115,25 @@ def health_cards(summary):
         HealthCard("Bitrate", _number(summary.get("recent_bitrate_kbps"), "%.0f kbps")),
         HealthCard("Dropped frames", str(summary.get("dropped_frames", 0))),
         HealthCard("Reconnects", str(summary.get("reconnects", 0))),
+    ]
+
+
+UNKNOWN_TEXT = "n/a"
+
+
+def _telemetry_text(value, template):
+    return UNKNOWN_TEXT if value is None else template % value
+
+
+def telemetry_cards(sample):
+    """Cards for the telemetry row from a telemetry.Sample ('n/a' when unknown)."""
+    return [
+        HealthCard("CPU", _telemetry_text(sample.cpu_percent, "%.0f%%")),
+        HealthCard("RAM", _telemetry_text(sample.ram_percent, "%.0f%%")),
+        HealthCard("CPU temp", _telemetry_text(sample.cpu_temp_c, "%.0f C")),
+        HealthCard("GPU", _telemetry_text(sample.gpu_percent, "%.0f%%")),
+        HealthCard("GPU temp", _telemetry_text(sample.gpu_temp_c, "%.0f C")),
+        HealthCard("ffmpeg memory", _telemetry_text(sample.process_rss_mb, "%.0f MB")),
     ]
 
 
@@ -122,6 +173,7 @@ def apply_recommendation(rec, prefs):
         if rec.value not in PRESETS:
             raise ValueError("Unknown preset %r" % (rec.value,))
         updated["preset"] = rec.value
+        updated["profile"] = ""  # a chosen profile would override the new strength
         return updated, "Strength set to %s. It applies the next time you press START." % rec.value
     updated["bitrate"] = str(rec.value)
     return updated, "Video speed set to %d kbps. It applies the next time you press START." % rec.value

@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 
 from . import __version__
@@ -14,17 +15,24 @@ from .command import (build_command, numbered_recording_path,
 from .config import (config_path, detect_os, load_file_config, resolve_key,
                      resolve_settings, scenes_path, effective_preset_name, write_example_config,
                      DEFAULT_RECORDING_FILE)
-from .audio import NOISE_LEVELS
+from .audio import AUDIO_PROFILES, NOISE_LEVELS
 from .bandwidth import measure_upload, mbps_to_kbps, recommend
 from .encoders import (HARDWARE_ORDER, SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
+from .bench import (DEFAULT_ENCODE_SECONDS, DEFAULT_IMPORT_RUNS, DEFAULT_TICKS,
+                    build_report, report_path, write_report)
 from .portable import find_ffmpeg, is_portable
 from .hardware import PROFILES, classify_gpus, detect_gpu_names, get_profile
 from .adaptive import AdaptiveAdvisor
-from .analytics import (analytics_enabled, build_session_report, reports_dir,
+from .autoscale import AutoScaleSession, AutoScaler, build_ladder, top_step
+from .optimizer import OptimizerContext, bottleneck_of, build_insights, insight_line
+from .telemetry import TelemetrySampler
+from .analytics import (analytics_enabled, append_history, history_entry,
+                        load_history, build_session_report, reports_dir,
                         write_session_report)
 from .health import HealthTracker
 from .platforms import PLATFORMS, parse_audio_devices
+from .perf_profiles import (PERF_PROFILES, STREAM_PRESETS, affinity_cpus)
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
 from .overlays import missing_images
@@ -45,6 +53,8 @@ def build_parser():
     sub = p.add_subparsers(dest="command", required=True)
     sub.add_parser("doctor", help="check ffmpeg and available encoders")
     sub.add_parser("presets", help="list quality presets")
+    sub.add_parser("profiles", help="list performance profiles, stream presets "
+                                    "and audio profiles")
     sub.add_parser("init", help="write an example config file")
     sub.add_parser("devices", help="list audio devices (Windows and macOS)")
     sub.add_parser("gui", help="open the easy window (3 steps, for beginners)")
@@ -57,6 +67,23 @@ def build_parser():
     b.add_argument("--upload-mbps", help="your upload speed in Mbps")
     b.add_argument("--measure-url", help="a URL you control that accepts a POST upload")
     b.add_argument("--hardware", help="hardware profile, e.g. intel_hd")
+    r = sub.add_parser("readiness", help="score 0-100 for how ready this PC is to stream")
+    r.add_argument("--ffmpeg", help="path to ffmpeg (default: search as usual)")
+    r.add_argument("--upload-mbps", help="your upload speed in Mbps")
+    r.add_argument("--platform", choices=PLATFORMS,
+                   help="also test how fast a connection to this platform opens")
+    r.add_argument("--url", help="rtmp:// address to test (for --platform custom)")
+    bn = sub.add_parser("bench", help="measure this PC: startup, memory, CPU cost "
+                                      "and a synthetic encode; writes a JSON report")
+    bn.add_argument("--ffmpeg", help="path to ffmpeg (default: search as usual)")
+    bn.add_argument("--seconds", type=int, default=DEFAULT_ENCODE_SECONDS,
+                    help="stream seconds per encode (default %d)" % DEFAULT_ENCODE_SECONDS)
+    bn.add_argument("--ticks", type=int, default=DEFAULT_TICKS,
+                    help="calls per CPU cost measurement (default %d)" % DEFAULT_TICKS)
+    bn.add_argument("--import-runs", type=int, default=DEFAULT_IMPORT_RUNS)
+    bn.add_argument("--compare-src", help="another lightstream src folder "
+                                          "(for example an older version) to compare startup")
+    bn.add_argument("--out", help="report file (default: reports/bench-DATE.json)")
     sc = sub.add_parser("scenes", help="list, check or create a scenes file")
     sc.add_argument("action", choices=("list", "validate", "example", "export", "import"))
     sc.add_argument("target", nargs="?",
@@ -74,6 +101,12 @@ def build_parser():
     s.add_argument("--platform", choices=PLATFORMS)
     s.add_argument("--url", help="RTMP base URL for --platform custom")
     s.add_argument("--preset", choices=sorted(PRESETS))
+    s.add_argument("--profile", choices=sorted(PERF_PROFILES),
+                   help="performance profile (see: lightstream profiles)")
+    s.add_argument("--stream-preset", choices=sorted(STREAM_PRESETS),
+                   help="platform + profile + audio bundle (see: lightstream profiles)")
+    s.add_argument("--audio-profile", choices=sorted(AUDIO_PROFILES),
+                   help="microphone filter chain; --noise light/ai takes priority")
     s.add_argument("--fps", type=int)
     s.add_argument("--res", dest="resolution", help="for example 854x480")
     s.add_argument("--bitrate", type=int, help="video kbps")
@@ -102,6 +135,9 @@ def build_parser():
                    help="do not save a local copy (some hardware profiles record by default)")
     s.add_argument("--analytics", action="store_true",
                    help="opt in: save a session report (numbers only, no key) to reports/")
+    s.add_argument("--auto-scale", action="store_true",
+                   help="opt in: step quality down (and back up) automatically when the "
+                        "stream struggles. Each step restarts ffmpeg briefly. Off by default")
     s.add_argument("--noise", choices=NOISE_LEVELS,
                    help="microphone noise suppression: off, light (afftdn), ai (arnndn model)")
     s.add_argument("--noise-model", help="path to an arnndn .rnnn model for --noise ai")
@@ -224,6 +260,20 @@ def cmd_presets(out):
     return 0
 
 
+def cmd_profiles(out):
+    out.write("Performance profiles (--profile):\n")
+    for p in PERF_PROFILES.values():
+        out.write("  %-12s preset %-8s %s\n" % (p.name, p.preset_name, p.description))
+    out.write("Stream presets (--stream-preset):\n")
+    for p in STREAM_PRESETS.values():
+        out.write("  %-14s %-8s profile %-12s audio %-10s %s\n" % (
+            p.name, p.platform, p.perf_profile, p.audio_profile, p.description))
+    out.write("Audio profiles (--audio-profile):\n")
+    for p in AUDIO_PROFILES.values():
+        out.write("  %-11s %s\n              %s\n" % (p.name, p.description, p.cost_note))
+    return 0
+
+
 def cmd_bandwidth(args, out, post=None):
     if args.upload_mbps:
         kbps = mbps_to_kbps(args.upload_mbps)
@@ -237,6 +287,39 @@ def cmd_bandwidth(args, out, post=None):
               % (rec.preset, rec.video_kbps, rec.audio_kbps, rec.usable_kbps))
     out.write("Use: lightstream start --preset %s --bitrate %d\n"
               % (rec.preset, rec.video_kbps))
+    return 0
+
+
+def cmd_readiness(args, out, run=subprocess.run, connect=None, find=find_ffmpeg):
+    from . import wizard
+    from .bandwidth import rtmp_host_port
+    target = None
+    if args.url:
+        target = rtmp_host_port(args.url)
+    elif args.platform and args.platform != "custom":
+        target = wizard.platform_latency_target(args.platform)
+    elif args.platform:
+        raise ValueError("Platform 'custom' needs --url rtmp://host/app")
+    kbps = mbps_to_kbps(args.upload_mbps) if args.upload_mbps else None
+    facts = wizard.gather_readiness_facts(
+        detect_os(), upload_kbps=kbps, ffmpeg=args.ffmpeg, latency_target=target,
+        run=run, find=find, connect=connect)
+    for line in wizard.readiness_lines(wizard.readiness_report(facts)):
+        out.write(line + "\n")
+    return 0
+
+
+def cmd_bench(args, out, build=build_report, find=find_ffmpeg, today=None):
+    for name in ("seconds", "ticks", "import_runs"):
+        if getattr(args, name) <= 0:
+            raise ValueError("--%s must be greater than 0" % name.replace("_", "-"))
+    ffmpeg = args.ffmpeg or find()
+    out.write("Benchmarking (this takes a minute). ffmpeg: %s\n"
+              % ("found" if ffmpeg else "not found, encode skipped"))
+    report = build(ffmpeg=ffmpeg, seconds=args.seconds, ticks=args.ticks,
+                   import_runs=args.import_runs, compare_src=args.compare_src)
+    path = write_report(report, args.out or report_path(report["date"]))
+    out.write("Wrote %s\n%s\n" % (path, report["caveat"]))
     return 0
 
 
@@ -256,8 +339,11 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
          "scenes_file": args.scenes_file,
          "record": False if args.no_record else args.record,
          "noise": args.noise, "noise_model": args.noise_model,
+         "profile": args.profile, "stream_preset": args.stream_preset,
+         "audio_profile": args.audio_profile,
          "hardware": hardware})
     settings = resolve_settings(cli_values, file_cfg)
+    cpu_affinity = affinity_cpus(os.cpu_count() or 1, settings.reserved_cores)
     record_path = args.test_local
     if settings.scene:
         for path in missing_images(settings.scene.overlays):
@@ -299,15 +385,38 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
     if args.dry_run:
         return 0
     tracker = HealthTracker(target_kbps=settings.video_kbps)
-    advisor = AdaptiveAdvisor(effective_preset_name(cli_values, file_cfg, hardware),
-                              settings.video_kbps, settings.fps)
+    preset_name = effective_preset_name(cli_values, file_cfg, hardware)
+    advisor = AdaptiveAdvisor(preset_name, settings.video_kbps, settings.fps)
+    sampler = TelemetrySampler(os_name)
+    auto_scale = bool(args.auto_scale) or file_cfg.get("auto_scale") is True
+    if auto_scale and record_path:
+        auto_scale = False
+        out.write("Note: --auto-scale is ignored with --test-local.\n")
+    scale = AutoScaleSession(
+        settings, advisor, AutoScaler(build_ladder(top_step(settings)), clock,
+                                      enabled=auto_scale),
+        threading.Event(), out.write, sampler,
+        gaming_first=bool(settings.reserved_cores),
+        monitors=(tracker, advisor))
+    if auto_scale:
+        out.write("Auto-scale is ON: quality steps down when the stream struggles "
+                  "and back up when it is healthy. Each step restarts ffmpeg briefly.\n")
 
     def on_status(state, detail):
         tracker.on_status(state, detail)
         advisor.on_status(state, detail)
         if state == "live":
+            sampler.tick_if_due()
             out.write("fps=%s speed=%sx\r" % (detail.get("fps", "?"),
                                               detail.get("speed", "?")))
+        scale.on_status(state, detail)
+
+    def settings_for_attempt(attempt):
+        current = scale.current_settings
+        if current.record_to:  # a new file per attempt so footage is never truncated
+            current = current._replace(
+                record_to=numbered_recording_path(current.record_to, attempt))
+        return current
 
     started = clock()
     try:
@@ -315,26 +424,40 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
             argv, key, os_name, on_status=on_status,
             max_failures=(1 if record_path else
                           None if args.keep_trying else MAX_QUICK_FAILURES),
-            encoder=encoder,
+            encoder=encoder, cpu_affinity=cpu_affinity, restart=scale.restart,
             argv_factory=lambda enc: build_command(
-                settings, key, os_name, enc, ffmpeg, record_path),
-            argv_for_attempt=(None if not settings.record_to or record_path else
-                              lambda n, enc: build_command(
-                                  settings._replace(record_to=numbered_recording_path(
-                                      settings.record_to, n)),
-                                  key, os_name, enc, ffmpeg)))
+                scale.current_settings, key, os_name, enc, ffmpeg, record_path),
+            argv_for_attempt=(None if record_path or not (settings.record_to or auto_scale)
+                              else lambda n, enc: build_command(
+                                  settings_for_attempt(n), key, os_name, enc, ffmpeg)))
         if tracker.samples or tracker.reconnects:
             out.write("\n" + "\n".join(tracker.report_lines()) + "\n")
+            stability = tracker.network_stability()
+            if stability:
+                out.write("  network stability: %d/100 (%s)\n"
+                          % (stability.score, stability.basis))
+            recording_analytics = not record_path and analytics_enabled(
+                args.analytics, file_cfg)
+            directory = report_dir or reports_dir(os_name)
+            insights = build_insights(
+                advisor, tracker.summary(), list(sampler.history), stability,
+                OptimizerContext(preset_name, scale.current_settings.video_kbps,
+                                 scale.current_settings.fps, encoder, settings.noise),
+                load_history(directory) if recording_analytics else ())
             for rec in advisor.recommendations():  # suggestions only, never applied
                 out.write("  suggestion (not applied): %s\n" % rec.message)
-            if not record_path and analytics_enabled(args.analytics, file_cfg):
+            for insight in insights:
+                out.write("  insight: %s\n" % insight_line(insight))
+            if recording_analytics:
                 path = write_session_report(
-                    report_dir or reports_dir(os_name),
+                    directory,
                     build_session_report(
                         tracker.summary(), encoder, clock() - started,
                         bool(settings.record_to),
-                        preset=effective_preset_name(cli_values, file_cfg, hardware),
+                        preset=preset_name,
                         hardware_profile=settings.hardware_profile))
+                append_history(directory, history_entry(
+                    tracker.summary(), bottleneck_of(insights), preset_name))
                 out.write("Session report saved to %s (no stream key inside)\n" % path)
         return code
     except OSError as exc:
@@ -351,6 +474,12 @@ def main(argv=None, out=sys.stdout):
             return cmd_devices(out)
         if args.command == "presets":
             return cmd_presets(out)
+        if args.command == "profiles":
+            return cmd_profiles(out)
+        if args.command == "readiness":
+            return cmd_readiness(args, out)
+        if args.command == "bench":
+            return cmd_bench(args, out)
         if args.command == "gui":
             from .gui import main as gui_main  # lazy: tkinter is optional
             return gui_main()

@@ -4,11 +4,14 @@ import json
 import os
 import sys
 
-from .audio import NOISE_LEVELS, require_model_file
+from .audio import (CHAIN_FULL, CHAIN_LIGHT, NOISE_LEVELS, audio_profile_chain,
+                    get_audio_profile, require_model_file)
 from .command import StreamSettings
 from .hardware import cap_preset_name, cap_video_kbps, get_profile
 from .portable import data_dir, is_portable, recordings_dir
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
+from .perf_profiles import (get_perf_profile, get_stream_preset, resolve_tuning,
+                            stream_preset_bitrate_cap)
 from .scenes import load_scenes, select_scene
 
 EXAMPLE_CONFIG = {
@@ -30,6 +33,10 @@ EXAMPLE_CONFIG = {
     "record": None,
     "hardware": None,
     "force_preset": False,
+    "profile": None,
+    "stream_preset": None,
+    "audio_profile": None,
+    "auto_scale": False,
 }
 
 
@@ -109,9 +116,48 @@ def _positive_int(name, value):
     return number
 
 
+DEFAULT_PLATFORM = "twitch"
+
+
+def _derived_values(cli, file_cfg):
+    """Values implied by --profile / --stream-preset, and whether they came
+    from the command line. A stream preset supplies the profile and audio
+    profile unless --profile or --audio-profile is set explicitly."""
+    from_cli = bool(cli.get("profile") or cli.get("stream_preset"))
+    layer = cli if from_cli else file_cfg
+    stream_name = layer.get("stream_preset")
+    profile_name = layer.get("profile")
+    stream = get_stream_preset(stream_name) if stream_name else None
+    if profile_name is None and stream:
+        profile_name = stream.perf_profile
+    derived = {}
+    if profile_name:
+        profile = get_perf_profile(profile_name)
+        derived["preset"] = profile.preset_name
+        derived["audio_profile"] = profile.audio_profile
+    if stream:
+        derived["platform"] = stream.platform
+        derived["audio_profile"] = stream.audio_profile
+        derived["bitrate_cap"] = stream_preset_bitrate_cap(stream_name)
+    return derived, profile_name, from_cli
+
+
+def _layered(name, cli, file_cfg, derived, derived_from_cli, default=None):
+    """cli > profile from cli > file > profile from file > default."""
+    value = cli.get(name)
+    if value is None and derived_from_cli:
+        value = derived.get(name)
+    if value is None:
+        value = file_cfg.get(name)
+    if value is None and not derived_from_cli:
+        value = derived.get(name)
+    return default if value is None else value
+
+
 def effective_preset_name(cli, file_cfg, hardware=None):
     """Preset name after the hardware profile's cap (unless forced)."""
-    preset_name = _pick("preset", cli, file_cfg, DEFAULT_PRESET)
+    derived, _, from_cli = _derived_values(cli, file_cfg)
+    preset_name = _layered("preset", cli, file_cfg, derived, from_cli, DEFAULT_PRESET)
     get_preset(preset_name)  # raises a clear error for unknown names
     if hardware:
         preset_name = cap_preset_name(
@@ -119,13 +165,32 @@ def effective_preset_name(cli, file_cfg, hardware=None):
     return preset_name
 
 
-def resolve_settings(cli, file_cfg):
-    """cli and file_cfg are dicts; None means 'not set'."""
+def _audio_filter(name, hardware, profile_name):
+    """Chain string for an audio profile, or None. The light chain is used on
+    hardware profiles that strip expensive filters and with the potato profile."""
+    if not name:
+        return None
+    get_audio_profile(name)  # raises a clear error for unknown names
+    light = (profile_name == "potato"
+             or bool(hardware and get_profile(hardware).strip_expensive_filters))
+    return audio_profile_chain(name, CHAIN_LIGHT if light else CHAIN_FULL)
+
+
+def resolve_settings(cli, file_cfg, cpu_count=None):
+    """cli and file_cfg are dicts; None means 'not set'. cpu_count (default
+    os.cpu_count()) feeds the Gaming First thread math.
+
+    --profile / --stream-preset fill in values the person did not set: an
+    explicit command line flag beats a profile, a profile from the command
+    line beats the config file, and the config file beats a profile it names.
+    """
+    derived, profile_name, from_cli = _derived_values(cli, file_cfg)
     hardware = _pick("hardware", cli, file_cfg)
     if hardware:
         get_profile(hardware)  # raises a clear error for unknown names
     preset_name = effective_preset_name(cli, file_cfg, hardware)
     preset = get_preset(preset_name)
+    audio_profile = _layered("audio_profile", cli, file_cfg, derived, from_cli)
     noise = _pick("noise", cli, file_cfg, "off")
     if noise not in NOISE_LEVELS:
         raise ValueError("Unknown noise level %r. Choose one of: %s"
@@ -146,6 +211,9 @@ def resolve_settings(cli, file_cfg):
     width, height = (parse_resolution(resolution) if resolution
                      else (preset.width, preset.height))
     video_kbps = _positive_int("bitrate", _pick("bitrate", cli, file_cfg, preset.video_kbps))
+    if "bitrate_cap" in derived and cli.get("bitrate") is None \
+            and file_cfg.get("bitrate") is None:
+        video_kbps = min(video_kbps, derived["bitrate_cap"])
     if hardware and cli.get("bitrate") is None:
         video_kbps = cap_video_kbps(hardware, video_kbps)  # explicit --bitrate is kept
     record = _pick("record", cli, file_cfg)
@@ -153,8 +221,17 @@ def resolve_settings(cli, file_cfg):
         record = DEFAULT_RECORDING_FILE
     if record == DEFAULT_RECORDING_FILE:
         record = default_recording_path()
+    profile = get_perf_profile(profile_name) if profile_name else None
+    tuning = resolve_tuning(profile_name, cpu_count) if profile else None
+    extras = {}
+    if profile:
+        extras = {"threads": tuning.threads,
+                  "reserved_cores": tuning.reserved_cores or None,
+                  "keyint_seconds": profile.keyint_seconds,
+                  "x264_tune": profile.x264_tune,
+                  "bufsize_seconds": profile.bufsize_seconds}
     return StreamSettings(
-        platform=_pick("platform", cli, file_cfg, "twitch"),
+        platform=_layered("platform", cli, file_cfg, derived, from_cli, DEFAULT_PLATFORM),
         custom_url=_pick("url", cli, file_cfg),
         width=width,
         height=height,
@@ -173,6 +250,8 @@ def resolve_settings(cli, file_cfg):
         noise_model=noise_model,
         hardware_profile=hardware,
         record_to=record or None,  # False (--no-record) turns recording off
+        audio_filter=_audio_filter(audio_profile, hardware, profile_name),
+        **extras,
     )
 
 

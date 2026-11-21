@@ -77,3 +77,42 @@ def write_session_report(directory, report, now=None):
         json.dump(report, fh, indent=2, sort_keys=True)
         fh.write("\n")
     return path
+
+
+# -- opt-in local history ----------------------------------------------------
+HISTORY_FILENAME = "history.json"
+HISTORY_LIMIT = 30   # newest sessions kept; older ones are dropped
+
+
+def history_entry(summary, bottleneck=None, preset=None, now=None):
+    """One compact history row. Numbers and class names only: no key, URL,
+    path or audience data."""
+    return {
+        "date": time.strftime("%Y-%m-%d", now or time.localtime()),
+        "preset": preset,
+        "bottleneck": bottleneck,
+        "avg_speed": _rounded(summary.get("avg_speed")),
+        "dropped_frames": summary.get("dropped_frames", 0),
+        "reconnect_count": summary.get("reconnects", 0),
+    }
+
+
+def load_history(directory):
+    """Saved history rows, or [] when missing or unreadable."""
+    try:
+        with open(os.path.join(directory, HISTORY_FILENAME), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    return [row for row in data if isinstance(row, dict)] if isinstance(data, list) else []
+
+
+def append_history(directory, entry, limit=HISTORY_LIMIT):
+    """Add entry, keep the newest `limit` rows, return the path."""
+    rows = (load_history(directory) + [entry])[-limit:]
+    os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, HISTORY_FILENAME)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(rows, fh, indent=2, sort_keys=True)
+        fh.write("\n")
+    return path
