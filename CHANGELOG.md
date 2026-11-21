@@ -6,6 +6,11 @@
 - New: `start --profile`, `--stream-preset`, `--audio-profile` and the matching config keys `profile`, `stream_preset`, `audio_profile`. Explicit flags beat a profile; a profile from the command line beats the config file.
 - New: Gaming First. Profiles with it reserve cores for the game: ffmpeg gets `-threads` and `-filter_threads` of `cpu_count - reserved_cores`, and on Linux is confined to the other cores with `sched_setaffinity`. No game FPS gain is claimed (UNVERIFIED).
 - New: `telemetry.py` samples CPU, RAM, CPU/GPU temperature, GPU load and ffmpeg memory (unknown values are `n/a`) and the dashboard shows them every 2 seconds while visible. Linux parsing is tested on fake `/proc` text; Windows, macOS, `nvidia-smi` and the Tk row are UNVERIFIED on real machines.
+- New: `optimizer.py` explains what limits a stream as `Insight` rows (area, action, value, confidence, explanation, plain words). Printed as `insight:` lines at the end of a CLI session and available from `StreamController.insights()`.
+- New: network stability score (0 to 100) from ffmpeg bitrate, speed jitter and reconnects. It is an inference, not packet loss. `bandwidth.measure_connect_latency` times a TCP connect to the ingest host.
+- New: opt-in `--auto-scale` (config `auto_scale`, GUI checkbox). Steps a quality ladder down and up with hysteresis, one step at a time, by restarting ffmpeg through the runner's reconnect path (`run_with_reconnect(restart=...)`). Off by default. See `docs/ARCHITECTURE-NOTES.md` for the alternatives evaluated.
+- New: with `--analytics`, `reports/history.json` keeps the newest 30 sessions (no key, URL or paths) and lets the optimizer raise confidence.
+- Fix: starting from the window now passes the performance profile, microphone profile and CPU affinity (Gaming First) to ffmpeg. The window gains Performance profile, Microphone profile and Auto-scale controls.
 
 ## 0.8.0
 

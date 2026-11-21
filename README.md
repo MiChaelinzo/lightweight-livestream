@@ -313,6 +313,13 @@ Run `lightstream profiles` for the full list.
 
 Status: option parsing, settings resolution, thread math and command building are VERIFIED by unit tests. All ten audio chains (five profiles, light and full) were run through ffmpeg 7.0.2 (static build) on a 1 second sine and were accepted; set `LIGHTSTREAM_TEST_FFMPEG` to repeat that. Effects on real games, Windows/macOS telemetry, `nvidia-smi` and CPU affinity on real hardware are UNVERIFIED.
 
+### Explained insights and opt-in auto-scale (0.9.0)
+
+- The end-of-session report now prints `insight:` lines. Each has plain words and a confidence percent, and says what the likely limit is: CPU, encoder, network, GPU, heat or unknown. The network stability score is an inference from ffmpeg readings, not a packet loss measurement.
+- `start --auto-scale` (or the Advanced checkbox) steps quality down one notch at a time when the stream struggles and back up after it stays healthy. It is off by default. Each step restarts ffmpeg briefly; a recording continues as `name-2.mkv`. See [docs/ARCHITECTURE-NOTES.md](docs/ARCHITECTURE-NOTES.md).
+- The window now has Performance profile, Microphone profile and Auto-scale controls in Advanced. A chosen profile replaces the Strength dropdown.
+- Status: rules, ladder, hysteresis, runner restart and settings wiring are VERIFIED by unit tests with fake clocks, and the restart was run against a real subprocess. Behavior on real streams and games, the Tk widgets and the thresholds' fit to real hardware are UNVERIFIED.
+
 ## Stream key safety
 
 The key is read from the `STREAM_KEY` environment variable or typed at a hidden prompt (asked by lightstream itself, also from the Windows launcher). It is never stored by lightstream, and it is hidden (`****`) in everything lightstream prints. Limitation: RTMP puts the key in the FFmpeg command line, so other local processes running as your user may be able to see it in the process list. Custom URLs that carry their own tokens are not redacted beyond the key. Never share your key or commit it.
