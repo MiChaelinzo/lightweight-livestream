@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased (0.9.0 performance core, in progress)
+## 0.9.0
+
+Performance core: telemetry, profiles, audio profiles, optimizer, opt-in auto-scale, bench harness and readiness score. Logic is VERIFIED by unit tests with fake clocks; behavior on real games, real streams, hardware encoders, Windows, macOS and the Tk window is UNVERIFIED. See `docs/ROADMAP.md` for what is not done.
+- Version bumped to 0.9.0.
+- Behavior change: starting from the window with a performance profile chosen replaces the Strength dropdown, and applying a preset suggestion clears the profile.
+- Behavior change: with `--analytics`, `reports/` also holds `history.json` (newest 30 sessions).
+- Known limitations: auto-scale restarts ffmpeg on each step (viewers see a short interruption); the network stability score is an inference, not packet loss; the bench numbers come from one Linux sandbox and are not representative of low-end laptops; the TCP latency helper is only wired into `readiness` when `--platform` or `--url` is given.
 
 - New: `lightstream profiles` lists performance profiles (`potato`, `balanced`, `quality`, `competitive`, `low_latency`), stream presets (`youtube_gaming`, `twitch_gaming`, `kick`, `podcast`, `just_chatting`, `tutorial`, `esports`) and audio profiles (`gaming`, `podcast`, `music`, `commentary`, `asmr`, each with a light and a full filter chain).
 - New: `start --profile`, `--stream-preset`, `--audio-profile` and the matching config keys `profile`, `stream_preset`, `audio_profile`. Explicit flags beat a profile; a profile from the command line beats the config file.

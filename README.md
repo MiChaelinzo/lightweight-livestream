@@ -20,9 +20,9 @@ Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-
 
 | Platform | Download | How to start |
 |---|---|---|
-| Windows | `LightStream-0.8.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
-| macOS | `LightStream-0.8.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
-| Linux | `LightStream-0.8.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
+| Windows | `LightStream-0.9.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
+| macOS | `LightStream-0.9.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
+| Linux | `LightStream-0.9.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
 
 - **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
 - **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.
@@ -302,7 +302,7 @@ The `web/` showcase has an animated hero title (respects reduced motion), SVG mo
 | Analytics reports (content, no key, opt-in) | VERIFIED | `tests/test_analytics.py` |
 | Web showcase | UNVERIFIED | static page, no browser in the dev sandbox |
 
-## Performance profiles (0.9.0, in progress)
+## Performance profiles (0.9.0)
 
 Run `lightstream profiles` for the full list.
 
@@ -321,6 +321,8 @@ Status: option parsing, settings resolution, thread math and command building ar
 - `start --auto-scale` (or the Advanced checkbox) steps quality down one notch at a time when the stream struggles and back up after it stays healthy. It is off by default. Each step restarts ffmpeg briefly; a recording continues as `name-2.mkv`. See [docs/ARCHITECTURE-NOTES.md](docs/ARCHITECTURE-NOTES.md).
 - The window now has Performance profile, Microphone profile and Auto-scale controls in Advanced. A chosen profile replaces the Strength dropdown.
 - Status: rules, ladder, hysteresis, runner restart and settings wiring are VERIFIED by unit tests with fake clocks, and the restart was run against a real subprocess. Behavior on real streams and games, the Tk widgets and the thresholds' fit to real hardware are UNVERIFIED.
+
+Planned work and why it is not in 0.9.0 is listed in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Stream key safety
 
@@ -378,6 +380,13 @@ python3 tools/export_presets.py --check  # fails if it is stale
 | Hardware encoder flags (NVENC, QSV, AMF, VAAPI, VideoToolbox) | UNVERIFIED | never run on real hardware |
 | Windows window capture, dshow audio, low priority | UNVERIFIED | not run on Windows |
 | Actual lag/CPU improvement vs OBS | UNVERIFIED | not measured |
+| Performance profiles, stream presets, audio profile selection, thread math, optimizer rules, network stability score, auto-scale ladder and hysteresis, readiness scoring, bench report schema (0.9.0) | VERIFIED | unit tests with fake clocks and injected callables |
+| Ten audio filter chains accepted by FFmpeg (0.9.0) | VERIFIED | run through ffmpeg 7.0.2 static build on a sine input in the dev sandbox; a bad chain was rejected |
+| Real libx264 synthetic encode and bench numbers (0.9.0) | VERIFIED (this machine only) | `docs/BENCHMARKS.md`, Linux x86_64 sandbox; not representative of low-end laptops |
+| Restart through the reconnect path (auto-scale) | PARTIALLY VERIFIED | exercised against a real subprocess, not a real capture or RTMP stream |
+| Auto-scale on real games and streams, threshold fit to real hardware | UNVERIFIED | not run |
+| Game FPS gain from Gaming First (thread cap, CPU affinity) | UNVERIFIED | not measured |
+| Telemetry on Windows and macOS, `nvidia-smi` GPU readings, GUI telemetry row and new controls | UNVERIFIED | Linux parsing tested on sample text only; no display |
 | Linux PyInstaller build (`tools/build_release.py`), tar.gz plus SHA256SUMS, runs headless and prints the no-screen message | VERIFIED | built for 0.8.0 with PyInstaller, extracted and run locally (GUI itself not shown, no display) |
 | Windows `.exe` zip, macOS `.app` zip and `.dmg` | UNVERIFIED | only tested with a faked PyInstaller |
 | Release workflow `release.yml` | UNVERIFIED | YAML parses; Actions is billing-locked, never run |
