@@ -19,6 +19,8 @@ from .audio import AUDIO_PROFILES, NOISE_LEVELS
 from .bandwidth import measure_upload, mbps_to_kbps, recommend
 from .encoders import (HARDWARE_ORDER, SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
+from .bench import (DEFAULT_ENCODE_SECONDS, DEFAULT_IMPORT_RUNS, DEFAULT_TICKS,
+                    build_report, report_path, write_report)
 from .portable import find_ffmpeg, is_portable
 from .hardware import PROFILES, classify_gpus, detect_gpu_names, get_profile
 from .adaptive import AdaptiveAdvisor
@@ -65,6 +67,23 @@ def build_parser():
     b.add_argument("--upload-mbps", help="your upload speed in Mbps")
     b.add_argument("--measure-url", help="a URL you control that accepts a POST upload")
     b.add_argument("--hardware", help="hardware profile, e.g. intel_hd")
+    r = sub.add_parser("readiness", help="score 0-100 for how ready this PC is to stream")
+    r.add_argument("--ffmpeg", help="path to ffmpeg (default: search as usual)")
+    r.add_argument("--upload-mbps", help="your upload speed in Mbps")
+    r.add_argument("--platform", choices=PLATFORMS,
+                   help="also test how fast a connection to this platform opens")
+    r.add_argument("--url", help="rtmp:// address to test (for --platform custom)")
+    bn = sub.add_parser("bench", help="measure this PC: startup, memory, CPU cost "
+                                      "and a synthetic encode; writes a JSON report")
+    bn.add_argument("--ffmpeg", help="path to ffmpeg (default: search as usual)")
+    bn.add_argument("--seconds", type=int, default=DEFAULT_ENCODE_SECONDS,
+                    help="stream seconds per encode (default %d)" % DEFAULT_ENCODE_SECONDS)
+    bn.add_argument("--ticks", type=int, default=DEFAULT_TICKS,
+                    help="calls per CPU cost measurement (default %d)" % DEFAULT_TICKS)
+    bn.add_argument("--import-runs", type=int, default=DEFAULT_IMPORT_RUNS)
+    bn.add_argument("--compare-src", help="another lightstream src folder "
+                                          "(for example an older version) to compare startup")
+    bn.add_argument("--out", help="report file (default: reports/bench-DATE.json)")
     sc = sub.add_parser("scenes", help="list, check or create a scenes file")
     sc.add_argument("action", choices=("list", "validate", "example", "export", "import"))
     sc.add_argument("target", nargs="?",
@@ -271,6 +290,39 @@ def cmd_bandwidth(args, out, post=None):
     return 0
 
 
+def cmd_readiness(args, out, run=subprocess.run, connect=None, find=find_ffmpeg):
+    from . import wizard
+    from .bandwidth import rtmp_host_port
+    target = None
+    if args.url:
+        target = rtmp_host_port(args.url)
+    elif args.platform and args.platform != "custom":
+        target = wizard.platform_latency_target(args.platform)
+    elif args.platform:
+        raise ValueError("Platform 'custom' needs --url rtmp://host/app")
+    kbps = mbps_to_kbps(args.upload_mbps) if args.upload_mbps else None
+    facts = wizard.gather_readiness_facts(
+        detect_os(), upload_kbps=kbps, ffmpeg=args.ffmpeg, latency_target=target,
+        run=run, find=find, connect=connect)
+    for line in wizard.readiness_lines(wizard.readiness_report(facts)):
+        out.write(line + "\n")
+    return 0
+
+
+def cmd_bench(args, out, build=build_report, find=find_ffmpeg, today=None):
+    for name in ("seconds", "ticks", "import_runs"):
+        if getattr(args, name) <= 0:
+            raise ValueError("--%s must be greater than 0" % name.replace("_", "-"))
+    ffmpeg = args.ffmpeg or find()
+    out.write("Benchmarking (this takes a minute). ffmpeg: %s\n"
+              % ("found" if ffmpeg else "not found, encode skipped"))
+    report = build(ffmpeg=ffmpeg, seconds=args.seconds, ticks=args.ticks,
+                   import_runs=args.import_runs, compare_src=args.compare_src)
+    path = write_report(report, args.out or report_path(report["date"]))
+    out.write("Wrote %s\n%s\n" % (path, report["caveat"]))
+    return 0
+
+
 def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
               report_dir=None):
     os_name = detect_os()
@@ -423,6 +475,10 @@ def main(argv=None, out=sys.stdout):
             return cmd_presets(out)
         if args.command == "profiles":
             return cmd_profiles(out)
+        if args.command == "readiness":
+            return cmd_readiness(args, out)
+        if args.command == "bench":
+            return cmd_bench(args, out)
         if args.command == "gui":
             from .gui import main as gui_main  # lazy: tkinter is optional
             return gui_main()

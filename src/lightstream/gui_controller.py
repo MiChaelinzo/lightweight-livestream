@@ -178,7 +178,7 @@ def scene_choices(path=None):
 
 
 def one_click_setup(os_name=None, platform="twitch", upload_mbps=None,
-                    cpu_count=None, ram_mb=None, gpu_text=None):
+                    cpu_count=None, ram_mb=None, gpu_text=None, facts=None):
     """Safe settings for this PC as (fields, plain-words message).
 
     fields uses the same names as the saved preferences. Nothing is written
@@ -199,6 +199,10 @@ def one_click_setup(os_name=None, platform="twitch", upload_mbps=None,
         config["hardware"].replace("_", " "), label_for(STRENGTH_CHOICES, config["preset"]))
     if config.get("bitrate"):
         message += " Video speed set to %d kbps for your internet." % config["bitrate"]
+    if facts is None:  # probes ffmpeg briefly, like the Check button
+        facts = wizard.gather_readiness_facts(os_name, cpu_count, ram_mb, upload_kbps)
+    message += " Stream readiness: %d/100 (run 'lightstream readiness' for details)." % (
+        wizard.readiness_report(facts).score)
     return fields, message
 
 

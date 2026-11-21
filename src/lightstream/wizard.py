@@ -6,13 +6,17 @@ build_recommended_config is pure. The stream key is never asked for or saved.
 import json
 import os
 import subprocess
+from collections import namedtuple
 
 from . import bandwidth
 from .config import config_path, load_file_config
+from .encoders import (SOFTWARE_ENCODER, choose_working_encoder, encoder_works,
+                       probe_encoders)
 from .gui_controller import suggest_strength
 from .hardware import (cap_preset_name, classify_gpus, detect_gpu_names,
                        parse_gpu_names)
-from .platforms import PLATFORMS
+from .platforms import INGEST_URLS, PLATFORMS
+from .portable import find_ffmpeg
 from .presets import PRESETS
 
 LOW_RAM_MB = 4096  # at or below this, never start above the 'light' preset
@@ -88,9 +92,150 @@ def save_config(path, recommended):
         fh.write("\n")
 
 
+# Stream readiness score. Each factor earns points from a tier table of
+# (minimum value, points). Factors that were not measured (no upload speed or
+# no connection test) are left out of both the earned and the possible points,
+# so the score is round(100 * earned / possible) over what is known.
+FFMPEG_POINTS = 25
+ENCODER_POINTS_HARDWARE = 20
+ENCODER_POINTS_SOFTWARE = 12
+RAM_TIERS_MB = ((8192, 15), (4096, 10), (2048, 5), (0, 2))
+CPU_TIERS = ((8, 15), (4, 10), (2, 5), (1, 2))
+UPLOAD_TIERS_MBPS = ((8, 15), (4, 10), (2, 6), (1, 3), (0, 0))
+LATENCY_TIERS_MS = ((50, 10), (150, 7), (300, 3))  # (at most, points)
+MAX_RAM_POINTS = RAM_TIERS_MB[0][1]
+MAX_CPU_POINTS = CPU_TIERS[0][1]
+MAX_UPLOAD_POINTS = UPLOAD_TIERS_MBPS[0][1]
+MAX_LATENCY_POINTS = LATENCY_TIERS_MS[0][1]
+
+ReadinessFacts = namedtuple(
+    "ReadinessFacts",
+    "ffmpeg_found encoder encoder_is_hardware ram_mb cpu_count upload_kbps "
+    "latency_ms latency_checked",
+    defaults=(None, False, None, None, None, None, False))
+Factor = namedtuple("Factor", "name points max_points known detail fix")
+ReadinessReport = namedtuple("ReadinessReport", "score factors")
+
+
+def _tier_points(value, tiers):
+    for minimum, points in tiers:
+        if value >= minimum:
+            return points
+    return 0
+
+
+def readiness_report(facts):
+    """ReadinessReport from ReadinessFacts. Pure and deterministic."""
+    f = []
+    f.append(Factor("ffmpeg", FFMPEG_POINTS if facts.ffmpeg_found else 0, FFMPEG_POINTS,
+                    True, "found" if facts.ffmpeg_found else "not found",
+                    "" if facts.ffmpeg_found else
+                    "Install ffmpeg and add it to PATH, or put ffmpeg next to the app."))
+    if facts.encoder is None:
+        f.append(Factor("encoder", 0, ENCODER_POINTS_HARDWARE, True, "no working encoder",
+                        "Install ffmpeg with libx264, or update your graphics driver."))
+    elif facts.encoder_is_hardware:
+        f.append(Factor("encoder", ENCODER_POINTS_HARDWARE, ENCODER_POINTS_HARDWARE, True,
+                        "%s (hardware)" % facts.encoder, ""))
+    else:
+        f.append(Factor("encoder", ENCODER_POINTS_SOFTWARE, ENCODER_POINTS_HARDWARE, True,
+                        "%s (software)" % facts.encoder,
+                        "A hardware encoder (NVENC, Quick Sync) would use less CPU. "
+                        "Update your graphics driver if your PC has one."))
+    if facts.ram_mb is None:
+        f.append(Factor("memory", 0, MAX_RAM_POINTS, False, "could not be read", ""))
+    else:
+        pts = _tier_points(facts.ram_mb, RAM_TIERS_MB)
+        f.append(Factor("memory", pts, MAX_RAM_POINTS, True, "%d MB" % facts.ram_mb,
+                        "" if pts == MAX_RAM_POINTS else
+                        "Close other programs while streaming. More memory helps."))
+    if not facts.cpu_count:
+        f.append(Factor("processor", 0, MAX_CPU_POINTS, False, "could not be read", ""))
+    else:
+        pts = _tier_points(facts.cpu_count, CPU_TIERS)
+        f.append(Factor("processor", pts, MAX_CPU_POINTS, True,
+                        "%d cores" % facts.cpu_count,
+                        "" if pts == MAX_CPU_POINTS else
+                        "Use the potato or light strength so the game keeps its cores."))
+    if facts.upload_kbps is None:
+        f.append(Factor("upload speed", 0, MAX_UPLOAD_POINTS, False,
+                        "not given", "Add --upload-mbps with your upload speed."))
+    else:
+        mbps = facts.upload_kbps / 1000.0
+        pts = _tier_points(mbps, UPLOAD_TIERS_MBPS)
+        f.append(Factor("upload speed", pts, MAX_UPLOAD_POINTS, True, "%.1f Mbps" % mbps,
+                        "" if pts == MAX_UPLOAD_POINTS else
+                        "Use a lower bitrate (lightstream bandwidth) or a network cable."))
+    if not facts.latency_checked:
+        f.append(Factor("connection", 0, MAX_LATENCY_POINTS, False, "not tested",
+                        "Add --platform or --url to test the connection."))
+    elif facts.latency_ms is None:
+        f.append(Factor("connection", 0, MAX_LATENCY_POINTS, True, "could not connect",
+                        "Check your internet connection and the address."))
+    else:
+        pts = next((p for limit, p in LATENCY_TIERS_MS if facts.latency_ms <= limit), 0)
+        f.append(Factor("connection", pts, MAX_LATENCY_POINTS, True,
+                        "%.0f ms to connect" % facts.latency_ms,
+                        "" if pts == MAX_LATENCY_POINTS else
+                        "Move closer to the router or use a network cable."))
+    possible = sum(x.max_points for x in f if x.known)
+    earned = sum(x.points for x in f if x.known)
+    return ReadinessReport(round(100 * earned / possible) if possible else 0, tuple(f))
+
+
+def readiness_lines(report):
+    """Plain text lines: the score, then each factor with points and its fix."""
+    lines = ["Stream readiness: %d/100" % report.score]
+    for x in report.factors:
+        if x.known:
+            lines.append("  %-13s %2d/%-2d  %s" % (x.name, x.points, x.max_points,
+                                                    x.detail))
+        else:
+            lines.append("  %-13s skipped  %s" % (x.name, x.detail))
+        if x.fix:
+            lines.append("      fix: " + x.fix)
+    lines.append("  (skipped items are left out of the score. Measured here, "
+                 "not a promise for your stream.)")
+    return lines
+
+
+def gather_readiness_facts(os_name, cpu_count=None, ram_mb=None, upload_kbps=None,
+                           ffmpeg=None, latency_target=None, run=subprocess.run,
+                           find=find_ffmpeg, connect=None):
+    """Probe this PC. latency_target is (host, port) or None (not tested).
+    ffmpeg overrides the search. Every probe failure becomes 'not available'."""
+    from .bandwidth import measure_connect_latency
+    ffmpeg = ffmpeg or find()
+    encoder = None
+    if ffmpeg:
+        try:
+            available = probe_encoders(ffmpeg, run)
+            encoder = choose_working_encoder(ffmpeg, available, run=run)
+            if encoder == SOFTWARE_ENCODER and not encoder_works(ffmpeg, encoder, run):
+                encoder = None
+        except RuntimeError:
+            encoder = None
+    latency = None
+    if latency_target:
+        kwargs = {"connect": connect} if connect else {}
+        latency = measure_connect_latency(*latency_target, **kwargs)
+    return ReadinessFacts(
+        bool(ffmpeg), encoder, bool(encoder) and encoder != SOFTWARE_ENCODER,
+        ram_mb if ram_mb is not None else detect_ram_mb(os_name),
+        cpu_count if cpu_count is not None else (os.cpu_count() or 0),
+        upload_kbps, latency, latency_target is not None)
+
+
+def platform_latency_target(platform):
+    """(host, port) of a built-in platform's ingest server, or None."""
+    from .bandwidth import rtmp_host_port
+    url = INGEST_URLS.get(platform)
+    return rtmp_host_port(url) if url else None
+
+
 def run_setup(os_name, out, input_fn=input, yes=False, platform=None,
               upload_mbps=None, cpu_count=None, ram_mb=None, run=subprocess.run,
-              path=None):
+              path=None, find=find_ffmpeg):
     """Ask at most two questions (platform, upload speed), then save the config."""
     if platform is None:
         platform = "twitch"
@@ -111,5 +256,9 @@ def run_setup(os_name, out, input_fn=input, yes=False, platform=None,
     out.write("Saved %s\n" % path)
     for name, value in config.items():
         out.write("  %s: %s\n" % (name, value))
+    facts = gather_readiness_facts(os_name, cpu_count, ram_mb, upload_kbps,
+                                   run=run, find=find)
+    for line in readiness_lines(readiness_report(facts)):
+        out.write(line + "\n")
     out.write("The stream key is never saved. Start with: lightstream start\n")
     return 0
