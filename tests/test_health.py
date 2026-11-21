@@ -114,3 +114,34 @@ class RunnerIntegrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NetworkStabilityTests(unittest.TestCase):
+    def tracker(self, bitrates, speeds, reconnects=0, target=2500):
+        t = HealthTracker(target_kbps=target)
+        for b, s in zip(bitrates, speeds):
+            t.update({"bitrate_kbps": b, "speed": s})
+        t.reconnects = reconnects
+        return t
+
+    def test_none_until_enough_samples(self):
+        self.assertIsNone(self.tracker([2500] * 3, [1.0] * 3).network_stability())
+
+    def test_steady_stream_scores_100(self):
+        result = self.tracker([2500] * 20, [1.0] * 20).network_stability()
+        self.assertEqual(100, result.score)
+        self.assertIn("not a packet loss", result.basis)
+
+    def test_penalties_lower_the_score(self):
+        steady = self.tracker([2500] * 20, [1.0] * 20).network_stability().score
+        low = self.tracker([1000] * 20, [1.0] * 20).network_stability().score
+        jitter = self.tracker([2500, 1500] * 10, [1.0, 0.7] * 10).network_stability().score
+        dropped = self.tracker([2500] * 20, [1.0] * 20, reconnects=3).network_stability().score
+        self.assertEqual(60, low)
+        self.assertTrue(all(x < steady for x in (low, jitter, dropped)))
+        self.assertEqual(80, dropped)
+
+    def test_score_stays_in_range(self):
+        worst = self.tracker([0] * 20, [0.1, 1.5] * 10, reconnects=50).network_stability()
+        self.assertGreaterEqual(worst.score, 0)
+        self.assertLessEqual(worst.score, 100)

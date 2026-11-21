@@ -5,7 +5,7 @@ few running counters. Advice describes mechanisms; no speed or CPU numbers are
 promised. Real-stream behavior is UNVERIFIED until tried on real hardware.
 """
 
-from collections import deque
+from collections import deque, namedtuple
 import time
 
 from .runner import (LAGGING_BELOW_SPEED, STATUS_FALLBACK, STATUS_LIVE,
@@ -15,6 +15,29 @@ WINDOW_SAMPLES = 120          # about two minutes at ffmpeg's one line per secon
 LOW_BITRATE_RATIO = 0.6       # sustained bitrate under 60% of target => network
 MIN_SAMPLES_FOR_ADVICE = 5    # avoid advice from the first noisy seconds
 DROP_RATE_WARNING = 0.01      # more than 1% dropped frames
+
+# Network stability score (0..100). It is an INFERENCE from ffmpeg progress
+# lines, not a packet loss measurement: ffmpeg's RTMP output reports no packet
+# loss. Start at 100 and subtract four capped penalties (caps add up to 100):
+#   shortfall   mean(max(0, 1 - bitrate/target))  * SHORTFALL_WEIGHT
+#   variance    stdev(bitrate/target)             * RATIO_JITTER_WEIGHT
+#   speed jitter stdev(speed)                     * SPEED_JITTER_WEIGHT
+#   reconnects  RECONNECT_PENALTY each
+# Without a target bitrate only the last two penalties apply. Note that the
+# bitrate ffmpeg prints is an average since the start, which smooths real dips.
+STABILITY_MAX = 100
+SHORTFALL_WEIGHT = 80
+SHORTFALL_CAP = 40
+RATIO_JITTER_WEIGHT = 100
+RATIO_JITTER_CAP = 25
+SPEED_JITTER_WEIGHT = 100
+SPEED_JITTER_CAP = 15
+RECONNECT_PENALTY = 10
+RECONNECT_CAP = 20
+
+NetworkStability = namedtuple("NetworkStability", "score samples basis")
+STABILITY_BASIS = ("Estimated from ffmpeg bitrate and speed readings and reconnects. "
+                   "This is an inference, not a packet loss measurement.")
 
 
 class HealthTracker:
@@ -104,6 +127,23 @@ class HealthTracker:
             "longest_lag_seconds": self.longest_lag_seconds,
         }
 
+    def network_stability(self):
+        """NetworkStability, or None until MIN_SAMPLES_FOR_ADVICE readings."""
+        count = max(len(self._bitrates), len(self._speeds))
+        if count < MIN_SAMPLES_FOR_ADVICE and not self.reconnects:
+            return None
+        penalty = 0.0
+        if self.target_kbps:
+            ratios = [b / self.target_kbps for b in self._bitrates]
+            if ratios:
+                shortfall = _mean([max(0.0, 1.0 - r) for r in ratios])
+                penalty += min(SHORTFALL_CAP, shortfall * SHORTFALL_WEIGHT)
+                penalty += min(RATIO_JITTER_CAP, _stdev(ratios) * RATIO_JITTER_WEIGHT)
+        penalty += min(SPEED_JITTER_CAP, _stdev(self._speeds) * SPEED_JITTER_WEIGHT)
+        penalty += min(RECONNECT_CAP, self.reconnects * RECONNECT_PENALTY)
+        return NetworkStability(max(0, round(STABILITY_MAX - penalty)), count,
+                                STABILITY_BASIS)
+
     def diagnose(self):
         """Plain-language advice list. Empty when nothing looks wrong."""
         if self.samples < MIN_SAMPLES_FOR_ADVICE and not self.reconnects:
@@ -152,3 +192,11 @@ class HealthTracker:
 
 def _mean(values):
     return sum(values) / len(values) if values else None
+
+
+def _stdev(values):
+    """Population standard deviation; 0.0 for fewer than two values."""
+    if len(values) < 2:
+        return 0.0
+    mean = sum(values) / len(values)
+    return (sum((v - mean) ** 2 for v in values) / len(values)) ** 0.5
