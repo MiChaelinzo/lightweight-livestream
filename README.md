@@ -324,6 +324,8 @@ Status: option parsing, settings resolution, thread math and command building ar
 
 Planned work and why it is not in 0.9.0 is listed in [docs/ROADMAP.md](docs/ROADMAP.md).
 
+The v0.10 audit, blueprint, benchmark method (competitor numbers UNKNOWN) and Top 100 list are indexed in [docs/README.md](docs/README.md).
+
 ## Stream key safety
 
 The key is read from the `STREAM_KEY` environment variable or typed at a hidden prompt (asked by lightstream itself, also from the Windows launcher). It is never stored by lightstream, and it is hidden (`****`) in everything lightstream prints. Limitation: RTMP puts the key in the FFmpeg command line, so other local processes running as your user may be able to see it in the process list. Custom URLs that carry their own tokens are not redacted beyond the key. Never share your key or commit it.

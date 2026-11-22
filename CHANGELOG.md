@@ -5,6 +5,7 @@
 - New: Facebook Live platform (`--platform facebook`, GUI "Facebook Live", stream preset `facebook_live`). Ingest is `rtmps://live-api-s.facebook.com:443/rtmp/KEY`. The video cap of 4000 kbps is a conservative design choice, not read from Facebook's documentation here. PARTIALLY VERIFIED: the unit tests cover URL building, the CLI choice, key redaction and the preset, and the bundled FFmpeg 7.0.2 (GnuTLS) parsed an rtmps output and failed with "Connection refused" on a closed local port. No Facebook account was available, so a real go-live is UNVERIFIED.
 - Fix: config, preferences, history and report files are written with mode 0600 on POSIX (no-op on Windows) through a temp file and `os.replace`, so a crash cannot leave a truncated JSON file.
 - Fix: key redaction in FFmpeg output also hides the percent-encoded form of the key.
+- Docs: audit with scored rubric (`docs/audit/AUDIT.md`), measured evidence (`docs/audit/EVIDENCE.md`), blueprint and delivery plan (`docs/architecture/`), Top 100 improvements with hackathon mode (`docs/audit/TOP-100.md`) and an index (`docs/README.md`). Competitor numbers are UNKNOWN; only a method is given. Roadmap rows are design, not code.
 - Known limitation: the key is part of the FFmpeg command line, so other local users can read it from the process list. FFmpeg has no other way to receive it.
 
 ## 0.9.0
