@@ -125,29 +125,29 @@ and manual reads of `config.py`, `runner.py`, `analytics.py`, `cli.py`, `command
 
 ### Findings (real issues and limits)
 
-1. **Key visible in the process list (limit, by design).** `command.py:113-114`
+1. **Key visible in the process list (limit, by design). Status: open, documented in CHANGELOG.** `command.py:113-114`
    and `platforms.py:13-20` put the full ingest URL with the key into the FFmpeg
    argv (`runner.py:157`). On Linux and macOS other local users can read it from
    `ps` or `/proc/<pid>/cmdline`; on Windows other processes of the same user can
    read it. Redaction protects logs only. FFmpeg has no stdin or env option for
    the URL, so this is hard to remove. Document it. Severity: low for a
    single-user streaming PC.
-2. **Config, prefs and history files are created with default umask.**
+2. **Config, prefs and history files are created with default umask. Status: FIXED in v0.10 (`fileio.py`, mode 0600, tested).**
    `config.py:96`, `wizard.py:90`, `gui_controller.py:139`, `analytics.py:76,115`
    open with plain `open(...)`. VERIFIED: `save_prefs` produced a file with mode
    `0o644` under umask `0o022`. None holds the key, but `config.json` may hold a
    custom `url` (see 3). Severity: low. A 0600 mode on POSIX would be cheap.
-3. **A custom `url` may contain the key.** `platforms.py:18` appends the key to
+3. **A custom `url` may contain the key. Status: open (roadmap).** `platforms.py:18` appends the key to
    `custom_url`, so a user who stores `rtmp://host/app/KEY` as `"url"` in
    `config.json` stores the key in plain text. `save_prefs` guards the GUI
    path (`gui_controller.py:134-138`), but a hand-edited config file or `--url`
    on the command line (shell history) is not guarded. `wizard.py:263` states the
    key is never saved, which is true of LightStream's own writes only.
-4. **Non-atomic writes.** `wizard.py:89-92`, `gui_controller.py:139-142`,
+4. **Non-atomic writes. Status: FIXED in v0.10 (temp file + `os.replace`, tested).** `wizard.py:89-92`, `gui_controller.py:139-142`,
    `analytics.py:115-117` open with `"w"` and write directly, so a crash mid-write
    leaves a truncated JSON file. `load_file_config` (`config.py:79-89`) then raises
    `ValueError` for `config.json`, while `load_history` returns `[]`. Severity: low.
-5. **Redaction is exact-substring only.** `runner.py:47-49` will not hide a
+5. **Redaction is exact-substring only. Status: partly fixed (percent-encoded form now redacted, tested); other transforms open.** `runner.py:47-49` will not hide a
    percent-encoded or otherwise transformed form of the key if FFmpeg echoes one
    (UNVERIFIED whether FFmpeg ever does). Very short keys also redact unrelated
    text (cosmetic).
@@ -155,7 +155,7 @@ and manual reads of `config.py`, `runner.py`, `analytics.py`, `cli.py`, `command
    to a server, but the full URL is stored in the OBS browser-source setting in
    plain text. The Twitch token should be minimal scope. Documented limit, not a
    code defect.
-7. **Speed test accepts `http://`.** `bandwidth.py:74-75` allows plain HTTP for
+7. **Speed test accepts `http://`. Status: open, informational (random data only, and a local http test server is a legitimate use).** `bandwidth.py:74-75` allows plain HTTP for
    the opt-in upload test. It sends random data only, so no secret is exposed.
    Informational.
 

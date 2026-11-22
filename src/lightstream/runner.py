@@ -6,6 +6,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 
 from .encoders import SOFTWARE_ENCODER
 
@@ -46,7 +47,9 @@ _PROGRESS_FIELDS = (
 
 def redact(text, key):
     if key:
-        text = text.replace(key, "****")
+        # Also hide the percent-encoded form, in case a tool echoes the URL encoded.
+        for form in (key, urllib.parse.quote(key, safe=""), urllib.parse.quote(key)):
+            text = text.replace(form, "****")
     return text
 
 

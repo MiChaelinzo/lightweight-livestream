@@ -7,6 +7,7 @@ import sys
 from .audio import (CHAIN_FULL, CHAIN_LIGHT, NOISE_LEVELS, audio_profile_chain,
                     get_audio_profile, require_model_file)
 from .command import StreamSettings
+from .fileio import write_private_text
 from .hardware import cap_preset_name, cap_video_kbps, get_profile
 from .portable import data_dir, is_portable, recordings_dir
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
@@ -93,9 +94,7 @@ def write_example_config(path):
     if os.path.exists(path):
         raise FileExistsError(path)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(EXAMPLE_CONFIG, fh, indent=2)
-        fh.write("\n")
+    write_private_text(path, json.dumps(EXAMPLE_CONFIG, indent=2) + "\n")
 
 
 def _pick(name, cli, file_cfg, default=None):

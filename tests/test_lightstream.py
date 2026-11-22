@@ -160,6 +160,10 @@ class CommandTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_command(settings(), KEY, "linux", "nope")
 
+    def test_facebook_url_uses_rtmps(self):
+        self.assertEqual("rtmps://live-api-s.facebook.com:443/rtmp/KEY",
+                         ingest_url("facebook", "KEY"))
+
     def test_youtube_and_custom_urls(self):
         self.assertEqual("rtmp://a.rtmp.youtube.com/live2/k", ingest_url("youtube", "k"))
         self.assertEqual("rtmp://h/app/k", ingest_url("custom", "k", "rtmp://h/app/"))
@@ -244,6 +248,12 @@ class EncoderErrorTests(unittest.TestCase):
 class RedactionTests(unittest.TestCase):
     def test_redact(self):
         self.assertNotIn(KEY, redact("url " + KEY, KEY))
+
+    def test_redact_hides_percent_encoded_key(self):
+        key = "a b/c+d"
+        text = redact("x a%20b%2Fc%2Bd y a%20b/c%2Bd z", key)
+        self.assertNotIn("a%20b", text)
+        self.assertEqual("x **** y **** z", text)
 
     def test_format_command_hides_key(self):
         argv = build_command(settings(), KEY, "linux", "libx264")
@@ -494,6 +504,14 @@ class CliTests(unittest.TestCase):
         self.assertNotIn(KEY, text)
         self.assertIn("rtmp://live.twitch.tv/app/****", text)
         self.assertIn("-b:v 700k", text)
+
+    def test_dry_run_facebook_redacts(self):
+        code, text = self.run_cli(
+            ["start", "--platform", "facebook", "--preset", "potato", "--dry-run"],
+            {"STREAM_KEY": KEY})
+        self.assertEqual(0, code)
+        self.assertNotIn(KEY, text)
+        self.assertIn("rtmps://live-api-s.facebook.com:443/rtmp/****", text)
 
     def test_start_wires_retry_cap_and_handles_launch_error(self):
         calls = {}

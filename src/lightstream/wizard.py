@@ -12,6 +12,7 @@ from . import bandwidth
 from .config import config_path, load_file_config
 from .encoders import (SOFTWARE_ENCODER, choose_working_encoder, encoder_works,
                        probe_encoders)
+from .fileio import write_private_text
 from .gui_controller import suggest_strength
 from .hardware import (cap_preset_name, classify_gpus, detect_gpu_names,
                        parse_gpu_names)
@@ -87,9 +88,7 @@ def save_config(path, recommended):
     current = load_file_config(path)
     current.update(recommended)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(current, fh, indent=2)
-        fh.write("\n")
+    write_private_text(path, json.dumps(current, indent=2) + "\n")
 
 
 # Stream readiness score. Each factor earns points from a tier table of
