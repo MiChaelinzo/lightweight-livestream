@@ -23,24 +23,24 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 
 ## Phase 18 deliverables
 
-The original Phase 18 wording is not stored in this repository. This mapping is the author's grouping of the 14 deliverables, so check it against the request if the numbering differs.
+The 14 deliverables, in order. Statuses follow [ROADMAP.md](ROADMAP.md).
 
 | # | Deliverable | Where | Status |
 |---|---|---|---|
-| 1 | Audit reports (debt, scalability, maintainability, performance, security) | [AUDIT.md](audit/AUDIT.md) sections 1 to 5 | Done (documentation) |
-| 2 | Scores with rubric | [AUDIT.md](audit/AUDIT.md) section 6 | Done |
-| 3 | New architecture blueprint, tiers, budgets | [BLUEPRINT.md](architecture/BLUEPRINT.md) sections 1 and 2 | Partial design |
-| 4 | Streaming engine redesign (platforms, backup endpoints, VP9 and AV1) | [BLUEPRINT.md](architecture/BLUEPRINT.md) section 3 | Partial |
-| 5 | Performance plan (emergency mode, weak connection mode) | [BLUEPRINT.md](architecture/BLUEPRINT.md) section 4 | Roadmap |
-| 6 | Scene system and audio subsystem | [BLUEPRINT.md](architecture/BLUEPRINT.md) sections 5 and 6 | Partial |
-| 7 | Smart optimization and AI assistant | [BLUEPRINT.md](architecture/BLUEPRINT.md) sections 7 and 8 | Partial |
-| 8 | Plugin ecosystem and SDK | [BLUEPRINT.md](architecture/BLUEPRINT.md) section 9 | Roadmap |
-| 9 | UI modernization, design system, dashboard | [BLUEPRINT.md](architecture/BLUEPRINT.md) sections 10 and 11 | Partial |
-| 10 | Mobile companion API and creator tools | [BLUEPRINT.md](architecture/BLUEPRINT.md) sections 12 and 13 | Roadmap and Partial |
-| 11 | Network optimization and security hardening | [BLUEPRINT.md](architecture/BLUEPRINT.md) sections 14 and 15 | Partial |
+| 1 | Repository audit | [AUDIT.md](audit/AUDIT.md) (sections 1 to 6), raw data in [EVIDENCE.md](audit/EVIDENCE.md) | Done (documentation) |
+| 2 | Technical debt analysis | [AUDIT.md](audit/AUDIT.md#1-technical-debt) | Done (documentation) |
+| 3 | New architecture blueprint | [BLUEPRINT.md](architecture/BLUEPRINT.md#1-architecture-and-target-tiers) and [budgets](architecture/BLUEPRINT.md#2-performance-memory-cpu-and-gpu-budgets) | Partial design |
+| 4 | Streaming engine redesign | [BLUEPRINT.md](architecture/BLUEPRINT.md#3-streaming-engine) | Partial (backup endpoints, VP9 and AV1 are Roadmap) |
+| 5 | Performance optimization plan | [BLUEPRINT.md](architecture/BLUEPRINT.md#4-performance-plan-emergency-mode-and-weak-connection-mode) and [AUDIT.md](audit/AUDIT.md#4-performance) | Roadmap (emergency and weak connection modes) |
+| 6 | Scene system architecture | [BLUEPRINT.md](architecture/BLUEPRINT.md#5-scene-system) | Partial |
+| 7 | Audio subsystem design | [BLUEPRINT.md](architecture/BLUEPRINT.md#6-audio-subsystem) | Partial (profiles and chains Done; meter and mixing Roadmap) |
+| 8 | Smart optimization engine | [BLUEPRINT.md](architecture/BLUEPRINT.md#7-smart-optimization-engine) | Partial |
+| 9 | AI assistant architecture | [BLUEPRINT.md](architecture/BLUEPRINT.md#8-ai-assistant-local-and-cloud) | Partial (rule based); Roadmap (language model) |
+| 10 | Plugin ecosystem design | [BLUEPRINT.md](architecture/BLUEPRINT.md#9-plugin-ecosystem-and-sdk) | Roadmap |
+| 11 | UI modernization strategy | [BLUEPRINT.md](architecture/BLUEPRINT.md#10-ui-modernization-and-design-system) | Partial (window); Roadmap (dark mode, compact mode, shortcuts) |
 | 12 | Testing strategy | [DELIVERY.md](architecture/DELIVERY.md#1-testing-strategy) | Partial |
-| 13 | DevOps strategy | [DELIVERY.md](architecture/DELIVERY.md#2-devops-strategy) | Partial |
-| 14 | Release roadmap v0.10 to v1.0 | [DELIVERY.md](architecture/DELIVERY.md#3-release-roadmap-v010-to-v10) | Roadmap |
+| 13 | DevOps strategy | [DELIVERY.md](architecture/DELIVERY.md#2-devops-strategy) | Partial (CI workflows never ran) |
+| 14 | Release roadmap | [DELIVERY.md](architecture/DELIVERY.md#3-release-roadmap-v010-to-v10) | Roadmap |
 
 ## Lists and modes
 
