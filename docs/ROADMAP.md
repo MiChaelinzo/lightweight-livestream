@@ -17,7 +17,7 @@ Status after 0.9.0. Done means implemented and covered by unit tests (see the RE
 | Audio | Done | Five audio profiles with light and full chains, noise suppression | | | |
 | Recording | Partial | Local copy via tee, numbered files after reconnect. No instant replay, clips, highlights, cleanup or space estimate | 2 | recording folder policy | Replay needs a rolling buffer, which costs RAM or disk on low-end PCs |
 | Analytics | Done | Opt-in session reports and 30 session history without keys or URLs | | | |
-| Stream presets | Done | Seven presets | | | |
+| Stream presets | Done | Eight presets, including `facebook_live` (RTMPS ingest; real go-live UNVERIFIED) | | | |
 | Low-end super mode | Partial | `potato` profile, hardware profiles, auto-scale. Not a single switch and not measured on a low-end laptop | 2 | real low-end benchmark | No such hardware here |
 | Mobile remote | Roadmap | Design: stdlib `http.server` bound to 127.0.0.1 by default, random token per run, off by default, never exposes stream keys. LAN binding only by explicit option | 3 | start/stop controller API | Network exposure needs a security review and a phone to test |
 | Plugin architecture | Roadmap | Design: each plugin is a subprocess that talks a narrow JSON protocol over stdin and stdout. In-process Python cannot be sandboxed, so in-process plugins are rejected | 3 | protocol spec, event list | A protocol should follow real use cases, not precede them |

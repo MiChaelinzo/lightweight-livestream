@@ -13,6 +13,7 @@ import time
 from .autoscale import AutoScaleSession, AutoScaler, build_ladder, top_step
 from .command import (build_command, numbered_recording_path,
                       prepare_recording_path)
+from .fileio import write_private_text
 from .portable import data_dir, find_ffmpeg
 from .config import config_path, detect_os, effective_preset_name, resolve_settings
 from .config import scenes_path
@@ -45,6 +46,7 @@ PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
 
 # (label shown to the user, value used internally)
 PLATFORM_CHOICES = (("Twitch", "twitch"), ("YouTube", "youtube"),
+                    ("Facebook Live", "facebook"),
                     ("Other site", "custom"))
 STRENGTH_CHOICES = (
     ("Very old PC (potato)", "potato"),
@@ -137,9 +139,7 @@ def save_prefs(path, prefs, key=""):
     safe = {k: prefs[k] for k in PREF_FIELDS if k in prefs
             and not _contains_key(prefs[k], key)}
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(safe, fh, indent=2)
-        fh.write("\n")
+    write_private_text(path, json.dumps(safe, indent=2) + "\n")
 
 
 def load_prefs(path):
