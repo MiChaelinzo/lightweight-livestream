@@ -57,6 +57,18 @@ class PrivateWriteTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 create_private_text(path, "y")
 
+    def test_create_removes_partial_file_on_write_failure(self):
+        class Unwritable:
+            def __str__(self):
+                raise RuntimeError("boom")
+
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "r.json")
+            with self.assertRaises(TypeError):
+                create_private_text(path, Unwritable())
+            self.assertFalse(os.path.exists(path))
+            create_private_text(path, "ok")
+
     @unittest.skipUnless(POSIX, "POSIX modes only")
     def test_prefs_and_history_files_are_private(self):
         old = os.umask(0)

@@ -147,6 +147,11 @@ and manual reads of `config.py`, `runner.py`, `analytics.py`, `cli.py`, `command
    `analytics.py:115-117` open with `"w"` and write directly, so a crash mid-write
    leaves a truncated JSON file. `load_file_config` (`config.py:79-89`) then raises
    `ValueError` for `config.json`, while `load_history` returns `[]`. Severity: low.
+   Scope: private atomic writes cover only config, prefs, history, wizard config and
+   report files. `scene_collections.py`, `portable.py` (ffmpeg path) and `bench.py`
+   output still use plain `open(..., "w")`; none holds a stream key. `fileio.py`
+   does not fsync, so writes survive a process crash, not power loss. Report
+   creation removes its partial file if the write fails.
 5. **Redaction is exact-substring only. Status: partly fixed (percent-encoded form now redacted, tested); other transforms open.** `runner.py:47-49` will not hide a
    percent-encoded or otherwise transformed form of the key if FFmpeg echoes one
    (UNVERIFIED whether FFmpeg ever does). Very short keys also redact unrelated

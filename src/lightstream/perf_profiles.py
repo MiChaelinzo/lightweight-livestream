@@ -64,7 +64,7 @@ STREAM_PRESETS = {
         StreamPreset("twitch_gaming", "twitch", "competitive", "gaming",
                      "Twitch game streams: 720p60 with cores left for the game."),
         StreamPreset("facebook_live", "facebook", "balanced", "commentary",
-                     "Facebook Live: balanced video inside Facebook's 4 Mbps video cap."),
+                     "Facebook Live: balanced video capped at 4000 kbps (conservative, not from Facebook docs)."),
         StreamPreset("kick", "custom", "balanced", "gaming",
                      "Kick: you supply the ingest address with --url (it is not built in)."),
         StreamPreset("podcast", "youtube", "potato", "podcast",
