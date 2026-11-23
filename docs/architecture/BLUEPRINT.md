@@ -153,9 +153,11 @@ Design sketch (to be finalized with real use cases, not before):
 
 ## 10. UI modernization and design system
 
-**Status: Partial for the window; Roadmap for dark mode, compact mode, shortcuts and tokens.** The window uses tkinter and ttk only. Rendering was never run in this environment (no display), so layout claims are UNVERIFIED.
+**Status: Partial.** Tokens, dark mode, compact mode, keyboard shortcuts and sparkline graphs are built (0.11.0) and their logic is VERIFIED by unit tests (`tests/test_gui_theme.py`). How they look on a screen is UNVERIFIED (no display here). The window uses tkinter and ttk only. Rendering was never run in this environment (no display), so layout claims are UNVERIFIED.
 
-Design: one `theme` module holding named tokens (colors, spacing, font sizes) with a light and a dark set, consumed by `gui.py` and `gui_pages.py`. Contrast ratios between token pairs are pure math and can be unit tested without a display. Keep the three step flow. No web view inside the app.
+As built: `src/lightstream/gui_theme.py` is pure (no tkinter). It holds light and dark palettes, a WCAG contrast function (all text pairs must reach 4.5:1, enforced by a test), spacing and font tokens with a compact variant, the shortcut table (Ctrl+Enter start, Ctrl+. stop, Ctrl+Shift+E emergency, Ctrl+Shift+D theme, Ctrl+Shift+C compact, Ctrl+1..6 pages), a fixed-size ring buffer, downsampling and sparkline coordinates, a 1 Hz redraw gate, and the saved look (`ui.json`, theme name and compact flag only, mode 0600). `gui.py` applies them through `ttk.Style` and three small `tk.Canvas` graphs (fps, bitrate, CPU, last 60 readings). Compact mode shows the sidebar only. If a Tk call fails, the old look stays and the numeric cards still work. Contrast covers text pairs only; it is not a full accessibility audit and no screen reader was tried.
+
+Original design: one `theme` module holding named tokens (colors, spacing, font sizes) with a light and a dark set, consumed by `gui.py` and `gui_pages.py`. Contrast ratios between token pairs are pure math and can be unit tested without a display. Keep the three step flow. No web view inside the app.
 
 ## 11. Dashboard
 

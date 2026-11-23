@@ -12,6 +12,7 @@
 - New: weak connection mode, `start --weak-connection [--upload-mbps N]`: lower bitrate, 1 second keyframes, 2 second buffer. UNVERIFIED on real bad links.
 - New: backup ingest failover, `--backup-url rtmp://host/app` (config `backup_url`, GUI Advanced). After 3 quick connection failures the stream switches to the backup with the same key (status `failover`); a recording continues in the next numbered file. The key is never saved or logged. Tested with fake processes; real ingest servers UNVERIFIED.
 - Change: the GUI always supplies the relaunch argv builder to the runner (needed for Emergency and failover).
+- New: window look and usability. Dark and light themes, compact (sidebar-only) mode, keyboard shortcuts shown in labels (Ctrl+Enter start, Ctrl+. stop, Ctrl+Shift+E emergency, Ctrl+Shift+D theme, Ctrl+Shift+C compact, Ctrl+1..6 pages), a visible focus color, and small graphs for fps, bitrate and CPU (last minute, redrawn once per second, fixed memory). The choice is saved in `ui.json` (no secrets). Color contrast of all text pairs is tested to WCAG AA (4.5:1). Logic VERIFIED by unit tests; on-screen rendering UNVERIFIED.
 - Docs: the key in the ffmpeg command line is documented as an OS-level exposure, with alternatives evaluated in `docs/ARCHITECTURE-NOTES.md`.
 
 ## 0.10.0 (unreleased draft)
