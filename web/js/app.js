@@ -70,8 +70,17 @@ async function initPicker() {
   update();
 }
 
+// Offline shell. Optional: any failure leaves the site working online.
+function registerOffline() {
+  if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+  navigator.serviceWorker.register("/sw.js", { type: "module" }).catch((err) => {
+    console.warn("Offline mode unavailable:", err.message);
+  });
+}
+
 initHero();
 initPicker();
+registerOffline();
 setupCaptureDemo({
   startButton: $("capture-start"),
   stopButton: $("capture-stop"),

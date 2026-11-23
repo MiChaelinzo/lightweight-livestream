@@ -15,7 +15,7 @@ body {
 }
 a { color: var(--cyan); }
 :focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
-.skip { position: absolute; left: -999px; }
+.skip { position: absolute; left: -999px; top: 0; }
 .skip:focus { left: 8px; top: 8px; background: var(--panel); padding: 8px; z-index: 10; }
 
 .hero {
@@ -47,7 +47,7 @@ h2 { border-bottom: 1px solid #243061; padding-bottom: 6px; }
 .form { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 12px; }
 label { display: grid; gap: 4px; color: var(--muted); }
 select, input {
-  font: inherit; padding: 8px; color: var(--text);
+  font: inherit; min-height: 44px; padding: 8px; color: var(--text);
   background: var(--panel); border: 1px solid #2c3a78; border-radius: 6px;
 }
 .result, .code {
@@ -57,7 +57,7 @@ select, input {
 .note { background: #2a2208; border-left: 4px solid #f0b429; padding: 10px 14px; }
 .steps li { margin: 8px 0; }
 button, .button {
-  display: inline-block; font: inherit; cursor: pointer; text-decoration: none;
+  display: inline-block; min-height: 44px; min-width: 44px; line-height: 1.4; font: inherit; cursor: pointer; text-decoration: none;
   padding: 10px 18px; border-radius: 8px; border: 0;
   color: #04101a; background: linear-gradient(90deg, var(--cyan), var(--violet));
 }
@@ -92,3 +92,28 @@ table { width: 100%; border-collapse: collapse; margin: 12px 0; }
 th, td { text-align: left; padding: 8px 10px; border: 1px solid #243061; vertical-align: top; }
 thead th { background: var(--panel); }
 @media (max-width: 40rem) { table { font-size: .9rem; } }
+
+/* Touch targets and narrow screens */
+.hero-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+.table-wrap { overflow-x: auto; }
+.table-wrap table { min-width: 34rem; }
+main a { padding: 2px 0; }
+@media (max-width: 30rem) {
+  main { padding: 12px 14px 32px; }
+  .hero { min-height: 56vh; }
+  .hero-links .button { flex: 1 1 100%; text-align: center; }
+  .result, .code { overflow-x: auto; }
+}
+
+/* Light scheme. Text/background pairs keep at least 4.5:1 (see web/test/a11y.test.js). */
+@media (prefers-color-scheme: light) {
+  :root { --bg: #f6f8ff; --panel: #ffffff; --text: #11183a; --muted: #44507a; --cyan: #05566b; --violet: #6a1fa8; }
+  .hero { background: radial-gradient(circle at 50% 40%, #cfd9ff 0%, var(--bg) 70%); }
+  .hero-text { text-shadow: none; }
+  h2, th, td, .result, .code, .card, footer { border-color: #b8c3ea; }
+  select, input { border-color: #7f8cbf; }
+  .note { background: #fff4d6; color: #3d2f00; }
+  button, .button { color: #ffffff; background: linear-gradient(90deg, #05566b, #6a1fa8); }
+  .button.ghost { color: var(--cyan); border-color: var(--cyan); background: transparent; }
+  .animated-title { background: linear-gradient(90deg, #05566b, #6a1fa8, #05566b); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; }
+}
