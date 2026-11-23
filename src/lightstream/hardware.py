@@ -41,6 +41,16 @@ PROFILES = {
                         "local recording on, moderate bitrate for 1080p.",
                         record_by_default=True,
                         max_video_kbps=MX250_MAX_VIDEO_KBPS),
+        # Dual-GPU Optimus laptop (Intel iGPU + MX250). Deliberate design choice,
+        # UNVERIFIED on real hardware: the game renders on the NVIDIA dGPU, so
+        # the otherwise idle Intel Quick Sync block encodes, leaving the dGPU's
+        # video engine and its power budget to the game. NVENC is the fallback.
+        HardwareProfile("optimus_mx250", ("h264_qsv", "h264_nvenc"), None, 2,
+                        "Intel iGPU + GeForce MX250 laptops: Quick Sync encodes on the "
+                        "idle iGPU while the game uses the MX250, NVENC second, local "
+                        "recording on, moderate bitrate for 1080p.",
+                        record_by_default=True,
+                        max_video_kbps=MX250_MAX_VIDEO_KBPS),
         HardwareProfile("nvidia_mx", ("h264_nvenc", "h264_qsv"), None, 2,
                         "NVIDIA MX series laptop GPU: NVENC, Quick Sync fallback."),
         HardwareProfile("nvidia", ("h264_nvenc",), None, 2, "NVIDIA GPU: NVENC."),
@@ -69,8 +79,8 @@ def get_profile(name):
 
 
 def parse_gpu_names(text):
-    """GPU names from `wmic path win32_VideoController get name` (Windows) or
-    `lspci` (Linux) text."""
+    """GPU names from PowerShell Get-CimInstance, `wmic path
+    win32_VideoController get name` (Windows) or `lspci` (Linux) text."""
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     pci = [m.group(1) for m in (_LSPCI_LINE.search(l) for l in lines) if m]
     if pci:
@@ -79,11 +89,13 @@ def parse_gpu_names(text):
 
 
 def classify_gpus(names):
-    """Profile name for the best GPU: MX250, NVIDIA MX, NVIDIA, Intel HD 4000/520/620,
+    """Profile name for the best GPU: Intel + MX250 (optimus_mx250), MX250, NVIDIA MX, NVIDIA, Intel HD 4000/520/620,
     other Intel graphics, else generic."""
     joined = [n for n in names if n]
     nvidia = [n for n in joined if "nvidia" in n.lower()]
     if any(_MX250.search(n) for n in nvidia):
+        if any(_INTEL_GRAPHICS.search(n) for n in joined):
+            return "optimus_mx250"
         return "mx250_streamer"
     if any(_MX_SERIES.search(n) for n in nvidia):
         return "nvidia_mx"
@@ -96,20 +108,33 @@ def classify_gpus(names):
     return "generic"
 
 
-def detect_gpu_names(os_name, run=subprocess.run):
-    """Ask the OS for GPU names. Empty list when the tool is missing or fails."""
-    if os_name == "windows":
-        cmd = ["wmic", "path", "win32_VideoController", "get", "name"]
-    elif os_name == "linux":
-        cmd = ["lspci"]
-    else:
-        return []
+POWERSHELL_GPU_COMMAND = [
+    "powershell", "-NoProfile", "-Command",
+    "Get-CimInstance Win32_VideoController | Select -ExpandProperty Name"]
+WMIC_GPU_COMMAND = ["wmic", "path", "win32_VideoController", "get", "name"]
+
+
+def _gpu_names_from(cmd, run):
+    """GPU names printed by cmd, or [] when it is missing, slow or fails."""
     try:
         result = run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                      universal_newlines=True, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
         return []
     return parse_gpu_names(result.stdout or "")
+
+
+def detect_gpu_names(os_name, run=subprocess.run):
+    """Ask the OS for GPU names. Empty list when the tools are missing or fail.
+
+    Windows tries PowerShell first because wmic is removed on Windows 11 24H2,
+    then wmic for older systems."""
+    if os_name == "windows":
+        return (_gpu_names_from(POWERSHELL_GPU_COMMAND, run)
+                or _gpu_names_from(WMIC_GPU_COMMAND, run))
+    if os_name == "linux":
+        return _gpu_names_from(["lspci"], run)
+    return []
 
 
 def cap_preset_name(profile_name, preset_name, forced=False):
@@ -125,11 +150,12 @@ def cap_preset_name(profile_name, preset_name, forced=False):
 
 def tuned_encoder_args(profile_name, encoder):
     """Encoder args tuned for the profile, or None to use the default args."""
-    if encoder == "h264_qsv" and profile_name in ("intel_hd", "intel_hd_optimized"):
+    if encoder == "h264_qsv" and profile_name in (
+            "intel_hd", "intel_hd_optimized", "optimus_mx250"):
         return ["-c:v", "h264_qsv", "-preset", "veryfast", "-look_ahead", "0",
                 "-async_depth", "1"]
     if encoder == "h264_nvenc" and profile_name in (
-            "nvidia_mx", "nvidia", "mx250_streamer"):
+            "nvidia_mx", "nvidia", "mx250_streamer", "optimus_mx250"):
         return ["-c:v", "h264_nvenc", "-preset", "p1", "-tune", "ll", "-rc", "cbr",
                 "-rc-lookahead", "0", "-surfaces", "4", "-pix_fmt", "yuv420p"]
     return None
