@@ -31,7 +31,7 @@ from .analytics import (analytics_enabled, append_history, history_entry,
                         load_history, build_session_report, reports_dir,
                         write_session_report)
 from .health import HealthTracker
-from .platforms import PLATFORMS, parse_audio_devices
+from .platforms import PLATFORMS, embedded_key_in_url, parse_audio_devices
 from .perf_profiles import (PERF_PROFILES, STREAM_PRESETS, affinity_cpus)
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
@@ -355,6 +355,15 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         out.write("Recording a copy to %s (later attempts add -2, -3, ...)\n"
                   % settings.record_to)
     key = "test" if record_path else resolve_key(os.environ, getpass.getpass)
+    secrets = key
+    embedded = embedded_key_in_url(settings.custom_url) if (
+        settings.platform == "custom") else None
+    if embedded:
+        out.write("Warning: the custom URL looks like it contains a stream key. "
+                  "Use rtmp://host/app and give the key through STREAM_KEY or the "
+                  "prompt, so it is never kept in config.json or shell history. "
+                  "It is hidden in output here and never saved.\n")
+        secrets = (key, embedded)
 
     order = (get_profile(settings.hardware_profile).encoder_order
              if settings.hardware_profile else HARDWARE_ORDER)
@@ -379,7 +388,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                          record_path)
 
     out.write("Encoder: %s\n" % encoder)
-    out.write(format_command(argv, key) + "\n")
+    out.write(format_command(argv, secrets) + "\n")
     if record_path:
         out.write("Test mode: recording 10 seconds to %s (not live).\n" % record_path)
     if args.dry_run:
@@ -421,7 +430,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
     started = clock()
     try:
         code = run_with_reconnect(
-            argv, key, os_name, on_status=on_status,
+            argv, secrets, os_name, on_status=on_status,
             max_failures=(1 if record_path else
                           None if args.keep_trying else MAX_QUICK_FAILURES),
             encoder=encoder, cpu_affinity=cpu_affinity, restart=scale.restart,

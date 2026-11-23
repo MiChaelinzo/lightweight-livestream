@@ -179,6 +179,39 @@ class DoctorTests(unittest.TestCase):
         self.assertIn("Hardware profile: mx250_streamer", out.getvalue())
 
 
+class EmbeddedKeyTests(unittest.TestCase):
+    def dry_run(self, url):
+        out = io.StringIO()
+        env = {"STREAM_KEY": "REALKEY123", "PATH": os.environ.get("PATH", "")}
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(cli, "find_ffmpeg", lambda: None):
+            code = cli.main(["start", "--platform", "custom", "--url", url,
+                             "--dry-run", "--hardware", "generic"], out=out)
+        return code, out.getvalue()
+
+    def test_plain_url_has_no_warning(self):
+        code, text = self.dry_run("rtmp://ingest.example.test/app")
+        self.assertEqual(0, code)
+        self.assertNotIn("looks like it contains a stream key", text)
+        self.assertNotIn("REALKEY123", text)
+
+    def test_url_with_embedded_key_warns_and_is_redacted(self):
+        code, text = self.dry_run("rtmp://ingest.example.test/app/LEAKEDSECRET")
+        self.assertEqual(0, code)
+        self.assertIn("looks like it contains a stream key", text)
+        self.assertNotIn("LEAKEDSECRET", text)
+        self.assertNotIn("REALKEY123", text)
+
+    def test_embedded_key_detection(self):
+        from lightstream.platforms import embedded_key_in_url as detect
+        self.assertIsNone(detect("rtmp://h/app"))
+        self.assertIsNone(detect("rtmp://h/app/"))
+        self.assertIsNone(detect(None))
+        self.assertEqual("abc", detect("rtmp://h/app/abc"))
+        self.assertEqual("abc", detect("rtmp://h/app?key=abc"))
+        self.assertEqual("tok", detect("rtmps://h:443/app?token=tok"))
+
+
 if __name__ == "__main__":
     unittest.main()
 

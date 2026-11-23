@@ -72,8 +72,9 @@ def measure_upload(endpoint, post=_urlopen_post, clock=time.monotonic,
     if not endpoint:
         raise ValueError("Pass a speed test URL you control (--measure-url), "
                          "or give your upload speed with --upload-mbps.")
-    if not endpoint.lower().startswith(("http://", "https://")):
-        raise ValueError("Speed test URL must start with http:// or https://")
+    if not endpoint.lower().startswith("https://"):
+        raise ValueError("Speed test URL must start with https:// (plain http:// "
+                         "is refused so the test cannot be read or altered in transit)")
     started = clock()
     post(endpoint, b"\0" * payload_bytes)
     elapsed = clock() - started
