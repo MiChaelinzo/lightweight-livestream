@@ -8,6 +8,10 @@
 - Fix: key redaction also hides the `quote_plus` form and accepts several secrets.
 - Fix: the upload speed test accepts only `https://` URLs.
 - New: a custom URL that already contains a stream key (`rtmp://host/app/KEY`) triggers a warning, is hidden in the dry-run command and in output, and is never saved.
+- New: emergency mode. `start --emergency` and a GUI Emergency button (with Restore) switch to the safest settings: potato size and bitrate, two threads, no overlays or webcam, no AI audio, small buffer. A live click restarts ffmpeg briefly and pauses auto-scale. Never automatic. Argv accepted by real ffmpeg; effect on real streams UNVERIFIED.
+- New: weak connection mode, `start --weak-connection [--upload-mbps N]`: lower bitrate, 1 second keyframes, 2 second buffer. UNVERIFIED on real bad links.
+- New: backup ingest failover, `--backup-url rtmp://host/app` (config `backup_url`, GUI Advanced). After 3 quick connection failures the stream switches to the backup with the same key (status `failover`); a recording continues in the next numbered file. The key is never saved or logged. Tested with fake processes; real ingest servers UNVERIFIED.
+- Change: the GUI always supplies the relaunch argv builder to the runner (needed for Emergency and failover).
 - Docs: the key in the ffmpeg command line is documented as an OS-level exposure, with alternatives evaluated in `docs/ARCHITECTURE-NOTES.md`.
 
 ## 0.10.0 (unreleased draft)

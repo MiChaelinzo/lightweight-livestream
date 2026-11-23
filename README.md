@@ -316,6 +316,12 @@ Status: option parsing, settings resolution, thread math and command building ar
 
 `lightstream readiness [--upload-mbps N] [--platform twitch]` scores how ready this PC is (0 to 100) with a fix per factor. `lightstream bench --ffmpeg PATH` measures startup, memory, CPU cost and a synthetic encode; see `docs/BENCHMARKS.md` for the method and the numbers from the dev sandbox (not representative of low-end laptops).
 
+### Emergency, weak connection and backup ingest (0.11.0)
+
+- `start --emergency` starts with the safest settings. In the window, the orange EMERGENCY button does it while live (ffmpeg restarts briefly); press it again (it then reads RESTORE) to go back. Never automatic.
+- `start --weak-connection [--upload-mbps 5]` lowers the bitrate, uses 1 second keyframes and a 2 second buffer for a poor uplink.
+- `start --backup-url rtmp://backup-host/app` (no key in it) switches to that server after 3 quick connection failures, using the same stream key. A recording continues in the next numbered file. Real ingest servers are UNVERIFIED; the logic is tested with fakes and the ffmpeg argv with real ffmpeg.
+
 ### Explained insights and opt-in auto-scale (0.9.0)
 
 - The end-of-session report now prints `insight:` lines. Each has plain words and a confidence percent, and says what the likely limit is: CPU, encoder, network, GPU, heat or unknown. The network stability score is an inference from ffmpeg readings, not a packet loss measurement.

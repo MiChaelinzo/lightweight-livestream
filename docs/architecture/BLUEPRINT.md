@@ -83,9 +83,17 @@ Quality per bit was not measured, so any claim that VP9 or AV1 saves bandwidth i
 
 ## 4. Performance plan: emergency mode and weak connection mode
 
-**Status: Roadmap for both.** Parts they would reuse exist: the auto-scale ladder floor (`DEFAULT_FLOOR_PRESET = "potato"` in `autoscale.py`), the restart path, `AdaptiveAdvisor` thresholds (`SLOW_SPEED_BELOW = 0.90`), the light audio chain and the bandwidth advisor.
+**Status: Done in 0.11.0 (`src/lightstream/emergency.py`), PARTIALLY VERIFIED.** Tests cover the settings, the CLI flags, the controller action and restore, and ffmpeg 7.0.2 accepting the resulting argv (test source, file output). Not run: a real stream, real network trouble, the Tk button. Implemented on top of what existed: the auto-scale ladder floor (`DEFAULT_FLOOR_PRESET = "potato"` in `autoscale.py`), the restart path, `AdaptiveAdvisor` thresholds (`SLOW_SPEED_BELOW = 0.90`), the light audio chain and the bandwidth advisor.
 
-### Emergency mode workflow
+### As built (0.11.0)
+
+- `emergency_settings`: potato size, fps, bitrate and x264 preset (never above the current value), thread cap of 2, scene (overlays, webcam) dropped, noise and audio filter off, 0.5 second buffer. Recording is kept.
+- `weak_connection_settings`: 0.6 times the bitrate (lower still when `--upload-mbps` is given, via `bandwidth.recommend`), keyframe every second, 2 second buffer. With both flags, the weak buffer wins. It is a mechanism; its benefit on a real bad link is UNVERIFIED.
+- CLI: `start --emergency`, `--weak-connection`, `--upload-mbps`. Only at launch; never triggered automatically.
+- GUI: one Emergency button (no confirmation) on the dashboard. It sets `current_settings` and the runner restart event; auto-scale is paused so it cannot undo the step. The same button then reads Restore and brings back the previous settings and auto-scale choice. Viewers see one short interruption.
+- Backup ingest: `--backup-url rtmp://host/app` (or `backup_url` in config, GUI Advanced). Validated by `validate_backup_url`: rtmp or rtmps, no embedded key. The same stream key is appended at launch. After 3 consecutive quick non-encoder failures `run_with_reconnect` reports status `failover` and launches the backup argv; 3 quick failures there switch back. A healthy run resets the count. A recording continues in the next numbered file (`name-N.mkv`) because each launch builds its own argv. Not done: choosing the backup by latency, pre-checking it, failing back to the primary after it recovers while the backup stays healthy.
+
+### Emergency mode workflow (original design)
 
 Goal: one user action to the safest stream, when the PC or network is failing mid-stream.
 
