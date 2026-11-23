@@ -11,6 +11,7 @@ from .fileio import write_private_text
 from .hardware import cap_preset_name, cap_video_kbps, get_profile
 from .portable import data_dir, is_portable, recordings_dir
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
+from .platforms import validate_backup_url
 from .perf_profiles import (get_perf_profile, get_stream_preset, resolve_tuning,
                             stream_preset_bitrate_cap)
 from .scenes import load_scenes, select_scene
@@ -38,6 +39,7 @@ EXAMPLE_CONFIG = {
     "stream_preset": None,
     "audio_profile": None,
     "auto_scale": False,
+    "backup_url": None,
 }
 
 
@@ -229,7 +231,11 @@ def resolve_settings(cli, file_cfg, cpu_count=None):
                   "keyint_seconds": profile.keyint_seconds,
                   "x264_tune": profile.x264_tune,
                   "bufsize_seconds": profile.bufsize_seconds}
+    backup_url = _pick("backup_url", cli, file_cfg)
+    if backup_url:
+        backup_url = validate_backup_url(backup_url)
     return StreamSettings(
+        backup_url=backup_url or None,
         platform=_layered("platform", cli, file_cfg, derived, from_cli, DEFAULT_PLATFORM),
         custom_url=_pick("url", cli, file_cfg),
         width=width,

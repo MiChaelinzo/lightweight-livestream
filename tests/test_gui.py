@@ -155,7 +155,8 @@ class ProfileWiringTests(unittest.TestCase):
         c.stop()
         self.assertTrue(c._scale.scaler.enabled)
         self.assertIsNotNone(calls2[0][1]["argv_for_attempt"])
-        self.assertIsNone(calls[0][1]["argv_for_attempt"])
+        # always supplied so Emergency and failover can relaunch with new settings
+        self.assertIsNotNone(calls[0][1]["argv_for_attempt"])
 
     def test_controller_scales_down_and_relaunches_without_key(self):
         clock = [0.0]

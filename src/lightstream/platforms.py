@@ -25,6 +25,21 @@ def ingest_url(platform, key, custom_url=None):
     return INGEST_URLS[platform] + key
 
 
+def validate_backup_url(url):
+    """Check a backup ingest address (rtmp://host/app, no key in it) and return
+    it. The stream key is added at launch, as for a custom primary URL.
+    Raises ValueError in plain words."""
+    parts = urllib.parse.urlsplit((url or "").strip())
+    if parts.scheme not in ("rtmp", "rtmps") or not parts.hostname:
+        raise ValueError("The backup address must look like rtmp://host/app")
+    if any(c.isspace() for c in url) or "|" in url:
+        raise ValueError("The backup address must not contain spaces or '|'")
+    if embedded_key_in_url(url):
+        raise ValueError("The backup address must not contain a stream key. "
+                         "Use rtmp://host/app; the key you entered is added for you")
+    return url.strip()
+
+
 DEFAULT_DISPLAY = ":0.0"
 DEFAULT_MAC_VIDEO_DEVICE = "1"  # usually the main screen
 

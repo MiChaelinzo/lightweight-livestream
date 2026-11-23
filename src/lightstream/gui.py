@@ -85,6 +85,7 @@ class StreamWindow:
         self.audio_profile = tk.StringVar(
             value=gp.audio_profile_label(saved.get("audio_profile")))
         self.auto_scale = tk.BooleanVar(value=saved.get("auto_scale") is True)
+        self.backup_url = tk.StringVar(value=saved.get("backup_url") or "")
         self.noise = saved.get("noise")
         self.status = tk.StringVar(value="")
 
@@ -157,6 +158,10 @@ class StreamWindow:
         self.stop_btn = tk.Button(buttons, text="STOP", font=BUTTON_FONT, bg="#B00020",
                                   fg="white", command=self.on_stop, state="disabled")
         self.stop_btn.pack(side="left", expand=True, fill="x", padx=4)
+        self.emergency_btn = tk.Button(
+            frame, text="EMERGENCY: lowest quality now", font=BUTTON_FONT,
+            bg="#C65D00", fg="white", command=self.on_emergency, state="disabled")
+        self.emergency_btn.pack(fill="x", pady=4)
         self.test_btn = ttk.Button(frame, text="Test first: record 10 seconds to a "
                                    "file (not live)", command=self.on_test)
         self.test_btn.pack(anchor="w")
@@ -248,6 +253,8 @@ class StreamWindow:
                            ("Window title (Windows only)", self.window_title),
                            ("Audio device (empty = automatic)", self.audio)):
             self._entry(frame, label, var)
+        self._entry(frame, "Backup server address (optional, rtmp://host/app, "
+                    "no key; used if the main one keeps failing)", self.backup_url)
         self._combo(frame, "Hardware profile", self.hardware, gp.hardware_choices())
         self._combo(frame, "Performance profile (replaces Strength when chosen)",
                     self.profile, gp.profile_choices())
@@ -288,6 +295,7 @@ class StreamWindow:
             "profile": gp.profile_pref(self.profile.get()),
             "audio_profile": gp.audio_profile_pref(self.audio_profile.get()),
             "auto_scale": self.auto_scale.get(),
+            "backup_url": self.backup_url.get(),
         }
 
     def apply_prefs(self, prefs):
@@ -318,6 +326,13 @@ class StreamWindow:
         self.hardware.set(gp.hardware_label(fields["hardware"]))
         self.noise = fields["noise"]
         self.status.set(message)
+
+    def on_emergency(self):
+        """One click, no confirmation. A second click restores the settings."""
+        if self.controller.emergency_active():
+            self.status.set(self.controller.restore_after_emergency())
+        else:
+            self.status.set(self.controller.emergency())
 
     def on_stop(self):
         self.controller.stop(wait=False)
@@ -416,6 +431,9 @@ class StreamWindow:
         self.start_btn.config(state="disabled" if running else "normal")
         self.test_btn.config(state="disabled" if running else "normal")
         self.stop_btn.config(state="normal" if running else "disabled")
+        self.emergency_btn.config(
+            state="normal" if running else "disabled",
+            text=gp.emergency_button_label(self.controller.emergency_active()))
         self._show_recommendations(self.inbox.visible(self.controller.recommendations()))
         if log_text != self._shown_log:
             self._shown_log = log_text

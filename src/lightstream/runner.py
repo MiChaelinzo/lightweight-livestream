@@ -16,6 +16,7 @@ WINDOWS_BELOW_NORMAL = 0x00004000  # BELOW_NORMAL_PRIORITY_CLASS
 FALLBACK_AFTER_FAILURES = 2  # quick failures of a hardware encoder before libx264
 LAGGING_BELOW_SPEED = 0.95   # ffmpeg speed under 1.0x means it cannot keep up
 STOP_POLL_SECONDS = 0.2
+FAILOVER_AFTER_FAILURES = 3  # consecutive quick network failures before switching ingest
 # Known ffmpeg messages for a hardware encoder that cannot start. Network and
 # key errors ("Connection refused", "Input/output error") never match these.
 ENCODER_ERROR_PATTERNS = tuple(re.compile(p, re.IGNORECASE) for p in (
@@ -33,6 +34,9 @@ STATUS_LIVE = "live"
 STATUS_RECONNECTING = "reconnecting"
 STATUS_FALLBACK = "fallback"
 STATUS_RESTARTING = "restarting"
+STATUS_FAILOVER = "failover"
+TARGET_PRIMARY = "primary"
+TARGET_BACKUP = "backup"
 STATUS_STOPPED = "stopped"
 STATUS_FAILED = "failed"
 
@@ -129,7 +133,8 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
                        sleep=None, clock=time.monotonic,
                        out=sys.stderr, max_failures=None, stop=None,
                        on_status=None, encoder=None, argv_factory=None,
-                       argv_for_attempt=None, cpu_affinity=None, restart=None):
+                       argv_for_attempt=None, cpu_affinity=None, restart=None,
+                       backup_argv_for_attempt=None):
     """Run ffmpeg until it exits cleanly, is stopped, or fails too often.
 
     max_failures=None keeps trying forever. stop is a threading.Event; setting
@@ -146,6 +151,12 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
     restart (a threading.Event), when set, ends the running ffmpeg and starts
     it again at once with argv_for_attempt's argv: no backoff, no failure
     count, status "restarting". Auto-scaling uses it to apply a new step.
+    backup_argv_for_attempt(attempt, encoder), when given, enables ingest
+    failover: after FAILOVER_AFTER_FAILURES consecutive quick failures that
+    are not encoder problems, the next launch uses its argv and the status is
+    "failover" with detail "backup". If the backup fails as often, it switches
+    back to "primary". A healthy run (HEALTHY_RUN_SECONDS) resets the count
+    but stays on the ingest that worked. A restart keeps the current ingest.
     Returns an exit code.
     """
     def report(state, detail=None):
@@ -157,6 +168,9 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
     failures = 0
     encoder_failures = 0
     attempt = 0
+    primary_argv = argv
+    on_backup = False
+    network_failures = 0
     while True:
         if restart is not None:
             # A restart requested during a backoff sleep or a failed run is
@@ -164,8 +178,12 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
             # a second time. Cleared before argv is built so a request made
             # after this point is kept.
             restart.clear()
-        if attempt and argv_for_attempt:
+        if attempt and on_backup:
+            argv = backup_argv_for_attempt(attempt, encoder)
+        elif attempt and argv_for_attempt:
             argv = argv_for_attempt(attempt, encoder)
+        elif attempt and backup_argv_for_attempt:
+            argv = primary_argv  # back on the primary without a rebuild seam
         attempt += 1
         started = clock()
         report(STATUS_STARTING)
@@ -204,6 +222,7 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
         if restart is not None and restart.is_set():
             failures = 0
             encoder_failures = 0
+            network_failures = 0
             report(STATUS_RESTARTING)
             continue
         if code == 0:
@@ -211,16 +230,28 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
             return 0
         quick = clock() - started < HEALTHY_RUN_SECONDS
         failures = failures + 1 if quick else 1
+        network_failures = (network_failures + 1
+                            if quick and not encoder_blamed else 0)
         encoder_failures = encoder_failures + 1 if quick and encoder_blamed else 0
         if (quick and argv_factory and encoder not in (None, SOFTWARE_ENCODER)
                 and encoder_failures >= FALLBACK_AFTER_FAILURES):
             out.write("%s keeps failing. Switching to %s.\n"
                       % (encoder, SOFTWARE_ENCODER))
             encoder = SOFTWARE_ENCODER
-            argv = argv_factory(encoder)
+            argv = primary_argv = argv_factory(encoder)
             failures = 0
             encoder_failures = 0
             report(STATUS_FALLBACK, encoder)
+            continue
+        if (backup_argv_for_attempt and quick
+                and network_failures >= FAILOVER_AFTER_FAILURES):
+            on_backup = not on_backup
+            network_failures = 0
+            failures = 0
+            target = TARGET_BACKUP if on_backup else TARGET_PRIMARY
+            out.write("Connection keeps failing. Switching to the %s ingest.\n"
+                      % target)
+            report(STATUS_FAILOVER, target)
             continue
         if max_failures is not None and failures >= max_failures:
             out.write("ffmpeg keeps failing (exit %d). Giving up.\n" % code)

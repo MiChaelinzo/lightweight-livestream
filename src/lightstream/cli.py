@@ -32,6 +32,8 @@ from .analytics import (analytics_enabled, append_history, history_entry,
                         write_session_report)
 from .health import HealthTracker
 from .platforms import PLATFORMS, embedded_key_in_url, parse_audio_devices
+from .emergency import (emergency_settings, failover_settings,
+                        weak_connection_settings)
 from .perf_profiles import (PERF_PROFILES, STREAM_PRESETS, affinity_cpus)
 from .presets import PRESETS
 from .runner import format_command, run_with_reconnect
@@ -138,6 +140,16 @@ def build_parser():
     s.add_argument("--auto-scale", action="store_true",
                    help="opt in: step quality down (and back up) automatically when the "
                         "stream struggles. Each step restarts ffmpeg briefly. Off by default")
+    s.add_argument("--emergency", action="store_true",
+                   help="start with the safest settings (potato size, two threads, no "
+                        "overlays, no AI audio, small buffer). Never automatic")
+    s.add_argument("--weak-connection", action="store_true",
+                   help="for a poor uplink: lower bitrate, 1 second keyframes, "
+                        "longer rate-control buffer")
+    s.add_argument("--upload-mbps", help="your upload speed in Mbps; with "
+                   "--weak-connection it can lower the bitrate further")
+    s.add_argument("--backup-url", help="backup ingest rtmp://host/app (no key). Used "
+                   "after repeated quick connection failures, same stream key")
     s.add_argument("--noise", choices=NOISE_LEVELS,
                    help="microphone noise suppression: off, light (afftdn), ai (arnndn model)")
     s.add_argument("--noise-model", help="path to an arnndn .rnnn model for --noise ai")
@@ -341,8 +353,14 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
          "noise": args.noise, "noise_model": args.noise_model,
          "profile": args.profile, "stream_preset": args.stream_preset,
          "audio_profile": args.audio_profile,
+         "backup_url": args.backup_url,
          "hardware": hardware})
     settings = resolve_settings(cli_values, file_cfg)
+    if args.emergency:
+        settings = emergency_settings(settings)
+    if args.weak_connection:  # after emergency: its longer buffer is kept
+        settings = weak_connection_settings(
+            settings, mbps_to_kbps(args.upload_mbps) if args.upload_mbps else None)
     cpu_affinity = affinity_cpus(os.cpu_count() or 1, settings.reserved_cores)
     record_path = args.test_local
     if settings.scene:
@@ -356,6 +374,9 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                   % settings.record_to)
     key = "test" if record_path else resolve_key(os.environ, getpass.getpass)
     secrets = key
+    backup = bool(settings.backup_url) and not record_path
+    if settings.backup_url and record_path:
+        out.write("Note: --backup-url is ignored with --test-local.\n")
     embedded = embedded_key_in_url(settings.custom_url) if (
         settings.platform == "custom") else None
     if embedded:
@@ -389,6 +410,10 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
 
     out.write("Encoder: %s\n" % encoder)
     out.write(format_command(argv, secrets) + "\n")
+    if backup:
+        out.write("Backup ingest: %s (key hidden)\n"
+                  % format_command(
+                      [failover_settings(settings).custom_url], secrets))
     if record_path:
         out.write("Test mode: recording 10 seconds to %s (not live).\n" % record_path)
     if args.dry_run:
@@ -436,9 +461,14 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
             encoder=encoder, cpu_affinity=cpu_affinity, restart=scale.restart,
             argv_factory=lambda enc: build_command(
                 scale.current_settings, key, os_name, enc, ffmpeg, record_path),
-            argv_for_attempt=(None if record_path or not (settings.record_to or auto_scale)
+            argv_for_attempt=(None if record_path or not (
+                settings.record_to or auto_scale or backup)
                               else lambda n, enc: build_command(
-                                  settings_for_attempt(n), key, os_name, enc, ffmpeg)))
+                                  settings_for_attempt(n), key, os_name, enc, ffmpeg)),
+            backup_argv_for_attempt=(
+                lambda n, enc: build_command(
+                    failover_settings(settings_for_attempt(n)), key, os_name, enc,
+                    ffmpeg)) if backup else None)
         if tracker.samples or tracker.reconnects:
             out.write("\n" + "\n".join(tracker.report_lines()) + "\n")
             stability = tracker.network_stability()

@@ -19,9 +19,10 @@ StreamSettings = namedtuple(
     "platform custom_url width height fps video_kbps audio_kbps x264_preset "
     "window audio_device encoder display video_device mute "
     "scene noise noise_model hardware_profile record_to "
-    "audio_filter threads reserved_cores keyint_seconds x264_tune bufsize_seconds",
+    "audio_filter threads reserved_cores keyint_seconds x264_tune bufsize_seconds "
+    "backup_url",
     defaults=(None, None, False, None, "off", None, None, None,
-              None, None, None, DEFAULT_KEYINT_SECONDS, DEFAULT_X264_TUNE, None),
+              None, None, None, DEFAULT_KEYINT_SECONDS, DEFAULT_X264_TUNE, None, None),
 )
 
 VAAPI_DEVICE = "/dev/dri/renderD128"
