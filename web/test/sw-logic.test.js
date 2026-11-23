@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import {
   CACHE_NAME, SHELL_FILES, isCacheable, staleCacheNames, strategyFor,
 } from "../js/sw-logic.js";
@@ -43,4 +45,18 @@ test("every shell file exists in web/", () => {
     assert.ok(existsSync(join(WEB, rel)), "missing " + path);
   }
   assert.ok(existsSync(join(WEB, "sw.js")));
+});
+
+test("CACHE_NAME fingerprint matches the cached js and css files", () => {
+  const hash = createHash("sha256");
+  for (const f of SHELL_FILES.filter((f) => /\.(js|css)$/.test(f)).sort()) {
+    let text = readFileSync(join(WEB, f), "utf8");
+    if (f === "/js/sw-logic.js") {
+      text = text.split("\n").filter((l) => !l.startsWith("export const CACHE_NAME")).join("\n");
+    }
+    hash.update(f + "\n" + text);
+  }
+  const want = hash.digest("hex").slice(0, 8);
+  assert.equal(CACHE_NAME, "lightstream-shell-v1-" + want,
+    "cached files changed: set CACHE_NAME to lightstream-shell-v1-" + want);
 });
