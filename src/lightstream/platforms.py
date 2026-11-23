@@ -29,7 +29,8 @@ def validate_backup_url(url):
     """Check a backup ingest address (rtmp://host/app, no key in it) and return
     it. The stream key is added at launch, as for a custom primary URL.
     Raises ValueError in plain words."""
-    parts = urllib.parse.urlsplit((url or "").strip())
+    url = (url or "").strip()
+    parts = urllib.parse.urlsplit(url)
     if parts.scheme not in ("rtmp", "rtmps") or not parts.hostname:
         raise ValueError("The backup address must look like rtmp://host/app")
     if any(c.isspace() for c in url) or "|" in url:
@@ -37,7 +38,7 @@ def validate_backup_url(url):
     if embedded_key_in_url(url):
         raise ValueError("The backup address must not contain a stream key. "
                          "Use rtmp://host/app; the key you entered is added for you")
-    return url.strip()
+    return url
 
 
 DEFAULT_DISPLAY = ":0.0"
