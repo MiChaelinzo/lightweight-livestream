@@ -308,6 +308,64 @@ class SessionAndRunnerTests(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertEqual(4, len(runs))
 
+    def run_fake(self, codes, restart, stop=None, on_launch=None, on_sleep=None):
+        runs = []
+
+        def popen(argv, **kw):
+            runs.append(argv)
+            n = len(runs)
+            if on_launch:
+                on_launch(n)
+
+            class Proc:
+                stderr = iter([])
+
+                def wait(self):
+                    return codes[n - 1]
+
+                def terminate(self):
+                    pass
+            return Proc()
+        code = runner.run_with_reconnect(
+            ["ffmpeg"], SECRET, "linux", popen=popen,
+            sleep=on_sleep or (lambda _s: None), out=io.StringIO(), restart=restart,
+            stop=stop, encoder="libx264")
+        return code, runs
+
+    def test_restart_set_during_backoff_relaunches_once(self):
+        """The relaunch after the sleep already applies the request; the old
+        loop left the event set and relaunched a second time."""
+        restart = threading.Event()
+        code, runs = self.run_fake([1, 0, 0], restart,
+                                   on_sleep=lambda _s: restart.set())
+        self.assertEqual(0, code)
+        self.assertEqual(2, len(runs))
+        self.assertFalse(restart.is_set())
+
+    def test_restart_set_at_clean_exit_is_honored_once(self):
+        restart = threading.Event()
+        code, runs = self.run_fake([0, 0, 0], restart,
+                                   on_launch=lambda n: restart.set() if n == 1 else None)
+        self.assertEqual(0, code)
+        self.assertEqual(2, len(runs))
+        self.assertFalse(restart.is_set())
+
+    def test_clean_exit_without_restart_returns_zero(self):
+        restart = threading.Event()
+        code, runs = self.run_fake([0], restart)
+        self.assertEqual(0, code)
+        self.assertEqual(1, len(runs))
+
+    def test_stop_wins_over_restart_at_exit(self):
+        restart, stop = threading.Event(), threading.Event()
+
+        def both(n):
+            restart.set()
+            stop.set()
+        code, runs = self.run_fake([0, 0], restart, stop=stop, on_launch=both)
+        self.assertEqual(0, code)
+        self.assertEqual(1, len(runs))
+
     def test_disabled_session_never_restarts(self):
         settings = self.settings(False)
         advisor = AdaptiveAdvisor("720p60", 4000, 60)

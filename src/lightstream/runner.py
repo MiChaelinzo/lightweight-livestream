@@ -46,9 +46,15 @@ _PROGRESS_FIELDS = (
 
 
 def redact(text, key):
-    if key:
-        # Also hide the percent-encoded form, in case a tool echoes the URL encoded.
-        for form in (key, urllib.parse.quote(key, safe=""), urllib.parse.quote(key)):
+    """Hide key (a string, or a tuple/list of secrets) in text, including its
+    percent-encoded and quote_plus (spaces as +) forms."""
+    secrets = key if isinstance(key, (tuple, list)) else (key,)
+    for secret in secrets:
+        if not secret:
+            continue
+        forms = (secret, urllib.parse.quote(secret, safe=""),
+                 urllib.parse.quote(secret), urllib.parse.quote_plus(secret))
+        for form in sorted(set(forms), key=len, reverse=True):
             text = text.replace(form, "****")
     return text
 
@@ -152,6 +158,12 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
     encoder_failures = 0
     attempt = 0
     while True:
+        if restart is not None:
+            # A restart requested during a backoff sleep or a failed run is
+            # satisfied by this very launch; leaving it set would relaunch
+            # a second time. Cleared before argv is built so a request made
+            # after this point is kept.
+            restart.clear()
         if attempt and argv_for_attempt:
             argv = argv_for_attempt(attempt, encoder)
         attempt += 1
@@ -190,7 +202,6 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
             report(STATUS_STOPPED)
             return 0
         if restart is not None and restart.is_set():
-            restart.clear()
             failures = 0
             encoder_failures = 0
             report(STATUS_RESTARTING)
