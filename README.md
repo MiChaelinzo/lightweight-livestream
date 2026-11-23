@@ -20,9 +20,9 @@ Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-
 
 | Platform | Download | How to start |
 |---|---|---|
-| Windows | `LightStream-0.9.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
-| macOS | `LightStream-0.9.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
-| Linux | `LightStream-0.9.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
+| Windows | `LightStream-0.11.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
+| macOS | `LightStream-0.11.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
+| Linux | `LightStream-0.11.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
 
 - **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
 - **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.

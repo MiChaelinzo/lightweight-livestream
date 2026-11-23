@@ -160,6 +160,16 @@ and manual reads of `config.py`, `runner.py`, `analytics.py`, `cli.py`, `command
    to a server, but the full URL is stored in the OBS browser-source setting in
    plain text. The Twitch token should be minimal scope. Documented limit, not a
    code defect.
+   Re-checked in v0.11: chat text is written with `textContent` only (no
+   `innerHTML`, `outerHTML`, `insertAdjacentHTML` or `document.write` in
+   `web/companion/companion.js`; a node test asserts this). The fragment is
+   also visible to anyone who can see the browser-source URL on screen, in
+   browser history, or in a screen share, and to browser extensions with page
+   access. It is not sent in requests or `Referer` (the site sets
+   `Referrer-Policy: no-referrer`), but the token is sent to `api.twitch.tv`
+   as a bearer header when viewer counts are enabled. Use a token with no
+   scopes beyond what the stream-count call needs, never show the URL on
+   stream, and revoke it if it leaks. Chat itself needs no token.
 7. **Speed test accepts `http://`. Status: FIXED in v0.11 (`bandwidth.measure_upload` accepts only `https://`, tested).** Originally: `bandwidth.py:74-75` allows plain HTTP for
    the opt-in upload test. It sends random data only, so no secret is exposed.
    Informational.

@@ -78,6 +78,58 @@ Speed above 1x means the encoder finished faster than real time on this 8-core C
 
 What this does show: capping encoder threads leaves cores free (the thread count is the cap) and lowers peak memory a little, and with 2 threads the encode ran slower (lower speed) while using less total CPU. What it does not show: any change in game frame rate. That needs a real game on real hardware and is UNVERIFIED.
 
+## v0.11.0 before and after
+
+Method: the same `lightstream bench` command (without `--compare-src`), run once on the tree before the v0.11 changes ("before", reported as version 0.9.0, because the version string was not yet bumped) and once on the v0.11.0 tree ("after"), on the same Linux sandbox (8 cores, 31560 MB, Python 3.11.15, no GPU). Both runs used `--seconds 10`. Only the "after" run used `--import-runs 21`; the "before" run was taken earlier in the session and I did not record its run count, so its median is less certain. Each number is a single run. Competitor numbers stay UNKNOWN.
+
+```
+HOME=<writable dir> XDG_CONFIG_HOME=<writable dir> PYTHONPATH=src python3 -m lightstream bench \
+  --ffmpeg <static ffmpeg 7.0.2> --seconds 10 --import-runs 21 --out bench-after.json
+```
+
+| Metric | Before | After | Reading |
+|---|---|---|---|
+| `import lightstream.cli` median (ms) | 79.8 | 73.5 | Within run to run noise; no regression shown. The before run was taken at a different time and may have had a busier machine |
+| Bare interpreter median (ms) | 11.3 | 10.7 | Noise |
+| RSS after import (MiB) | 22.1 | 22.0 | Same |
+| RSS bare interpreter (MiB) | 9.6 | 9.8 | Same |
+| RSS before to after 1000 ticks (MiB) | 21.6 to 21.8 | 21.74 to 21.74 | No growth at this resolution |
+| `parse_progress` (us per call) | 2.4 | 2.13 | Noise |
+| `HealthTracker.update` (us) | 0.75 | 0.78 | Noise |
+| `AdaptiveAdvisor.observe` (us) | 0.61 | 0.62 | Noise |
+| `TelemetrySampler.tick` (us) | 115.0 | 107.6 | Noise |
+| `build_insights` (us) | 52.3 | 49.6 | Noise |
+| `AutoScaler.update` (us) | 1.39 | 1.42 | Noise |
+
+Encode (libx264, synthetic 10 s):
+
+| Profile | Before speed (x) | After speed (x) | Before CPU s per stream s | After CPU s per stream s | Before peak RSS (MiB) | After peak RSS (MiB) |
+|---|---|---|---|---|---|---|
+| potato 640x360@24 | 54.4 | 65.6 | 0.035 | 0.028 | 27.2 | 27.2 |
+| balanced 1280x720@30 | 11.6 | 12.8 | 0.299 | 0.276 | 86.0 | 86.0 |
+| quality 1280x720@60 | 6.35 | 7.22 | 0.578 | 0.525 | 87.9 | 87.9 |
+| competitive 1280x720@60 | 6.02 | 6.24 | 0.534 | 0.506 | 83.6 | 83.6 |
+
+The v0.11 changes do not touch the encode path for these profiles, so the speed differences are machine noise, not a speedup. The same potato profile ran at 62.9x in another before run, which shows the spread. Conclusion: the new emergency, weak connection, failover, theme and graph code did not measurably change startup, memory or per-tick cost on this machine. That says nothing about low-end laptops, hardware encoders, Windows or macOS (UNVERIFIED). Raw JSON files are not committed.
+
+### Web page weight
+
+Method: `python3 tools/page_weight.py` sums the size of every served file under `web/` (excluding `web/test` and `package.json`) and its gzip -9 size. It measures file bytes only, not headers, transfer overhead, or load time. "Before" is the tree at the start of v0.11 work.
+
+| File | Before bytes | After bytes | Before gzip | After gzip |
+|---|---|---|---|---|
+| index.html | 14003 | 14296 | 4576 | 4671 |
+| style.css | 4021 | 5408 | 1552 | 1973 |
+| js/app.js | 2716 | 3067 | 1180 | 1342 |
+| js/sw-logic.js | (new) | 1478 | (new) | 703 |
+| sw.js | (new) | 1522 | (new) | 613 |
+| companion/companion.css | 641 | 759 | 377 | 437 |
+| companion/index.html | 775 | 834 | 402 | 418 |
+| vercel.json | 1537 | 1774 | 400 | 435 |
+| All files | 48811 | 54256 | 18085 | 20190 |
+
+The accessibility, light color scheme and offline shell added about 5.4 KB raw (about 2.1 KB gzip), a 11 percent increase. The service worker, caching and page behavior in a real browser are UNVERIFIED here (headless Chromium does not run in this sandbox); only the pure cache rules and the static HTML and CSS checks are tested in node.
+
 ## Hardware encoders
 
 None listed by ffmpeg in this sandbox (`hardware_encoders.listed_by_ffmpeg` is empty in the JSON), so there are no NVENC, Quick Sync, AMF, VideoToolbox or VAAPI numbers. Use `lightstream bench` on the target PC to get them; encoders that fail a test encode are skipped.

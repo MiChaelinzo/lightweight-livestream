@@ -10,7 +10,7 @@ Labels: **VERIFIED** (executed or unit tested), **PARTIALLY VERIFIED** (source r
 |---|---|---|---|
 | Large modules near 500 lines: `cli.py` (506), `gui.py` (505), `gui_controller.py` (486), `bench.py` (460) | `wc -l` in EVIDENCE.md section 2 | Low. All logic is tkinter-free except `gui.py` and `gui_pages.py` | Split only when a change touches two concerns. No refactor for style |
 | `cli.py` builds all subcommands in one parser function | `cli.py:52-146` | Low | Leave until a command is added that does not fit |
-| Version string lives in `__init__.py` and `pyproject.toml` (both `0.9.0`) | grep | Low, could drift | Bump together at release (see DELIVERY, release roadmap) |
+| Version string lives in `__init__.py` and `pyproject.toml` (both `0.11.0`) | grep | Low, could drift | Bump together at release (see DELIVERY, release roadmap) |
 | No config schema version | grep for `schema` in `config.py` and `scene*.py` found nothing | Medium once the format must change | Roadmap item in TOP-100 |
 | GUI rendering never run (no display) | README verification table | High for a GUI product, but not code debt | Needs a Windows or display test session |
 | CI workflows exist but never ran (billing lock) | README table, ROADMAP | Medium | Unlock billing or run locally |

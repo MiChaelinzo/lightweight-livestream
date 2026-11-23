@@ -8,7 +8,7 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 |---|---|
 | [ROADMAP.md](ROADMAP.md) | status table per area |
 | [ARCHITECTURE-NOTES.md](ARCHITECTURE-NOTES.md) | auto-scale design and alternatives, optimizer notes |
-| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox |
+| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, v0.11 before and after, web page weight |
 | [RELEASING.md](RELEASING.md) | how to cut a release |
 
 ## v0.10 audit and blueprint
@@ -19,6 +19,7 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 | [audit/AUDIT.md](audit/AUDIT.md) | debt, scalability, maintainability, performance, security, five scores with rubric |
 | [architecture/BLUEPRINT.md](architecture/BLUEPRINT.md) | target design, section per subsystem |
 | [architecture/DELIVERY.md](architecture/DELIVERY.md) | testing, DevOps, release roadmap, benchmark method, advantages |
+| [architecture/PLUGIN-PROTOCOL.md](architecture/PLUGIN-PROTOCOL.md) | plugin protocol v1 spec (subprocess, JSON lines, permissions, kill switch), spec only |
 | [audit/TOP-100.md](audit/TOP-100.md) | 100 ranked improvements, three Top 10 lists, hackathon mode |
 
 ## Phase 18 deliverables
@@ -36,7 +37,7 @@ The 14 deliverables, in order. Statuses follow [ROADMAP.md](ROADMAP.md).
 | 7 | Audio subsystem design | [BLUEPRINT.md](architecture/BLUEPRINT.md#6-audio-subsystem) | Partial (profiles and chains Done; meter and mixing Roadmap) |
 | 8 | Smart optimization engine | [BLUEPRINT.md](architecture/BLUEPRINT.md#7-smart-optimization-engine) | Partial |
 | 9 | AI assistant architecture | [BLUEPRINT.md](architecture/BLUEPRINT.md#8-ai-assistant-local-and-cloud) | Partial (rule based); Roadmap (language model) |
-| 10 | Plugin ecosystem design | [BLUEPRINT.md](architecture/BLUEPRINT.md#9-plugin-ecosystem-and-sdk) | Roadmap |
+| 10 | Plugin ecosystem design | [BLUEPRINT.md](architecture/BLUEPRINT.md#9-plugin-ecosystem-and-sdk), [PLUGIN-PROTOCOL.md](architecture/PLUGIN-PROTOCOL.md) | Partial (protocol spec only); Roadmap (code) |
 | 11 | UI modernization strategy | [BLUEPRINT.md](architecture/BLUEPRINT.md#10-ui-modernization-and-design-system) | Partial (window); Roadmap (dark mode, compact mode, shortcuts) |
 | 12 | Testing strategy | [DELIVERY.md](architecture/DELIVERY.md#1-testing-strategy) | Partial |
 | 13 | DevOps strategy | [DELIVERY.md](architecture/DELIVERY.md#2-devops-strategy) | Partial (CI workflows never ran) |

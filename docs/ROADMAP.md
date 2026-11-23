@@ -1,6 +1,6 @@
 # Roadmap
 
-Status after 0.9.0, with 0.10 changes noted (Facebook Live). Plans for each Roadmap row are in [architecture/BLUEPRINT.md](architecture/BLUEPRINT.md); ranking in [audit/TOP-100.md](audit/TOP-100.md). Done means implemented and covered by unit tests (see the README verification table for what was never run on real hardware). Partial means some of the area exists. Roadmap means not started; the design notes are intentions, not code.
+Status after 0.9.0, with 0.10 (Facebook Live) and 0.11 changes noted. Plans for each Roadmap row are in [architecture/BLUEPRINT.md](architecture/BLUEPRINT.md); ranking in [audit/TOP-100.md](audit/TOP-100.md). Done means implemented and covered by unit tests (see the README verification table for what was never run on real hardware). Partial means some of the area exists. Roadmap means not started; the design notes are intentions, not code.
 
 | Area | Status | What exists or what is planned | Phase | Depends on | Why deferred |
 | --- | --- | --- | --- | --- | --- |
@@ -24,9 +24,10 @@ Status after 0.9.0, with 0.10 changes noted (Facebook Live). Plans for each Road
 | Emergency mode and weak connection mode | Done (0.11.0), PARTIALLY VERIFIED | `emergency.py`; `--emergency`, `--weak-connection`, GUI Emergency button with Restore. Argv accepted by real ffmpeg; effect on real streams UNVERIFIED. Reuses the auto-scale floor and restart path | 2 | auto-scale restart path | Needs a real stream to validate triggers |
 | Low-end super mode | Partial | `potato` profile, hardware profiles, auto-scale. Not a single switch and not measured on a low-end laptop | 2 | real low-end benchmark | No such hardware here |
 | Mobile remote | Roadmap | Design: stdlib `http.server` bound to 127.0.0.1 by default, random token per run, off by default, never exposes stream keys. LAN binding only by explicit option | 3 | start/stop controller API | Network exposure needs a security review and a phone to test |
-| Plugin architecture | Roadmap | Design: each plugin is a subprocess that talks a narrow JSON protocol over stdin and stdout. In-process Python cannot be sandboxed, so in-process plugins are rejected | 3 | protocol spec, event list | A protocol should follow real use cases, not precede them |
+| Plugin architecture | Partial (spec only, 0.11.0) | Protocol spec in [architecture/PLUGIN-PROTOCOL.md](architecture/PLUGIN-PROTOCOL.md), no code. Design: each plugin is a subprocess that talks a narrow JSON protocol over stdin and stdout. In-process Python cannot be sandboxed, so in-process plugins are rejected | 3 | protocol spec, event list | A protocol should follow real use cases, not precede them |
 | Onboarding | Done | Setup wizard, readiness score, first-run FFmpeg helper. Window rendering UNVERIFIED | | | |
-| UI/UX (dark mode, compact mode, shortcuts) | Roadmap | Not started | 2 | none | Cannot be checked without a display |
+| UI/UX (dark mode, compact mode, shortcuts) | Done (0.11.0), rendering UNVERIFIED | Dark and light themes, compact mode, shortcuts, sparkline graphs; contrast tested to WCAG AA. On-screen rendering never run | 2 | none | Cannot be checked without a display |
+| Web site (accessibility, offline) | Done (0.11.0), browser behavior UNVERIFIED | Landmarks, 44px targets, light scheme, reduced motion, offline service worker; static checks in node tests | | | Headless browser does not run in the dev sandbox |
 | Architecture refactor | Partial | Incremental: logic stays in tkinter-free modules. No DI container or event bus this round | 3 | | A container adds indirection for no current need; injected callables already make tests possible |
 | Adaptive Creator Intelligence | Partial | Phase 1 done: opt-in local history raises optimizer confidence. Later phases: deterministic rules that compare sessions (same game, same hour) and suggest a profile. No cloud, no learning model | 2 | history from real users | Rules need real data to avoid guessing thresholds |
 

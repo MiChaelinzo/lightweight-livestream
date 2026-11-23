@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (0.11.0)
+## 0.11.0 (unreleased)
 
 - New: `optimus_mx250` hardware profile, chosen automatically when an Intel graphics adapter and a GeForce MX250 are both detected (for example i7-1065G7 Iris Plus G7 + MX250). Quick Sync encodes first, NVENC second; recording on by default and the 4500 kbps cap as in `mx250_streamer`. Behavior change: such laptops used to get `mx250_streamer`. A deliberate design choice, UNVERIFIED on real hardware. Single-GPU machines are unchanged.
 - Fix: Windows GPU detection tries PowerShell `Get-CimInstance Win32_VideoController` first and `wmic` second (wmic is removed on Windows 11 24H2). Tested with fake output only; UNVERIFIED on Windows.
@@ -13,6 +13,9 @@
 - New: backup ingest failover, `--backup-url rtmp://host/app` (config `backup_url`, GUI Advanced). After 3 quick connection failures the stream switches to the backup with the same key (status `failover`); a recording continues in the next numbered file. The key is never saved or logged. Tested with fake processes; real ingest servers UNVERIFIED.
 - Change: the GUI always supplies the relaunch argv builder to the runner (needed for Emergency and failover).
 - New: window look and usability. Dark and light themes, compact (sidebar-only) mode, keyboard shortcuts shown in labels (Ctrl+Enter start, Ctrl+. stop, Ctrl+Shift+E emergency, Ctrl+Shift+D theme, Ctrl+Shift+C compact, Ctrl+1..6 pages), a visible focus color, and small graphs for fps, bitrate and CPU (last minute, redrawn once per second, fixed memory). The choice is saved in `ui.json` (no secrets). Color contrast of all text pairs is tested to WCAG AA (4.5:1). Logic VERIFIED by unit tests; on-screen rendering UNVERIFIED.
+- New: web site accessibility and offline use. A nav landmark, 44 px touch targets, a sideways-scrolling comparison table, a light color scheme (`prefers-color-scheme`), a visually hidden h1 on the companion page, and an optional offline service worker (`web/sw.js`, cache-first assets, network-first `presets.json` and pages, same-origin GET only, registered defensively). The CSP stays strict (no inline script or style, no `unsafe-inline`). Node tests parse the HTML and CSS (landmarks, labels, ids, CSP, WCAG AA contrast, 44 px targets) and test the pure cache rules; real browser behavior is UNVERIFIED (headless Chromium does not run in the dev sandbox). Add `tools/page_weight.py`; page weight went from 48811 to 54256 bytes (18085 to 20190 gzip).
+- Docs: plugin protocol v1 spec (`docs/architecture/PLUGIN-PROTOCOL.md`, spec only, no code), v0.11 before and after bench tables with method in `docs/BENCHMARKS.md` (no measurable change on the one test machine; competitor numbers remain UNKNOWN), companion token fragment risks in `docs/audit/EVIDENCE.md`, Top 100 and roadmap statuses recomputed.
+- Version bumped to 0.11.0 (`pyproject.toml`, `__init__.py`, README artifact names, RELEASING example).
 - Docs: the key in the ffmpeg command line is documented as an OS-level exposure, with alternatives evaluated in `docs/ARCHITECTURE-NOTES.md`.
 
 ## 0.10.0 (unreleased draft)
