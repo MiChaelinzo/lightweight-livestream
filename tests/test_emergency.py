@@ -87,6 +87,9 @@ class BackupUrlTests(unittest.TestCase):
     def test_valid(self):
         self.assertEqual(BACKUP, validate_backup_url(BACKUP))
         validate_backup_url("rtmps://b.example.com:443/app")
+        self.assertEqual(BACKUP, validate_backup_url(BACKUP + "\n"))
+        with self.assertRaises(ValueError):
+            validate_backup_url("rtmp://b.example.com/a pp")
 
     def test_rejects_bad_scheme_key_and_spaces(self):
         for bad in ("http://x/app", "rtmp:///app", "", "rtmp://h/app/KEY123",
@@ -159,6 +162,23 @@ class FailoverRunnerTests(unittest.TestCase):
                          [a[0] for a in launched])
         self.assertEqual([("failover", "backup"), ("failover", "primary")],
                          [(s, d) for s, d in statuses if s == STATUS_FAILOVER])
+
+    def test_failover_still_gives_up_after_max_failures(self):
+        launched = []
+
+        def popen(argv, **kw):
+            launched.append(argv)
+            if len(launched) > 50:
+                raise AssertionError("never gave up")
+            return FakeProc(1, [])
+        now = [0.0]
+        code = run_with_reconnect(
+            ["primary"], KEY, "linux", popen=popen, sleep=lambda s: None,
+            clock=lambda: now[0], out=io.StringIO(), max_failures=5,
+            argv_for_attempt=lambda n, enc: ["primary", str(n)],
+            backup_argv_for_attempt=lambda n, enc: ["backup", str(n)])
+        self.assertEqual(1, code)
+        self.assertEqual(5, len(launched))
 
     def test_no_failover_without_backup(self):
         _, launched, statuses = self.run_sequence([1] * 5 + [0], backup=False)

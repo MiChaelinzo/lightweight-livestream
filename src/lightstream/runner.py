@@ -155,7 +155,7 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
     failover: after FAILOVER_AFTER_FAILURES consecutive quick failures that
     are not encoder problems, the next launch uses its argv and the status is
     "failover" with detail "backup". If the backup fails as often, it switches
-    back to "primary". A healthy run (HEALTHY_RUN_SECONDS) resets the count
+    back to "primary". A switch does not reset the max_failures count. A healthy run (HEALTHY_RUN_SECONDS) resets the count
     but stays on the ingest that worked. A restart keeps the current ingest.
     Returns an exit code.
     """
@@ -246,8 +246,7 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
         if (backup_argv_for_attempt and quick
                 and network_failures >= FAILOVER_AFTER_FAILURES):
             on_backup = not on_backup
-            network_failures = 0
-            failures = 0
+            network_failures = 0  # failures is kept so max_failures still ends a dead link
             target = TARGET_BACKUP if on_backup else TARGET_PRIMARY
             out.write("Connection keeps failing. Switching to the %s ingest.\n"
                       % target)
