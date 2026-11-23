@@ -25,7 +25,7 @@ from .optimizer import OptimizerContext, build_insights, insight_line
 from .perf_profiles import affinity_cpus
 from .telemetry import TelemetrySampler
 from .scenes import load_scenes
-from .presets import DEFAULT_PRESET, PRESETS
+from .presets import DEFAULT_PRESET
 from .runner import (STATUS_FALLBACK, STATUS_FAILED, STATUS_LIVE,
                      STATUS_RECONNECTING, STATUS_RESTARTING, STATUS_STARTING,
                      STATUS_STOPPED,
