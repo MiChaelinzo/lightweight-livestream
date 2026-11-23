@@ -125,7 +125,7 @@ and manual reads of `config.py`, `runner.py`, `analytics.py`, `cli.py`, `command
 
 ### Findings (real issues and limits)
 
-1. **Key visible in the process list (limit, by design). Status: open, documented in CHANGELOG.** `command.py:113-114`
+1. **Key visible in the process list (limit, by design). Status: open, documented here, in CHANGELOG and in `docs/ARCHITECTURE-NOTES.md`.** This is an OS-level exposure that cannot be removed without an stdin or config-file ingest, which FFmpeg's output URL does not offer (alternatives evaluated in `docs/ARCHITECTURE-NOTES.md`). `command.py:113-114`
    and `platforms.py:13-20` put the full ingest URL with the key into the FFmpeg
    argv (`runner.py:157`). On Linux and macOS other local users can read it from
    `ps` or `/proc/<pid>/cmdline`; on Windows other processes of the same user can
@@ -137,7 +137,7 @@ and manual reads of `config.py`, `runner.py`, `analytics.py`, `cli.py`, `command
    open with plain `open(...)`. VERIFIED: `save_prefs` produced a file with mode
    `0o644` under umask `0o022`. None holds the key, but `config.json` may hold a
    custom `url` (see 3). Severity: low. A 0600 mode on POSIX would be cheap.
-3. **A custom `url` may contain the key. Status: open (roadmap).** `platforms.py:18` appends the key to
+3. **A custom `url` may contain the key. Status: FIXED in v0.11 for detection, warning and redaction (`platforms.embedded_key_in_url`, `cli.py`, tested); never saved. Shell history for `--url` stays the user's responsibility.** `platforms.py:18` appends the key to
    `custom_url`, so a user who stores `rtmp://host/app/KEY` as `"url"` in
    `config.json` stores the key in plain text. `save_prefs` guards the GUI
    path (`gui_controller.py:134-138`), but a hand-edited config file or `--url`
@@ -152,7 +152,7 @@ and manual reads of `config.py`, `runner.py`, `analytics.py`, `cli.py`, `command
    output still use plain `open(..., "w")`; none holds a stream key. `fileio.py`
    does not fsync, so writes survive a process crash, not power loss. Report
    creation removes its partial file if the write fails.
-5. **Redaction is exact-substring only. Status: partly fixed (percent-encoded form now redacted, tested); other transforms open.** `runner.py:47-49` will not hide a
+5. **Redaction is exact-substring only. Status: partly fixed (percent-encoded and `quote_plus` forms redacted, several secrets supported, tested in v0.11); other transforms open.** `runner.py:47-49` will not hide a
    percent-encoded or otherwise transformed form of the key if FFmpeg echoes one
    (UNVERIFIED whether FFmpeg ever does). Very short keys also redact unrelated
    text (cosmetic).
@@ -160,7 +160,7 @@ and manual reads of `config.py`, `runner.py`, `analytics.py`, `cli.py`, `command
    to a server, but the full URL is stored in the OBS browser-source setting in
    plain text. The Twitch token should be minimal scope. Documented limit, not a
    code defect.
-7. **Speed test accepts `http://`. Status: open, informational (random data only, and a local http test server is a legitimate use).** `bandwidth.py:74-75` allows plain HTTP for
+7. **Speed test accepts `http://`. Status: FIXED in v0.11 (`bandwidth.measure_upload` accepts only `https://`, tested).** Originally: `bandwidth.py:74-75` allows plain HTTP for
    the opt-in upload test. It sends random data only, so no secret is exposed.
    Informational.
 

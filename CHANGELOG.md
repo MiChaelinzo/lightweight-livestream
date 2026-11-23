@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased (0.10.0)
+## Unreleased (0.11.0)
+
+- New: `optimus_mx250` hardware profile, chosen automatically when an Intel graphics adapter and a GeForce MX250 are both detected (for example i7-1065G7 Iris Plus G7 + MX250). Quick Sync encodes first, NVENC second; recording on by default and the 4500 kbps cap as in `mx250_streamer`. Behavior change: such laptops used to get `mx250_streamer`. A deliberate design choice, UNVERIFIED on real hardware. Single-GPU machines are unchanged.
+- Fix: Windows GPU detection tries PowerShell `Get-CimInstance Win32_VideoController` first and `wmic` second (wmic is removed on Windows 11 24H2). Tested with fake output only; UNVERIFIED on Windows.
+- Fix: a restart request that arrived during a reconnect backoff no longer causes a second, needless relaunch.
+- Fix: key redaction also hides the `quote_plus` form and accepts several secrets.
+- Fix: the upload speed test accepts only `https://` URLs.
+- New: a custom URL that already contains a stream key (`rtmp://host/app/KEY`) triggers a warning, is hidden in the dry-run command and in output, and is never saved.
+- Docs: the key in the ffmpeg command line is documented as an OS-level exposure, with alternatives evaluated in `docs/ARCHITECTURE-NOTES.md`.
+
+## 0.10.0 (unreleased draft)
 
 - New: Facebook Live platform (`--platform facebook`, GUI "Facebook Live", stream preset `facebook_live`). Ingest is `rtmps://live-api-s.facebook.com:443/rtmp/KEY`. The video cap of 4000 kbps is a conservative design choice, not read from Facebook's documentation here. PARTIALLY VERIFIED: the unit tests cover URL building, the CLI choice, key redaction and the preset, and the bundled FFmpeg 7.0.2 (GnuTLS) parsed an rtmps output and failed with "Connection refused" on a closed local port. No Facebook account was available, so a real go-live is UNVERIFIED.
 - Fix: config, preferences, history and report files are written with mode 0600 on POSIX (no-op on Windows) through a temp file and `os.replace`, so a process crash cannot leave a truncated JSON file (no fsync, so not power-loss safe). Scope is limited to those files; scene collections, portable config and bench output still use plain writes because they hold no stream keys. Report creation uses O_EXCL and removes the partial file if the write fails.

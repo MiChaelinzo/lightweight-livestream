@@ -140,7 +140,7 @@
 
     <section id="mx250" aria-labelledby="mx-title">
       <h2 id="mx-title">MX250 success guide</h2>
-      <p>The <code>mx250_streamer</code> profile is chosen automatically for GeForce MX250 laptops. It tries NVENC first, then Quick Sync, allows a webcam overlay, records a local copy by default and caps the video bitrate at 4500 kbps unless you set one.</p>
+      <p>The <code>mx250_streamer</code> profile is chosen automatically for GeForce MX250 laptops. On laptops that also have Intel graphics (Optimus), the <code>optimus_mx250</code> profile is chosen instead: it tries Quick Sync first so the idle Intel GPU encodes while the MX250 runs the game, then NVENC. Both allow a webcam overlay, record a local copy by default and cap the video bitrate at 4500 kbps unless you set one. <code>mx250_streamer</code> alone tries NVENC first, then Quick Sync, allows a webcam overlay, records a local copy by default and caps the video bitrate at 4500 kbps unless you set one.</p>
       <ol class="steps">
         <li>Use an FFmpeg build with NVENC and an up to date NVIDIA driver.</li>
         <li>Run <code>lightstream doctor</code> and confirm <code>h264_nvenc</code> is listed.</li>
