@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "name": "hello",
+  "version": "0.1.0",
+  "command": ["python3", "main.py"],
+  "events": ["stream_started", "health"],
+  "permissions": ["log"]
+}

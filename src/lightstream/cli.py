@@ -145,6 +145,11 @@ def build_parser():
     sc.add_argument("--force", action="store_true",
                     help="export/import: replace existing files or scenes")
     sc.add_argument("--scenes-file", help="scenes file (default: scenes.json next to config.json)")
+    pl = sub.add_parser("plugins", help="list or check plugins, or run the demo plugin "
+                                        "(plugins are off unless enabled in config.json)")
+    pl.add_argument("action", choices=("list", "check", "run-demo"))
+    pl.add_argument("name", nargs="?", help="check: plugin folder name")
+    pl.add_argument("--plugins-dir", help="plugins folder (default: plugins/ next to config.json)")
     s = sub.add_parser("start", help="start streaming")
     s.add_argument("--platform", choices=PLATFORMS)
     s.add_argument("--url", help="RTMP base URL for --platform custom")
@@ -422,6 +427,65 @@ def cmd_dashboard(args, out, history_dir=None, disk_usage=shutil.disk_usage):
             folder, disk):
         out.write(line + "\n")
     return 0
+
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DEMO_PLUGIN_DIR = os.path.join(_REPO_ROOT, "examples", "plugins")
+DEMO_WAIT_S = 2.0
+
+
+def cmd_plugins(args, out, config_file=None):
+    from . import plugins
+    config_file = config_file or config_path(detect_os())
+    folder = args.plugins_dir or plugins.plugins_dir(config_file)
+    if args.action == "run-demo":
+        return _plugins_run_demo(args, out)
+    if args.action == "check":
+        if not args.name:
+            raise ValueError("plugins check needs a plugin name")
+        try:
+            manifest = plugins.load_manifest(os.path.join(folder, args.name))
+        except plugins.ManifestError as exc:
+            out.write("%s: INVALID: %s\n" % (args.name, exc))
+            return 1
+        out.write("%s %s: manifest valid (events: %s; permissions: %s)\n" % (
+            manifest["name"], manifest["version"],
+            ", ".join(manifest.get("events", [])) or "none",
+            ", ".join(manifest.get("permissions", [])) or "none"))
+        return 0
+    enabled = load_file_config(config_file).get("plugins", [])
+    found = plugins.discover(folder, enabled)
+    if not found:
+        out.write("No plugins in %s. Plugins are off unless listed in the "
+                  "\"plugins\" setting of config.json.\n" % folder)
+        return 0
+    for item in found:
+        out.write("%-20s %-9s %s\n" % (
+            item["name"], "enabled" if item["enabled"] else "off",
+            "ok" if item["error"] is None else "INVALID: " + item["error"]))
+    return 0
+
+
+def _plugins_run_demo(args, out):
+    from . import plugins
+    folder = os.path.join(args.plugins_dir or DEMO_PLUGIN_DIR, "hello")
+    host = plugins.PluginHost(os.path.dirname(folder), ["hello"], __version__,
+                              log=lambda text: out.write(text + "\n"))
+    if not host.start_all():
+        out.write("Demo plugin did not start (needs python3 on PATH).\n")
+        return 1
+    try:
+        host.broadcast("stream_started", platform="demo")
+        deadline = time.monotonic() + DEMO_WAIT_S
+        seen = []
+        while not seen and time.monotonic() < deadline:
+            time.sleep(0.05)
+            seen = host.collect_actions()
+        for name, action in seen:
+            out.write("[%s] %s: %s\n" % (name, action["action"], action["text"]))
+    finally:
+        host.stop_all()
+    return 0 if seen else 1
 
 
 def cmd_bench(args, out, build=build_report, find=find_ffmpeg, today=None):
@@ -766,6 +830,8 @@ def main(argv=None, out=sys.stdout):
             return cmd_dashboard(args, out)
         if args.command == "bench":
             return cmd_bench(args, out)
+        if args.command == "plugins":
+            return cmd_plugins(args, out)
         if args.command == "optimize":
             return cmd_optimize(args, out)
         if args.command == "key":
