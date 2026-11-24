@@ -449,6 +449,42 @@ class GuiModuleTests(unittest.TestCase):
         self.assertIn("could not open", r.stdout)
 
 
+class GuiWindowDisplayTests(unittest.TestCase):
+    """Need a display (set DISPLAY, e.g. Xvfb); skipped otherwise."""
+
+    def setUp(self):
+        if not os.environ.get("DISPLAY"):
+            self.skipTest("no DISPLAY")
+        import tkinter
+        from lightstream import gui
+        try:
+            self.root = tkinter.Tk()
+        except tkinter.TclError:
+            self.skipTest("Tk cannot open the display")
+        self.addCleanup(self.root.destroy)
+        home = tempfile.mkdtemp()
+        patcher = mock.patch.dict(os.environ, {"HOME": home, "XDG_CONFIG_HOME": home})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.window = gui.StreamWindow(self.root)
+        self.root.update_idletasks()
+
+    def test_callback_error_sets_status_without_raising(self):
+        with mock.patch.object(gc, "report_gui_crash", return_value="saved report") as rep:
+            self.window.on_callback_error(ValueError, ValueError("boom"), None)
+        self.assertEqual(self.window.status.get(), "saved report")
+        self.assertIsInstance(rep.call_args[0][0], ValueError)
+
+    def test_wheel_from_other_toplevel_is_ignored(self):
+        import tkinter
+        other = tkinter.Toplevel(self.root)
+        self.addCleanup(other.destroy)
+        event = mock.Mock(widget=other, num=4, delta=0)
+        with mock.patch.object(self.window.page_canvas, "yview_scroll") as scroll:
+            self.window._on_wheel(event)
+        scroll.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
 

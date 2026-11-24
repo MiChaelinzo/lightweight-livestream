@@ -259,7 +259,7 @@ The CLI prints a summary at the end of a session (speed, dropped frames, reconne
 | Noise filter text, missing model error | VERIFIED (as strings) | unit tests |
 | Bandwidth maths, health tracker, advice rules, wizard config | VERIFIED | unit tests (fake clock, fake probes) |
 | GUI controller additions (setup, record, scene list, advice) | VERIFIED | unit tests, no display |
-| GUI window layout of the new widgets | VERIFIED (Linux only) | seen in Xvfb screenshots in 0.13; Windows and macOS UNVERIFIED |
+| GUI window layout of the new widgets | PARTIALLY VERIFIED (Linux only) | seen by eye in Xvfb screenshots in 0.13, no automated pixel check; Windows and macOS UNVERIFIED |
 | Real FFmpeg accepting the scene graphs, tee, `arnndn`, `afftdn` | UNVERIFIED | no FFmpeg in the dev sandbox |
 | Webcam capture (dshow, v4l2, avfoundation) | UNVERIFIED | no camera |
 | Quick Sync / NVENC tuning on Intel HD and MX250 | UNVERIFIED | no such hardware |
@@ -385,7 +385,7 @@ python3 tools/export_presets.py --check  # fails if it is stale
 | Item | Status | Evidence |
 |---|---|---|
 | GUI controller logic (validation, banner states, prefs, key never saved or logged) | VERIFIED | unit tests, no display needed |
-| GUI window rendering on Linux (layout, fonts, buttons, colors) | VERIFIED (Linux only) | real screenshots captured under Xvfb with `tools/ui_snapshots.py` (see [docs/DEV-RENDERING.md](docs/DEV-RENDERING.md)); read by eye, no automated pixel assertions |
+| GUI window rendering on Linux (layout, fonts, buttons, colors) | PARTIALLY VERIFIED (Linux only) | real screenshots captured under Xvfb with `tools/ui_snapshots.py` (see [docs/DEV-RENDERING.md](docs/DEV-RENDERING.md)); read by eye, no automated pixel assertions |
 | GUI look on Windows and macOS, real fonts and DPI scaling | UNVERIFIED | never run on those systems |
 | GUI callback crash capture in a live Tk window | UNVERIFIED | the report function is unit tested; the Tk hook was not exercised on a display |
 | Command building (all OSes, encoders) | VERIFIED (as strings) | unit tests |

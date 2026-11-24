@@ -216,7 +216,10 @@ class StreamWindow:
         self.page_canvas.configure(scrollregion=self.page_canvas.bbox("all"))
 
     def _on_wheel(self, event):
-        if event.widget.winfo_class() in ("Text", "Listbox", "TCombobox"):
+        widget = event.widget
+        if not hasattr(widget, "winfo_toplevel") or widget.winfo_toplevel() is not self.root:
+            return  # a dialog or other window: not ours to scroll
+        if widget.winfo_class() in ("Text", "Listbox", "TCombobox", "TSpinbox", "Spinbox"):
             return  # these scroll or change themselves
         content = self.page_area.winfo_reqheight()
         if not gt.needs_scrollbar(content, self.page_canvas.winfo_height()):
