@@ -4,6 +4,7 @@
 
 - New: `lightstream support-bundle [--out FILE]` writes a redacted JSON file for bug reports (version, platform, encoder list, config with keys and addresses hidden, recent history rows). Opt-in, never sent anywhere. A seeded secret is asserted absent in tests (VERIFIED); there is no log file yet, so none is included.
 - Test: golden ffmpeg argv files in `tests/golden/` for every performance and hardware profile (fixed config, placeholder key). Regenerate after an intended change with `LIGHTSTREAM_UPDATE_GOLDEN=1 python3 -m unittest tests.test_golden_argv`.
+- Test: `tools/spikes.py` runs loopback ffmpeg experiments (split publisher, tee recording, potato filters, SRT) and prints JSON; results and decisions in `docs/BENCHMARKS.md` and `docs/ARCHITECTURE-NOTES.md`. Found: with ffmpeg 7.0.2, recording while streaming (`record_to`) fails to start (tee output without `-map`), the Matroska slot needs `-flags +global_header`, and a tee slot without `onfail` keeps ffmpeg running after the RTMP server drops, so the reconnect loop never fires. Not fixed yet (planned in this release).
 - Build: `.gitattributes` forces LF line endings and marks images and fonts binary.
 
 ## 0.11.0 (unreleased)

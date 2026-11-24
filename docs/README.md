@@ -7,8 +7,8 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 | File | Purpose |
 |---|---|
 | [ROADMAP.md](ROADMAP.md) | status table per area |
-| [ARCHITECTURE-NOTES.md](ARCHITECTURE-NOTES.md) | auto-scale design and alternatives, optimizer notes |
-| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, v0.11 before and after, web page weight |
+| [ARCHITECTURE-NOTES.md](ARCHITECTURE-NOTES.md) | auto-scale design and alternatives, optimizer notes, 0.12 platform v2 decisions from measured spikes |
+| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, v0.11 before and after, web page weight, v0.12 spikes (`tools/spikes.py`) |
 | [RELEASING.md](RELEASING.md) | how to cut a release |
 
 ## v0.10 audit and blueprint
