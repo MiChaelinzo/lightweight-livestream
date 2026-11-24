@@ -19,7 +19,7 @@ No page was added. `gui_pages.PANELS` maps each requested panel onto a page that
 
 Pure logic (panel map, ring buffers, comparison, health line) is VERIFIED by unit tests. Window layout and rendering are UNVERIFIED: there is no display here, only a headless import test.
 
-Persistent ingest stays command line only (`--persistent-ingest`). The GUI worker does not use the split publisher, and wiring it would change the run loop, which cannot be checked without a display.
+Persistent ingest is available from the command line (`--persistent-ingest`) and from the Recording page checkbox. Both use `run_with_publisher`. The GUI controller path is covered by unit tests with fakes; running it against a real publisher and encoder through the GUI is UNVERIFIED.
 
 ### Performance panel and bottleneck rule
 

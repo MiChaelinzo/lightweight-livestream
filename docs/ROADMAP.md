@@ -28,7 +28,7 @@ Status words: Done (implemented and unit tested), Partial (some of it exists), R
 
 | Feature | Status | Honest limits |
 | --- | --- | --- |
-| Network recovery | Partial | Reconnect with backoff and backup ingest failover (Done earlier, fakes only). Persistent ingest is opt-in and CLI only. Loopback VERIFIED; real platforms UNVERIFIED. Viewers can still see a stall |
+| Network recovery | Partial | Reconnect with backoff and backup ingest failover (Done earlier, fakes only). Persistent ingest is opt-in in the CLI (`--persistent-ingest`) and the GUI Recording page checkbox; the GUI path is tested with fakes only and is UNVERIFIED end to end. Loopback VERIFIED; real platforms UNVERIFIED. Viewers can still see a stall |
 | Potato Mode | Partial | See area 2. Measured CPU savings come from fps and resolution, not from grayscale |
 | Hardware auto-tuning | Partial | Hardware detection, profiles and the `optimize` diff exist and are confirmed by the user. Real GPU encoders and dual-GPU choice are UNVERIFIED. Auto-scale applies changes only when opted in |
 | Health score | Done (logic), shown in GUI and CLI | Weights are heuristics, not fitted to data. `session_health` passes dropped percent (dropped / frames from ffmpeg's running totals) when a frame total is known, otherwise that signal is left out. Counters restart if ffmpeg restarts, so the percent covers the current ffmpeg run |
