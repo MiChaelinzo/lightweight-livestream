@@ -311,6 +311,17 @@ Web page weight (`tools/page_weight.py`):
 
 The text assets are 367 bytes smaller raw and 67 bytes larger gzipped. The three real GUI screenshots add 84,984 bytes, loaded lazily. Before, `web/img/` did not exist. Load time was not measured.
 
+## v0.15 GUI animation tick (health card easing)
+
+Method: `StreamWindow` under Xvfb at 1366x768, dashboard page open, 2000 calls of `_animate_cards()` each followed by `root.update()`, with the three eased targets changed every call so every label repaints. CPU time from `time.process_time()`, three runs, Linux sandbox (Python 3.11). A real Windows or macOS desktop was not measured: UNVERIFIED there.
+
+| Case | CPU time per tick |
+|---|---|
+| tick + repaint of 3 labels (worst case, always moving) | 0.72 to 0.74 ms |
+| `root.update()` alone | 0.06 ms |
+
+At the 50 ms tick that is about 1.5 percent of one core while values are moving, and zero when settled or when Reduce motion is on (no tick is scheduled). The sandbox has no GPU and Xvfb draws in software, so this is a rough upper bound for the Tk side only. PARTIALLY VERIFIED.
+
 ## v0.14.0 (showcase release)
 
 Web page weight with `python3 tools/page_weight.py` (sums bytes and gzip level 9 bytes of the text assets in `web/`, and image bytes separately), run before and after the hero change:

@@ -13,7 +13,21 @@ from .fileio import write_private_text
 
 THEME_LIGHT = "light"
 THEME_DARK = "dark"
-THEMES = (THEME_LIGHT, THEME_DARK)
+THEME_MIDNIGHT = "midnight"
+THEME_CYBERPUNK = "cyberpunk"
+THEME_AURORA = "aurora"
+THEME_SYNTHWAVE = "synthwave"
+THEME_MINIMAL_DARK = "minimal_dark"
+THEME_OLED = "oled"
+# Cycle order: light and dark stay first so the old toggle behavior is unchanged.
+THEMES = (THEME_LIGHT, THEME_DARK, THEME_MIDNIGHT, THEME_CYBERPUNK, THEME_AURORA,
+          THEME_SYNTHWAVE, THEME_MINIMAL_DARK, THEME_OLED)
+THEME_LABELS = {
+    THEME_LIGHT: "Light", THEME_DARK: "Dark", THEME_MIDNIGHT: "Midnight",
+    THEME_CYBERPUNK: "Cyberpunk", THEME_AURORA: "Aurora",
+    THEME_SYNTHWAVE: "Synthwave", THEME_MINIMAL_DARK: "Minimal Dark",
+    THEME_OLED: "OLED True Black",
+}
 UI_PREFS_FILENAME = "ui.json"
 AA_TEXT_RATIO = 4.5  # WCAG 2.1 AA for normal text
 
@@ -61,6 +75,52 @@ PALETTES = {
         "trough": "#232428",
     },
 }
+
+# The extra themes are the dark palette with their own surfaces and accent, so
+# the state colors (start, stop, emergency, banners) stay the same everywhere.
+# Each is checked by failing_pairs in tests/test_gui_theme.py.
+PALETTES[THEME_MIDNIGHT] = dict(
+    PALETTES[THEME_DARK], background="#0B1020", surface="#131A2E", card="#1A2340",
+    card_border="#556594", sidebar="#0F1526", nav_hover="#222C4D",
+    button_bg="#222C4D", button_hover="#2E3A63", trough="#0A0E1B",
+    graph_back="#131A2E", graph_grid="#27315A", focus="#7AA2FF",
+    graph_line="#7AA2FF", accent="#7AA2FF", accent_hover="#9DBBFF",
+    accent_fg="#0A1433")
+PALETTES[THEME_CYBERPUNK] = dict(
+    PALETTES[THEME_DARK], background="#120B1F", surface="#1C1230", card="#261845",
+    card_border="#8A5FBF", sidebar="#160E27", nav_hover="#34205C",
+    button_bg="#34205C", button_hover="#46297A", trough="#0E0818",
+    graph_back="#1C1230", graph_grid="#3A2766", focus="#00E5FF",
+    graph_line="#00E5FF", accent="#FF2E97", accent_hover="#FF5CAF",
+    accent_fg="#1A0010")
+PALETTES[THEME_AURORA] = dict(
+    PALETTES[THEME_DARK], background="#0B1A1C", surface="#12282B", card="#173338",
+    card_border="#4F8F93", sidebar="#0E2023", nav_hover="#1F4247",
+    button_bg="#1F4247", button_hover="#2A565C", trough="#091517",
+    graph_back="#12282B", graph_grid="#245056", focus="#7CF0D6",
+    graph_line="#4FE3C1", accent="#4FE3C1", accent_hover="#7CF0D6",
+    accent_fg="#04201A")
+PALETTES[THEME_SYNTHWAVE] = dict(
+    PALETTES[THEME_DARK], background="#1B1030", surface="#261746", card="#301D5A",
+    card_border="#9A6FE0", sidebar="#211240", nav_hover="#43287F",
+    button_bg="#43287F", button_hover="#56349F", trough="#150B27",
+    graph_back="#261746", graph_grid="#4A3080", focus="#36F1CD",
+    graph_line="#36F1CD", accent="#FF7AD9", accent_hover="#FF9BE3",
+    accent_fg="#2A0A22")
+PALETTES[THEME_MINIMAL_DARK] = dict(
+    PALETTES[THEME_DARK], background="#161616", surface="#1F1F1F", card="#262626",
+    card_border="#6A6A6A", sidebar="#1A1A1A", nav_hover="#333333",
+    button_bg="#303030", button_hover="#3E3E3E", trough="#121212",
+    graph_back="#1F1F1F", graph_grid="#333333", focus="#D0D0D0",
+    graph_line="#D0D0D0", accent="#D0D0D0", accent_hover="#E6E6E6",
+    accent_fg="#111111")
+PALETTES[THEME_OLED] = dict(
+    PALETTES[THEME_DARK], background="#000000", surface="#0A0A0A", card="#111111",
+    card_border="#555555", sidebar="#000000", nav_hover="#1C1C1C",
+    button_bg="#1A1A1A", button_hover="#2A2A2A", trough="#000000",
+    graph_back="#0A0A0A", graph_grid="#262626", focus="#8AB4F8",
+    graph_line="#8AB4F8", accent="#8AB4F8", accent_hover="#A8C7FA",
+    accent_fg="#0F1F3D")
 
 # (foreground key, background key): every pair must reach AA_TEXT_RATIO.
 TEXT_PAIRS = (
@@ -236,6 +296,35 @@ def palette(theme):
 
 def toggle_theme(theme):
     return THEME_LIGHT if theme == THEME_DARK else THEME_DARK
+
+
+def cycle_theme(theme):
+    """Next theme in THEMES order, wrapping around. Unknown names give the first."""
+    if theme not in THEMES:
+        return THEMES[0]
+    return THEMES[(THEMES.index(theme) + 1) % len(THEMES)]
+
+
+# -- motion --------------------------------------------------------------------
+ANIMATION_TICK_MS = 50
+EASE_RATE = 0.35  # share of the remaining distance covered per tick
+EASE_SNAP = 0.05  # closer than this to the target, jump onto it
+
+
+def animation_enabled(prefs, potato):
+    """False when the user asked for reduced motion or Potato/Emergency is on."""
+    return not (prefs.get("reduce_motion") or potato)
+
+
+def ease_step(current, target, rate=EASE_RATE, snap=EASE_SNAP):
+    """One easing step from `current` toward `target`; deterministic.
+
+    None means "no reading": the target is shown as is (no easing from or to it)."""
+    if current is None or target is None:
+        return target
+    if abs(target - current) <= snap:
+        return target
+    return current + (target - current) * rate
 
 
 def _channel(value):
@@ -422,8 +511,8 @@ def ui_prefs_path(prefs_file):
 
 
 def load_ui_prefs(path):
-    """{'theme': ..., 'compact': ...}, with defaults for anything bad or missing."""
-    prefs = {"theme": THEME_LIGHT, "compact": False}
+    """{'theme', 'compact', 'reduce_motion'}, with defaults for anything bad or missing."""
+    prefs = {"theme": THEME_LIGHT, "compact": False, "reduce_motion": False}
     try:
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
@@ -434,13 +523,16 @@ def load_ui_prefs(path):
             prefs["theme"] = data["theme"]
         if isinstance(data.get("compact"), bool):
             prefs["compact"] = data["compact"]
+        if isinstance(data.get("reduce_motion"), bool):
+            prefs["reduce_motion"] = data["reduce_motion"]
     return prefs
 
 
-def save_ui_prefs(path, theme, compact):
-    """Write only the theme name and the compact flag (no secrets), mode 0600."""
+def save_ui_prefs(path, theme, compact, reduce_motion=False):
+    """Write only the theme name and two flags (no secrets), mode 0600."""
     if theme not in THEMES:
         raise ValueError("unknown theme: %r" % (theme,))
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     write_private_text(path, json.dumps(
-        {"theme": theme, "compact": bool(compact)}, indent=2) + "\n")
+        {"theme": theme, "compact": bool(compact),
+         "reduce_motion": bool(reduce_motion)}, indent=2) + "\n")

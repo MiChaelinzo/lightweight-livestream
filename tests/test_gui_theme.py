@@ -22,15 +22,38 @@ class ContrastTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 gt.relative_luminance(bad)
 
-    def test_every_token_pair_meets_aa_in_both_themes(self):
+    def test_every_token_pair_meets_aa__in_every_theme(self):
         for theme in gt.THEMES:
             self.assertEqual([], gt.failing_pairs(theme), theme)
 
     def test_palettes_have_the_same_keys_and_valid_colors(self):
-        self.assertEqual(set(gt.PALETTES["light"]), set(gt.PALETTES["dark"]))
+        self.assertEqual(set(gt.THEMES), set(gt.PALETTES))
+        for colors in gt.PALETTES.values():
+            self.assertEqual(set(gt.PALETTES["light"]), set(colors))
         for colors in gt.PALETTES.values():
             for value in colors.values():
                 gt.relative_luminance(value)
+
+    def test_non_text_marks_meet_3_to_1_in_every_theme(self):
+        for theme in gt.THEMES:
+            colors = gt.palette(theme)
+            for fg, bg in gt.NON_TEXT_PAIRS:
+                self.assertGreaterEqual(gt.contrast_ratio(colors[fg], colors[bg]),
+                                        gt.AA_NON_TEXT_RATIO, (theme, fg, bg))
+
+    def test_themes_have_labels_and_light_dark_stay_first(self):
+        self.assertEqual(("light", "dark"), gt.THEMES[:2])
+        self.assertEqual(set(gt.THEMES), set(gt.THEME_LABELS))
+        self.assertEqual(len(gt.THEMES), len(set(gt.THEMES)))
+
+    def test_cycle_theme_visits_every_theme_then_wraps(self):
+        seen, theme = [], gt.THEMES[0]
+        for _ in gt.THEMES:
+            seen.append(theme)
+            theme = gt.cycle_theme(theme)
+        self.assertEqual(list(gt.THEMES), seen)
+        self.assertEqual(gt.THEMES[0], theme)
+        self.assertEqual(gt.THEMES[0], gt.cycle_theme("nope"))
 
     def test_failing_pairs_detects_low_contrast(self):
         original = gt.PALETTES["light"]["foreground"]
@@ -48,8 +71,32 @@ class ContrastTests(unittest.TestCase):
         self.assertLess(gt.spacing(True)["large"], gt.spacing(False)["large"])
 
 
+class MotionTests(unittest.TestCase):
+    def test_animation_enabled_follows_pref_and_potato(self):
+        self.assertTrue(gt.animation_enabled({"reduce_motion": False}, False))
+        self.assertFalse(gt.animation_enabled({"reduce_motion": True}, False))
+        self.assertFalse(gt.animation_enabled({"reduce_motion": False}, True))
+        self.assertTrue(gt.animation_enabled({}, False))
+
+    def test_ease_step_is_deterministic_and_converges(self):
+        self.assertEqual(gt.ease_step(0.0, 10.0), gt.ease_step(0.0, 10.0))
+        value = 0.0
+        for _ in range(100):
+            nxt = gt.ease_step(value, 10.0)
+            self.assertGreaterEqual(nxt, value)
+            self.assertLessEqual(nxt, 10.0)
+            value = nxt
+        self.assertEqual(10.0, value)
+        self.assertEqual(5.0, gt.ease_step(10.0, 5.0, rate=1.0))
+
+    def test_ease_step_handles_missing_readings_and_snaps(self):
+        self.assertIsNone(gt.ease_step(3.0, None))
+        self.assertEqual(7.0, gt.ease_step(None, 7.0))
+        self.assertEqual(7.0, gt.ease_step(7.0 - gt.EASE_SNAP, 7.0))
+
+
 class LookHelperTests(unittest.TestCase):
-    def test_disabled_big_buttons_are_readable_in_both_themes(self):
+    def test_disabled_big_buttons_are_readable__in_every_theme(self):
         for theme in gt.THEMES:
             for kind in gt.BIG_BUTTON_KINDS:
                 bg, fg = gt.big_button_colors(theme, kind, False)
@@ -187,21 +234,26 @@ class UiPrefsTests(unittest.TestCase):
     def test_defaults_when_missing_or_corrupt(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "ui.json")
-            self.assertEqual({"theme": "light", "compact": False}, gt.load_ui_prefs(path))
+            self.assertEqual({"theme": "light", "compact": False, "reduce_motion": False}, gt.load_ui_prefs(path))
             with open(path, "w") as fh:
                 fh.write("{not json")
-            self.assertEqual({"theme": "light", "compact": False}, gt.load_ui_prefs(path))
+            self.assertEqual({"theme": "light", "compact": False, "reduce_motion": False}, gt.load_ui_prefs(path))
             with open(path, "w") as fh:
                 json.dump({"theme": "neon", "compact": "yes"}, fh)
-            self.assertEqual({"theme": "light", "compact": False}, gt.load_ui_prefs(path))
+            self.assertEqual({"theme": "light", "compact": False, "reduce_motion": False}, gt.load_ui_prefs(path))
 
     def test_roundtrip_private_and_minimal(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = gt.ui_prefs_path(os.path.join(tmp, "gui.json"))
-            gt.save_ui_prefs(path, "dark", True)
-            self.assertEqual({"theme": "dark", "compact": True}, gt.load_ui_prefs(path))
+            gt.save_ui_prefs(path, "dark", True, True)
+            self.assertEqual({"theme": "dark", "compact": True, "reduce_motion": True},
+                             gt.load_ui_prefs(path))
             with open(path) as fh:
-                self.assertEqual({"theme", "compact"}, set(json.load(fh)))
+                self.assertEqual({"theme", "compact", "reduce_motion"},
+                                 set(json.load(fh)))
+            for theme in gt.THEMES:
+                gt.save_ui_prefs(path, theme, False)
+                self.assertEqual(theme, gt.load_ui_prefs(path)["theme"])
             if os.name == "posix":
                 self.assertEqual(0o600, stat.S_IMODE(os.stat(path).st_mode))
             with self.assertRaises(ValueError):

@@ -33,6 +33,10 @@ from .portable import (ffmpeg_download_url, ffmpeg_guidance, find_ffmpeg,
                        is_portable, save_configured_ffmpeg, validate_ffmpeg)
 
 POLL_MS = 500
+# Health card readings that ease toward a new value: (summary key, text template).
+# They are the first cards of gp.health_cards, in the same order.
+EASED_READINGS = (("recent_speed", "%.2fx"), ("recent_fps", "%.0f"),
+                  ("recent_bitrate_kbps", "%.0f kbps"))
 CLOSE_WAIT_MS = 5000
 APP_NAME = "LightStream"
 TAGLINE = "Streaming made simple"
@@ -60,6 +64,10 @@ class StreamWindow:
         self.ui_file = gt.ui_prefs_path(self.prefs_file)
         look = gt.load_ui_prefs(self.ui_file)
         self.theme, self.compact = look["theme"], look["compact"]
+        self.reduce_motion = look["reduce_motion"]
+        self.eased_targets = [None] * len(EASED_READINGS)
+        self.eased_shown = [None] * len(EASED_READINGS)
+        self._animating = False
         self.graph_data = gt.PerformanceBuffers(GRAPH_SAMPLES)
         self.graph_canvases = {}
         self.redraw_gate = gt.RedrawGate(1.0)
@@ -154,8 +162,18 @@ class StreamWindow:
                             command=lambda p=page_id: self.show_page(p)
                             ).pack(fill="x", pady=1)
         self.sidebar = sidebar
-        ttk.Button(sidebar, text=gt.with_accelerator("Dark / light", "theme"),
-                   command=self.on_toggle_theme).pack(side="bottom", fill="x", pady=(3, 0))
+        self.reduce_motion_var = tk.BooleanVar(value=self.reduce_motion)
+        ttk.Checkbutton(sidebar, text="Reduce motion", variable=self.reduce_motion_var,
+                        command=self.on_reduce_motion).pack(
+                            side="bottom", fill="x", pady=(3, 0))
+        self.theme_var = tk.StringVar(value=gt.THEME_LABELS[self.theme])
+        self.theme_picker = ttk.Combobox(
+            sidebar, textvariable=self.theme_var, state="readonly", takefocus=True,
+            values=[gt.THEME_LABELS[name] for name in gt.THEMES])
+        self.theme_picker.pack(side="bottom", fill="x", pady=(3, 0))
+        self.theme_picker.bind("<<ComboboxSelected>>", self.on_pick_theme)
+        ttk.Label(sidebar, text=gt.with_accelerator("Theme", "theme"),
+                  style="SidebarHint.TLabel").pack(side="bottom", anchor="w")
         ttk.Button(sidebar, text=gt.with_accelerator("Compact", "compact"),
                    command=self.on_toggle_compact).pack(side="bottom", fill="x", pady=(3, 0))
         right = ttk.Frame(outer, padding=(14, 12))
@@ -576,14 +594,34 @@ class StreamWindow:
 
     def _save_look(self):
         try:
-            gt.save_ui_prefs(self.ui_file, self.theme, self.compact)
+            gt.save_ui_prefs(self.ui_file, self.theme, self.compact,
+                             self.reduce_motion)
         except OSError:
             pass  # remembering the look is optional
 
-    def on_toggle_theme(self):
-        self.theme = gt.toggle_theme(self.theme)
+    def on_cycle_theme(self):
+        self.set_theme(gt.cycle_theme(self.theme))
+
+    def on_pick_theme(self, _event=None):
+        labels = {label: name for name, label in gt.THEME_LABELS.items()}
+        self.set_theme(labels.get(self.theme_var.get(), self.theme))
+        self.theme_picker.selection_clear()
+
+    def set_theme(self, theme):
+        self.theme = theme
+        self.theme_var.set(gt.THEME_LABELS[theme])
         self.apply_look()
         self._save_look()
+
+    def on_reduce_motion(self):
+        self.reduce_motion = self.reduce_motion_var.get()
+        self._save_look()
+
+    def motion_on(self):
+        """Easing runs unless Reduce motion is set or Potato/Emergency is active."""
+        potato = bool(gc.value_for(gc.POTATO_CHOICES, self.potato.get())) \
+            or self.controller.emergency_active()
+        return gt.animation_enabled({"reduce_motion": self.reduce_motion}, potato)
 
     def on_toggle_compact(self):
         self.compact = not self.compact
@@ -602,7 +640,7 @@ class StreamWindow:
             if not self.compact:
                 self.show_page(action.split(":", 1)[1])
         elif action == "theme":
-            self.on_toggle_theme()
+            self.on_cycle_theme()
         elif action == "compact":
             self.on_toggle_compact()
         elif "dashboard" in self._pages:
@@ -891,15 +929,45 @@ class StreamWindow:
             self._poll_dashboard(running, log_text)
         self.root.after(POLL_MS, self.poll)
 
+    def _show_health_cards(self, summary):
+        """Show the cards. Speed, fps and bitrate ease toward the new reading."""
+        easing = self.motion_on()
+        for index, (label, card) in enumerate(
+                zip(self.card_values, gp.health_cards(summary))):
+            if index >= len(EASED_READINGS):
+                label.config(text=card.value)
+                continue
+            target = summary.get(EASED_READINGS[index][0])
+            self.eased_targets[index] = target
+            if not easing:
+                self.eased_shown[index] = target
+                label.config(text=card.value)
+        if easing and not self._animating:
+            self._animating = True
+            self.root.after(gt.ANIMATION_TICK_MS, self._animate_cards)
+
+    def _animate_cards(self):
+        """One easing tick; stops rescheduling once every card reached its target."""
+        moving = False
+        for index, label in enumerate(self.card_values[:len(EASED_READINGS)]):
+            shown = gt.ease_step(self.eased_shown[index], self.eased_targets[index])
+            if shown != self.eased_shown[index]:
+                self.eased_shown[index] = shown
+                template = EASED_READINGS[index][1]
+                label.config(text=gp.MISSING_VALUE if shown is None else template % shown)
+            moving = moving or shown != self.eased_targets[index]
+        if moving:
+            self.root.after(gt.ANIMATION_TICK_MS, self._animate_cards)
+        else:
+            self._animating = False
+
     def _poll_dashboard(self, running, log_text):
         if self.root.winfo_viewable():  # sampler skips ticks until 2 s have passed
             sample = self.telemetry.tick_if_due()
             if sample is not None:
                 for label, card in zip(self.telemetry_values, gp.telemetry_cards(sample)):
                     label.config(text=card.value)
-        for label, card in zip(self.card_values,
-                               gp.health_cards(self.controller.health_summary())):
-            label.config(text=card.value)
+        self._show_health_cards(self.controller.health_summary())
         self.advice.config(text="\n".join(
             filter(None, [self.controller.health_advice()]
                    + self.controller.insight_lines())) if running else "")

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased (v0.15)
+
+- New: six more GUI themes next to light and dark: Midnight, Cyberpunk, Aurora, Synthwave, Minimal Dark and OLED True Black. Every palette passes the WCAG AA text (4.5:1) and non-text (3:1) tests (VERIFIED, unit tests). A Theme picker (combobox) in the sidebar replaces the Dark / light button; Ctrl+Shift+D now cycles through all themes. `ui.json` accepts the new theme names. Rendered at 1366x768 under Xvfb and inspected by eye for dark, midnight, cyberpunk, aurora, synthwave, minimal_dark and oled: PARTIALLY VERIFIED (Linux fonts).
+- New: "Reduce motion" setting (saved in `ui.json` as `reduce_motion`). Motion is also off while a Potato Stream choice or Emergency mode is active (`gui_theme.animation_enabled`). The only animation is easing of the Speed, FPS and Bitrate health card values (`gui_theme.ease_step`); the tick stops when the values settle.
+- Docs: native Tk cannot blur or make widgets translucent. The "glass" look here is layered, tinted cards. Real backdrop blur exists only on the web page.
+
 ## 0.14.0
 
 - New: the health score uses a real dropped-frame percent (dropped / frames from ffmpeg's running totals) when a frame total is known, otherwise that signal is left out. `HealthTracker.summary()` gains `frames`; `parse_progress` reads `frame=`. Counters restart if ffmpeg restarts. Tests VERIFIED with fakes; real streams UNVERIFIED.

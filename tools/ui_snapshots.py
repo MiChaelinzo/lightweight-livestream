@@ -35,7 +35,8 @@ DEFAULT_WIDTHS = (1280, 390)
 WEB_VIEWPORT_HEIGHT = 900
 FIRST_DISPLAY = 90
 LAST_DISPLAY = 199
-THEMES = ("light", "dark")
+THEMES = ("light", "dark", "midnight", "cyberpunk", "aurora", "synthwave",
+          "minimal_dark", "oled")
 # --state drives the banner through a fake controller snapshot, so no ffmpeg
 # runs. Maps the option to the gui_controller banner constant and a help line.
 BANNER_STATES = {"offline": "BANNER_OFFLINE", "live": "BANNER_LIVE",
@@ -213,8 +214,8 @@ def run_gui(args):
             # StreamWindow only, not gui.main(): main() schedules the ffmpeg
             # help dialog, which must not appear in a capture.
             window = gui.StreamWindow(root)
-            window.theme, window.compact = args.theme, args.compact
-            window.apply_look()
+            window.compact = args.compact
+            window.set_theme(args.theme)  # also updates the theme picker
             if args.state:
                 from lightstream import gui_controller
                 window.controller.snapshot = fake_snapshot(args.state, gui_controller)
