@@ -20,20 +20,38 @@ AA_TEXT_RATIO = 4.5  # WCAG 2.1 AA for normal text
 # Colors. Each palette has the same keys. Text pairs are listed in TEXT_PAIRS.
 PALETTES = {
     THEME_LIGHT: {
-        "background": "#F5F5F5", "foreground": "#1A1A1A",
+        "background": "#F5F6F8", "foreground": "#1A1A1A",
         "surface": "#FFFFFF", "muted": "#4A4A4A",
         "focus": "#0B57D0", "graph_line": "#0B57D0", "graph_back": "#FFFFFF",
+        "graph_grid": "#E1E4EA",
         "start_bg": "#1B7F3B", "stop_bg": "#B00020", "emergency_bg": "#8F4600",
         "button_fg": "#FFFFFF",
+        # Disabled big buttons: a pale tint of the same hue with dark text,
+        # so "not now" is clear and still readable.
+        "start_off_bg": "#DDEBE1", "stop_off_bg": "#F0DDE0",
+        "emergency_off_bg": "#F0E3D4", "off_fg": "#4A4A4A",
         "card": "#FFFFFF", "card_border": "#B5B5B5",
+        "accent": "#0B57D0", "accent_hover": "#0A47A8", "accent_fg": "#FFFFFF",
+        "button_bg": "#E6E9F0", "button_hover": "#D6DBE6",
+        "sidebar": "#E9ECF2", "nav_hover": "#D8DDE8",
+        "banner_grey": "#555555", "banner_orange": "#A64F00",
+        "banner_green": "#1B7F3B", "banner_red": "#B00020", "banner_fg": "#FFFFFF",
     },
     THEME_DARK: {
-        "background": "#1E1E1E", "foreground": "#EDEDED",
-        "surface": "#2B2B2B", "muted": "#C0C0C0",
-        "focus": "#8AB4F8", "graph_line": "#8AB4F8", "graph_back": "#2B2B2B",
+        "background": "#1E1F22", "foreground": "#EDEDED",
+        "surface": "#2B2D31", "muted": "#C0C0C0",
+        "focus": "#8AB4F8", "graph_line": "#8AB4F8", "graph_back": "#2B2D31",
+        "graph_grid": "#3C3F45",
         "start_bg": "#1B7F3B", "stop_bg": "#B00020", "emergency_bg": "#8F4600",
         "button_fg": "#FFFFFF",
-        "card": "#363636", "card_border": "#5A5A5A",
+        "start_off_bg": "#2C3A31", "stop_off_bg": "#3E2D31",
+        "emergency_off_bg": "#3D342A", "off_fg": "#C0C0C0",
+        "card": "#33353A", "card_border": "#5A5D63",
+        "accent": "#8AB4F8", "accent_hover": "#A8C7FA", "accent_fg": "#0F1F3D",
+        "button_bg": "#3A3D44", "button_hover": "#4A4E57",
+        "sidebar": "#26272B", "nav_hover": "#383B42",
+        "banner_grey": "#555555", "banner_orange": "#A64F00",
+        "banner_green": "#1B7F3B", "banner_red": "#B00020", "banner_fg": "#FFFFFF",
     },
 }
 
@@ -43,9 +61,40 @@ TEXT_PAIRS = (
     ("muted", "background"), ("muted", "surface"),
     ("button_fg", "start_bg"), ("button_fg", "stop_bg"),
     ("button_fg", "emergency_bg"),
+    ("off_fg", "start_off_bg"), ("off_fg", "stop_off_bg"),
+    ("off_fg", "emergency_off_bg"),
     ("focus", "background"), ("graph_line", "graph_back"),
+    ("muted", "graph_back"),
     ("foreground", "card"), ("muted", "card"),
+    ("accent_fg", "accent"), ("accent_fg", "accent_hover"),
+    ("foreground", "button_bg"), ("foreground", "button_hover"),
+    ("foreground", "sidebar"), ("muted", "sidebar"),
+    ("foreground", "nav_hover"),
+    ("banner_fg", "banner_grey"), ("banner_fg", "banner_orange"),
+    ("banner_fg", "banner_green"), ("banner_fg", "banner_red"),
 )
+
+BIG_BUTTON_KINDS = ("start", "stop", "emergency")
+BANNER_COLOR_NAMES = ("grey", "orange", "green", "red")
+
+
+def big_button_colors(theme, kind, enabled):
+    """(background, foreground) of the START / STOP / EMERGENCY buttons."""
+    if kind not in BIG_BUTTON_KINDS:
+        raise ValueError("unknown big button %r" % (kind,))
+    colors = palette(theme)
+    if enabled:
+        return colors[kind + "_bg"], colors["button_fg"]
+    return colors[kind + "_off_bg"], colors["off_fg"]
+
+
+def banner_colors(theme, name):
+    """(background, foreground) for a gui_controller banner color name."""
+    if name not in BANNER_COLOR_NAMES:
+        raise ValueError("unknown banner color %r" % (name,))
+    colors = palette(theme)
+    return colors["banner_" + name], colors["banner_fg"]
+
 
 # Layered cards. ttk cannot blur or make anything translucent, so this is NOT
 # glassmorphism: it is a native equivalent made of a lighter card color, a soft
@@ -65,9 +114,82 @@ def card_style(theme, level=1):
             "relief": "flat" if level == 0 else "solid"}
 
 SPACING = {"small": 4, "medium": 8, "large": 16}
-FONT_FAMILY = "Segoe UI"
-FONT_SIZES = {"title": 18, "step": 12, "text": 11, "button": 20, "log": 10}
-COMPACT_FONT_SIZES = {"title": 14, "step": 10, "text": 9, "button": 14, "log": 9}
+FONT_FAMILY = "Segoe UI"  # first choice; see pick_font_family for the others
+FONT_PREFERENCE = ("Segoe UI", "SF Pro Text", "Helvetica Neue", "Ubuntu",
+                   "Cantarell", "DejaVu Sans")
+MONO_PREFERENCE = ("Consolas", "Menlo", "DejaVu Sans Mono", "Ubuntu Mono",
+                   "Courier New")
+FALLBACK_FONT = "TkDefaultFont"
+FALLBACK_MONO_FONT = "TkFixedFont"
+FONT_SIZES = {"title": 18, "step": 12, "text": 11, "button": 20, "log": 10,
+              "value": 16, "caption": 10, "nav": 11}
+COMPACT_FONT_SIZES = {"title": 14, "step": 10, "text": 9, "button": 14, "log": 9,
+                      "value": 12, "caption": 8, "nav": 9}
+
+# First window size wanted, the space kept free for the taskbar / title bar,
+# and the smallest the window may be resized to.
+PREFERRED_WINDOW = (960, 700)
+SCREEN_MARGIN = (40, 90)
+MIN_WINDOW = (720, 480)
+
+
+def pick_font_family(available, preferred=FONT_PREFERENCE, fallback=FALLBACK_FONT):
+    """First preferred family that exists (case-insensitive), else `fallback`.
+
+    `available` is tkinter.font.families(); the preferred spelling is returned."""
+    lookup = {name.lower() for name in available}
+    for family in preferred:
+        if family.lower() in lookup:
+            return family
+    return fallback
+
+
+def fit_window(screen_width, screen_height):
+    """((width, height), (min width, min height)) that fits the screen.
+
+    A 1366x768 or 1280x720 laptop gets a window that is fully on screen; the
+    page area scrolls when the content is taller."""
+    width = min(PREFERRED_WINDOW[0], max(1, screen_width - SCREEN_MARGIN[0]))
+    height = min(PREFERRED_WINDOW[1], max(1, screen_height - SCREEN_MARGIN[1]))
+    return (width, height), (min(MIN_WINDOW[0], width), min(MIN_WINDOW[1], height))
+
+
+WHEEL_NOTCH = 120  # Windows reports wheel movement in multiples of 120
+
+
+def scroll_steps(button_number=None, delta=0):
+    """Rows to scroll for one wheel event: negative is up, 0 is nothing.
+
+    X11 sends Button-4 (up) and Button-5 (down). Windows sends delta in
+    multiples of 120 and macOS sends small deltas; positive delta is up."""
+    if button_number == 4:
+        return -1
+    if button_number == 5:
+        return 1
+    if not delta:
+        return 0
+    if abs(delta) >= WHEEL_NOTCH:
+        return -int(delta / WHEEL_NOTCH)
+    return -1 if delta > 0 else 1
+
+
+def needs_scrollbar(content_height, view_height):
+    """True when the content is taller than the visible area."""
+    return content_height > view_height
+
+
+MIN_POINTS_FOR_LINE = 2
+EMPTY_GRAPH_TEXT = "Waiting for data"
+
+
+def graph_is_empty(values):
+    """True when a series has too few readings to draw a line (show a placeholder)."""
+    return sum(1 for v in values if v is not None) < MIN_POINTS_FOR_LINE
+
+
+def graph_grid_ys(height, lines=3):
+    """Y positions of faint horizontal guide lines, evenly spaced inside the box."""
+    return [round(height * i / (lines + 1), 1) for i in range(1, lines + 1)]
 
 
 def font_sizes(compact):

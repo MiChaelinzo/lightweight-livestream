@@ -48,6 +48,64 @@ class ContrastTests(unittest.TestCase):
         self.assertLess(gt.spacing(True)["large"], gt.spacing(False)["large"])
 
 
+class LookHelperTests(unittest.TestCase):
+    def test_disabled_big_buttons_are_readable_in_both_themes(self):
+        for theme in gt.THEMES:
+            for kind in gt.BIG_BUTTON_KINDS:
+                bg, fg = gt.big_button_colors(theme, kind, False)
+                self.assertGreaterEqual(gt.contrast_ratio(fg, bg), gt.AA_TEXT_RATIO)
+                self.assertNotEqual(bg, gt.big_button_colors(theme, kind, True)[0])
+        with self.assertRaises(ValueError):
+            gt.big_button_colors("light", "nope", True)
+
+    def test_enabled_emergency_uses_palette_color(self):
+        self.assertEqual(("#8F4600", "#FFFFFF"),
+                         gt.big_button_colors("light", "emergency", True))
+
+    def test_banner_colors_cover_controller_names(self):
+        from lightstream import gui_controller as gc
+        for text, name in (gc.BANNER_OFFLINE, gc.BANNER_STARTING, gc.BANNER_LIVE,
+                           gc.BANNER_LAGGING, gc.BANNER_RECONNECTING,
+                           gc.BANNER_FAILOVER, gc.BANNER_EMERGENCY, gc.BANNER_PROBLEM):
+            for theme in gt.THEMES:
+                bg, fg = gt.banner_colors(theme, name)
+                self.assertGreaterEqual(gt.contrast_ratio(fg, bg), gt.AA_TEXT_RATIO)
+        with self.assertRaises(ValueError):
+            gt.banner_colors("light", "pink")
+
+    def test_pick_font_family(self):
+        self.assertEqual("Ubuntu", gt.pick_font_family(["Foo", "ubuntu", "DejaVu Sans"]))
+        self.assertEqual("Segoe UI", gt.pick_font_family(["Segoe UI", "Ubuntu"]))
+        self.assertEqual(gt.FALLBACK_FONT, gt.pick_font_family(["Foo"]))
+        self.assertEqual(gt.FALLBACK_MONO_FONT, gt.pick_font_family(
+            [], gt.MONO_PREFERENCE, gt.FALLBACK_MONO_FONT))
+
+    def test_fit_window_stays_on_small_screens(self):
+        for screen in ((1366, 768), (1280, 720), (1024, 600), (800, 480)):
+            (w, h), (min_w, min_h) = gt.fit_window(*screen)
+            self.assertLessEqual(w, screen[0])
+            self.assertLessEqual(h + gt.SCREEN_MARGIN[1], screen[1])
+            self.assertLessEqual(min_w, w)
+            self.assertLessEqual(min_h, h)
+        self.assertEqual(gt.PREFERRED_WINDOW, gt.fit_window(3840, 2160)[0])
+
+    def test_scroll_steps(self):
+        self.assertEqual(-1, gt.scroll_steps(4))
+        self.assertEqual(1, gt.scroll_steps(5))
+        self.assertEqual(-1, gt.scroll_steps(None, 120))
+        self.assertEqual(2, gt.scroll_steps(None, -240))
+        self.assertEqual(-1, gt.scroll_steps(None, 2))
+        self.assertEqual(0, gt.scroll_steps(None, 0))
+
+    def test_needs_scrollbar_and_graph_placeholder(self):
+        self.assertTrue(gt.needs_scrollbar(900, 600))
+        self.assertFalse(gt.needs_scrollbar(600, 600))
+        self.assertTrue(gt.graph_is_empty([]))
+        self.assertTrue(gt.graph_is_empty([None, 3.0, None]))
+        self.assertFalse(gt.graph_is_empty([1.0, None, 2.0]))
+        self.assertEqual([10.0, 20.0, 30.0], gt.graph_grid_ys(40))
+
+
 class ShortcutTests(unittest.TestCase):
     def test_table_has_no_duplicates(self):
         sequences = [s for s, _a, _t in gt.SHORTCUTS]

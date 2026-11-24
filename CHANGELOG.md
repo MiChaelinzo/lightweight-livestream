@@ -2,6 +2,7 @@
 
 ## 0.12.0 (unreleased)
 
+- Style: desktop window polish. The page area scrolls and the first window size fits the screen (1280x720 and 1366x768 show every page and both sidebar buttons). Clear active sidebar item, cards with readable captions and values, accent buttons, START/STOP/EMERGENCY colors from palette tokens with readable disabled states, graph placeholder ("Waiting for data"), installed-font fallback (no Segoe UI needed), name shown as LightStream. No behavior or saved setting changed. Verified by unit tests (helpers, WCAG AA pairs) and Xvfb screenshots on Linux; Windows and macOS look is UNVERIFIED.
 - Fix: recording while streaming now works with ffmpeg 7.0.2. The tee output maps video and audio, sets `-flags +global_header`, and uses `onfail=abort` on the live slot so ffmpeg exits when the ingest dies (the reconnect loop fires) while the file slot uses `onfail=ignore`. Behavior change: the argv for `--record` differs from 0.11. VERIFIED with a real loopback RTMP listener killed mid-stream (the recording is readable, the runner continues in `name-2.mkv`); real platform disconnects are UNVERIFIED.
 - Fix: `bench` tiers computed from partial data are marked `partial` (an upper bound) and the CLI says so; the docs no longer say "never guessed".
 - New: recording by extension: `.mkv` (default, Matroska) or `.mp4` (fragmented MP4, readable after a crash). `.webm` is refused with a reason (it needs a second VP9 encode).
