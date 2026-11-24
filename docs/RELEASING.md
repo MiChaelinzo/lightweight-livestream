@@ -7,7 +7,7 @@ Status: the release workflow (`.github/workflows/release.yml`) is UNVERIFIED. Gi
 1. Fix the GitHub Actions billing lock (Settings > Billing). Nothing below runs until this is done.
 2. Bump the version in `src/lightstream/__init__.py` and `pyproject.toml`. Artifact names come from `lightstream.__version__`. Add a `CHANGELOG.md` entry.
 3. Run the tests: `python3 -m unittest discover -s tests`.
-4. Commit, then tag and push: `git tag v0.11.0 && git push origin main v0.11.0`.
+4. Commit, then tag and push: `git tag v0.12.0 && git push origin main v0.11.0`.
 5. The `Release` workflow builds on Windows, macOS and Linux, then publishes a GitHub release with generated notes and a combined `SHA256SUMS.txt`. You can also start it by hand with "Run workflow"; that builds and uploads artifacts but does not publish.
 
 The workflow fails early if the tag (without the `v`) differs from `lightstream.__version__`, and fails the publish job if fewer than three artifacts arrive. Re-running the publish job on an existing release uploads the files again with `--clobber` instead of failing.

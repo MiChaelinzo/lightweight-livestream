@@ -12,7 +12,8 @@
 - **Plays nice.** Runs at low priority so your game wins.
 - **Hard to break.** Reconnects with backoff, falls back to software encoding if a GPU encoder fails, and never prints or saves your key.
 - **Safe to try.** `--test-local` records 10 seconds to a file instead of going live. `--mute` sends silence.
-- Streams to Twitch, YouTube, Facebook Live (RTMPS) or any custom RTMP server.
+- Streams to Twitch, YouTube, Facebook Live (RTMPS) or any custom RTMP or SRT server.
+- **New in 0.12:** Potato Stream (2000 or 4000 kbps), recording while streaming that survives an ingest drop, opt-in persistent ingest, benchmark tiers, a 0 to 100 health score, `lightstream optimize` (asks before changing anything), opt-in secure key storage, a dashboard with sparklines, and a redacted support bundle. Real platforms, GUI rendering, Windows and macOS are UNVERIFIED; see [docs/ROADMAP.md](docs/ROADMAP.md) for the honest status of each area.
 
 ## Download (no Python, no Git)
 
@@ -20,9 +21,9 @@ Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-
 
 | Platform | Download | How to start |
 |---|---|---|
-| Windows | `LightStream-0.11.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
-| macOS | `LightStream-0.11.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
-| Linux | `LightStream-0.11.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
+| Windows | `LightStream-0.12.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
+| macOS | `LightStream-0.12.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
+| Linux | `LightStream-0.12.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
 
 - **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
 - **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.

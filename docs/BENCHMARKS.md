@@ -247,6 +247,30 @@ Setup: listener `ffmpeg -i "srt://127.0.0.1:P?mode=listener&latency=L"`, caller 
 
 A caller with no listener failed after 3.04 s (`connect_timeout` default 3000 ms), exit 251. The lower count at 500 ms was not investigated (one run; likely the listener stopping before the receive buffer drained, not loss). Not measured: packet loss and retransmission (ARQ) behavior, because loopback has no loss and no `tc netem` was used. libsrt options in this build include `latency`, `rcvlatency`, `peerlatency`, `tlpktdrop`, `nakreport`, `maxbw`, `oheadbw`, `inputbw`, `passphrase`, `pbkeylen`, `enforced_encryption`, `streamid`, `connect_timeout`, `mode`, `transtype`, `payload_size`, `pkt_size`, `lossmaxttl` and others (full list in the JSON).
 
+## v0.12.0 against v0.11.0
+
+Method: the same command as the v0.11 section, `lightstream bench --seconds 10 --import-runs 21` with static ffmpeg 7.0.2, run once on the 0.12.0 tree (same Linux x86_64 VM, 8 threads). The "0.11.0" column is the "After" column of the v0.11 section above, taken on an earlier day, so machine noise applies. One run each, no repeats.
+
+| Metric | 0.11.0 | 0.12.0 | Reading |
+|---|---|---|---|
+| `import lightstream.cli` median (ms) | 73.5 | 63.8 | Bare interpreter was 10.7 vs 9.1 ms, so the machine was faster in this run; no regression shown |
+| RSS after import (MiB) | 22.0 | 22.5 | Within noise; about 0.4 MiB more is plausible from new modules but was not isolated |
+| RSS before to after 1000 ticks (MiB) | 21.74 to 21.74 | 21.66 to 21.92 | Growth of 0.26 MiB, not investigated, single run |
+| `TelemetrySampler.tick` (us) | 107.6 | 94.6 | Noise |
+| `build_insights` (us) | 49.6 | 44.3 | Noise |
+| `AutoScaler.update` (us) | 1.42 | 1.20 | Noise |
+
+| Profile | 0.11.0 speed (x) | 0.12.0 speed (x) | 0.11.0 CPU s per stream s | 0.12.0 CPU s per stream s | 0.12.0 peak RSS (MiB) |
+|---|---|---|---|---|---|
+| potato 640x360@24 | 65.6 | 75.1 | 0.028 | 0.025 | 27.3 |
+| balanced 1280x720@30 | 12.8 | 14.2 | 0.276 | 0.244 | 86.2 |
+| quality 1280x720@60 | 7.22 | 7.97 | 0.525 | 0.473 | 88.0 |
+| competitive 1280x720@60 | 6.24 | 7.06 | 0.506 | 0.442 | 83.8 |
+| potato_2000 640x360@15 (new) | n/a | 94.8 | n/a | 0.015 | 27.2 |
+| potato_4000 854x480@15 (new) | n/a | 64.0 | n/a | 0.027 | 39.2 |
+
+The 0.12 changes do not touch the encode settings of the four existing profiles, so the speed differences are machine noise, not a speedup. The two new Potato Stream profiles are cheaper per stream second than `potato` (0.015 and 0.027 vs 0.025) on this machine; behavior on a weak CPU is UNVERIFIED. Web page weight: 54256 to 55632 bytes (20190 to 20588 gzip), from the glass cards and the service worker fingerprint (`tools/page_weight.py`). Competitor numbers are UNKNOWN.
+
 ## Benchmark tier (v0.12)
 
 `lightstream bench` now prints and stores a `tier`. A machine earns the highest tier whose three minimums it meets: CPU threads, RAM (MiB) and the ffmpeg speed (times real time) of the uncapped software `balanced` encode. Boundaries are inclusive. A metric that could not be measured is skipped and listed under `skipped_metrics`. Low-End has no minimum. These thresholds are heuristics chosen for this project, not an industry standard; they only rank results from this harness.

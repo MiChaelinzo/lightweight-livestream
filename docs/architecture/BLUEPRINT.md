@@ -2,6 +2,8 @@
 
 Design for the next releases of LightStream. Every section starts with a status line: **Done** (in code and unit tested), **Partial**, or **Roadmap** (design only, no code). A design here is an intention, not a claim that it works. Do not read Roadmap text as a feature.
 
+Diagrams of the 0.12 process topology, the recovery state machine and the data flow are in [ARCHITECTURE-NOTES.md](../ARCHITECTURE-NOTES.md#diagrams-012).
+
 Related: [AUDIT.md](../audit/AUDIT.md) (what is true today), [EVIDENCE.md](../audit/EVIDENCE.md) (measurements), [DELIVERY.md](DELIVERY.md) (tests, release plan, benchmarks), [TOP-100.md](../audit/TOP-100.md), [ROADMAP.md](../ROADMAP.md) (status table, not repeated here), [ARCHITECTURE-NOTES.md](../ARCHITECTURE-NOTES.md) (auto-scale design, not repeated here). Index: [docs/README.md](../README.md).
 
 Fixed rules for every section: stdlib first, no Electron, no embedded Chromium, FFmpeg is not bundled, one FFmpeg process per stream, plugins are subprocesses speaking JSON, and nothing changes quality or settings unless the user opted in.

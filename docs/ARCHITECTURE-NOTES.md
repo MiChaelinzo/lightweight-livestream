@@ -80,3 +80,78 @@ Evidence: `tools/spikes.py`, numbers and method in [BENCHMARKS.md](BENCHMARKS.md
 Default (one ffmpeg, tee): the live slot has `onfail=abort`, the file slot `onfail=ignore`. When the ingest dies ffmpeg exits, the runner reconnects with backoff, and the recording continues in the next numbered file (`name-2.mkv`). The first file stays readable (Matroska). This is not one continuous file: the gap while ffmpeg restarts is not recorded. Tested with a real loopback RTMP listener killed mid-stream (`tests/test_hybrid_recording.py`, needs `LIGHTSTREAM_TEST_FFMPEG`).
 
 Continuous file (opt-in `--persistent-ingest`): the encoder tees MPEG-TS to a local UDP port and to the file; a separate `-c copy` publisher sends to RTMP and reconnects on its own. An ingest failure never stops the encoder, so the file stays continuous. Cost: a second process, about 19 MiB and about 1 percent of a core in the spike. Encoder restarts (auto-scale, Emergency) still begin a new numbered file, and the output size must stay constant (the ladder uses `constant_size`). Tested on loopback (`tests/test_persistent_ingest.py`); real platforms UNVERIFIED. Rejected: `onfail=ignore` on the live slot in the single process design, because the reconnect loop would never fire and the stream would silently stay down.
+
+## Diagrams (0.12)
+
+Mermaid renders on GitHub. The same content as text is in the node labels, so a plain reader still gets it. These describe the code as built; labels follow the project convention (VERIFIED by tests with fakes or loopback, real platforms UNVERIFIED).
+
+### Process topology: default and persistent ingest
+
+```mermaid
+flowchart LR
+  subgraph Default["Default: one ffmpeg (tee when recording)"]
+    C1[capture + filters + encode] -->|"flv, onfail=abort"| I1[(RTMP or RTMPS ingest)]
+    C1 -->|"matroska, onfail=ignore"| F1[(name.mkv)]
+  end
+  subgraph Persistent["Opt-in --persistent-ingest: two ffmpeg"]
+    C2[capture + filters + encode] -->|"MPEG-TS over local UDP"| P[publisher, -c copy]
+    C2 -->|"MPEG-TS tee"| F2[(one file)]
+    P -->|"own reconnect loop"| I2[(RTMP or RTMPS ingest)]
+  end
+```
+
+In the default path an ingest failure ends ffmpeg, the runner reconnects with backoff and the recording continues in `name-2.mkv`. In the persistent path the publisher reconnects by itself and the encoder keeps running. The persistent path costs about 19 MiB and about 1 percent of a core in the spike, loses roughly 10 percent of frames near a restart, and viewers are not shielded from a stall.
+
+### Recovery state machine (`runner.py` statuses)
+
+```mermaid
+stateDiagram-v2
+  [*] --> starting
+  starting --> live: progress lines
+  live --> reconnecting: ffmpeg exits, backoff
+  reconnecting --> starting: delay elapsed
+  live --> restarting: auto-scale or Emergency request
+  restarting --> starting
+  starting --> fallback: GPU encoder failed
+  fallback --> starting: software encoder
+  reconnecting --> failover: 3 quick failures and backup_url
+  failover --> starting
+  reconnecting --> failed: max_failures reached
+  live --> stopped: user stop
+  reconnecting --> stopped: user stop
+  failed --> [*]
+  stopped --> [*]
+```
+
+### Data flow: Core to GUI, CLI and web
+
+```mermaid
+flowchart TD
+  CFG[config + presets + perf_profiles + hardware] --> CMD[command.py builds argv]
+  CMD --> RUN[runner.py: one ffmpeg, optional publisher]
+  RUN -->|stderr progress| TEL[telemetry, health, network]
+  TEL --> OPT[optimizer: insights, bottleneck, health score]
+  TEL --> AUTO[autoscale, opt-in]
+  AUTO -->|restart request| RUN
+  OPT --> GUICTL[gui_controller.py] --> GUI[tkinter pages and sparklines]
+  OPT --> CLI[cli.py end-of-session lines]
+  TEL --> ANA[analytics, opt-in] --> BUNDLE[support-bundle, crash reports]
+  PRE[presets.py] -->|tools/export_presets.py| WEB[web/presets.json, static site, no key]
+```
+
+The web site reads only the exported presets; it has no connection to a running stream. GUI rendering of the right-hand side is UNVERIFIED.
+
+## Remote play and P2P
+
+Covered in [MULTI-DEVICE.md](architecture/MULTI-DEVICE.md#5-moonlight-parsec-and-steam-remote-play-class-feasibility-only) (Moonlight, Parsec and Steam Remote Play class, SRT preview, WebRTC and HLS limits). A separate document was not written because it would repeat that section. Decision: not built.
+
+## Refactoring recommendations
+
+Ordered by value. None were done in 0.12 because each needs its own tested change.
+
+1. `viewer_models.py` (61 lines): typed models and validators, imported only by `tests/test_platform_v2_dashboard.py`. It is dead code in the product. Either wire it to a real viewer or relay feature when one is built, or delete it with its tests. Keeping it for a hypothetical need conflicts with the technical debt policy. Recommendation: delete unless a viewer feature starts in 0.13.
+2. Persistent ingest is wired only in the CLI (`run_with_publisher`). The GUI controller builds its own run path. Before adding a GUI control, move the choice of runner into one shared function so both paths cannot drift.
+3. Congestion findings reach the optimizer output at session end but not `AutoScaler`. If they are fed in, do it inside `autoscale.py` with a tested rule, not a second decision path.
+4. `gui.py` and `gui_pages.py` are the only large untested-by-execution files. Keep drawing code thin and add a headless render check when a display is available.
+5. Health score weights and tier thresholds are constants in `optimizer.py` and `bench.py`. Collect real opted-in history before changing them.
+6. There is no log file, so `support-bundle` carries history rows only. A rotating, redacted log would help diagnosis; it must reuse the existing redaction.

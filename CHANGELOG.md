@@ -26,6 +26,7 @@
 - New: unexpected CLI errors write a local `crashes/crash-*.json` (addresses and key hidden, exit code 70, never uploaded).
 - Docs: [MULTI-DEVICE.md](docs/architecture/MULTI-DEVICE.md) (panel map, viewer and relay design, OBS-style layers, Moonlight/Parsec class feasibility) and typed viewer models in `viewer_models.py` (data only).
 - Build: `.gitattributes` forces LF line endings and marks images and fonts binary.
+- Version bumped to 0.12.0 (`pyproject.toml`, `__init__.py`, README artifact names, RELEASING example). Docs: v0.12 scorecards in `docs/ROADMAP.md`, diagrams and refactoring recommendations in `docs/ARCHITECTURE-NOTES.md`, v0.12 vs v0.11 bench in `docs/BENCHMARKS.md`.
 
 ## 0.11.0 (unreleased)
 

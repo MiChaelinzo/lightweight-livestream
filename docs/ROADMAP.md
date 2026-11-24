@@ -1,6 +1,51 @@
 # Roadmap
 
-Status after 0.9.0, with 0.10 (Facebook Live) and 0.11 changes noted. Plans for each Roadmap row are in [architecture/BLUEPRINT.md](architecture/BLUEPRINT.md); ranking in [audit/TOP-100.md](audit/TOP-100.md). Done means implemented and covered by unit tests (see the README verification table for what was never run on real hardware). Partial means some of the area exists. Roadmap means not started; the design notes are intentions, not code.
+Status as of 0.12.0 (Platform V2). The scorecards below answer the 15 requested areas and 6 headline features; the detailed table that follows is older and more granular. Plans for each Roadmap row are in [architecture/BLUEPRINT.md](architecture/BLUEPRINT.md); ranking in [audit/TOP-100.md](audit/TOP-100.md). Done means implemented and covered by unit tests (see the README verification table for what was never run on real hardware). Partial means some of the area exists. Roadmap means not started; the design notes are intentions, not code.
+
+## v0.12 scorecard: the 15 areas
+
+Status words: Done (implemented and unit tested), Partial (some of it exists), Roadmap (not built). Verification labels as in the README. Nothing here has been run on a real game, a real platform ingest, Windows or macOS, or a display.
+
+| # | Area | Status | Reason |
+| --- | --- | --- | --- |
+| 1 | Adaptive streaming engine | Partial | Opt-in ladder with hysteresis (now 240p to 1080p, `constant_size` for persistent ingest) restarts ffmpeg through the reconnect loop; logic VERIFIED with fake clocks, real streams UNVERIFIED. Congestion findings are only reported at session end and are not fed into `AutoScaler` decisions. SRT loss statistics are not read |
+| 2 | Potato Mode | Partial | `potato_2000` and `potato_4000` presets and profiles, `--potato-stream`, opt-in `--skip-static`; settings come from measured spikes (fps and size cuts reduce CPU, grayscale does not). Argv VERIFIED against real ffmpeg; the 512 MB target and behavior on a low-end laptop are UNVERIFIED |
+| 3 | AI optimizer and health | Partial | Rule based optimizer with confidences, bottleneck classification, a 0 to 100 `performance_health` score with documented heuristic weights, `lightstream optimize` and a GUI button that ask before writing. No learned model (no real session data exists). The score is not yet used to change settings on its own |
+| 4 | Dashboard | Partial | Eight panels mapped onto existing pages, health line, congestion insights, session comparison. Logic VERIFIED, window rendering UNVERIFIED. No sidebar rename |
+| 5 | Performance panel | Partial | Seven fixed-size sparkline buffers (fps, bitrate, speed, drops, RAM, CPU, GPU). GPU readings come from `nvidia-smi` only. Drawing UNVERIFIED |
+| 6 | Recording | Partial | Hybrid tee fixed for ffmpeg 7.0.2 (VERIFIED on loopback), MKV or fragmented MP4, CBR option, numbered files after a reconnect. WEBM refused (second VP9 encode). No instant replay, clips or space estimate |
+| 7 | Recovery | Partial | Default: reconnect with backoff and a new numbered file. Opt-in `--persistent-ingest` keeps one RTMP connection while the encoder restarts. It is CLI only, about 10 percent of frames near a restart were lost in the spike, and viewers can still see a stall, so recovery is not invisible. Platform reaction UNVERIFIED |
+| 8 | Multi-device viewing | Roadmap | Design in [MULTI-DEVICE.md](architecture/MULTI-DEVICE.md). `viewer_models.py` is typed data and validators only and nothing calls it (see the dead-code risk in [ARCHITECTURE-NOTES.md](ARCHITECTURE-NOTES.md#refactoring-recommendations)). LAN preview works only through a hand-typed `srt://` URL |
+| 9 | Security | Partial | Opt-in secure key store (DPAPI, keychain, `secret-tool`; refuses without a backend), SRT passphrase validation and redaction, key redaction, 0600 atomic writes, local redacted crash reports and support bundle. Only the control flow is VERIFIED (fakes). The key still appears in the ffmpeg command line. No control API exists, by decision |
+| 10 | OBS-style layer | Partial | Scene collections (export and import with conflict checks) are the integration layer. There is no OBS websocket client, no plugin code (protocol spec only) and no virtual camera |
+| 11 | Network intelligence | Partial | `network.py` separates backpressure from loss and reads Wi-Fi or hotspot hints. Real probes on Windows and macOS UNVERIFIED. No SRT stats, no endpoint selection, no live action on findings |
+| 12 | Onboarding | Done | Setup wizard, readiness score, first-run FFmpeg helper, `optimize`. Window rendering UNVERIFIED |
+| 13 | Benchmark engine | Done | `lightstream bench` with tiers (Low-End to Power User) from CPU threads, RAM and encode speed, inclusive thresholds tested. One real run (Creator on one 8-thread VM); other hardware UNVERIFIED, competitor numbers UNKNOWN |
+| 14 | Telemetry and diagnostics | Done | Opt-in history and `last-performance.json`, `support-bundle` (redacted, never sent), local crash reports with exit code 70, golden argv tests. No log file; GUI crashes are not captured |
+| 15 | Future roadmap | Done (this file) | Remaining items are listed below with a reason each |
+
+## v0.12 scorecard: the 6 headline features
+
+| Feature | Status | Honest limits |
+| --- | --- | --- |
+| Network recovery | Partial | Reconnect with backoff and backup ingest failover (Done earlier, fakes only). Persistent ingest is opt-in and CLI only. Loopback VERIFIED; real platforms UNVERIFIED. Viewers can still see a stall |
+| Potato Mode | Partial | See area 2. Measured CPU savings come from fps and resolution, not from grayscale |
+| Hardware auto-tuning | Partial | Hardware detection, profiles and the `optimize` diff exist and are confirmed by the user. Real GPU encoders and dual-GPU choice are UNVERIFIED. Auto-scale applies changes only when opted in |
+| Health score | Done (logic), shown in GUI and CLI | Weights are heuristics, not fitted to data. Dropped percent is left out when unknown |
+| One-click Optimize | Partial | CLI and GUI button, write only after confirmation. The GUI dialog is UNVERIFIED, and it proposes from a short synthetic bench, not from a game |
+| Offline recording plus live hybrid | Partial | One tee process writes the file and the stream. The file survives an ingest failure but is split into numbered files unless `--persistent-ingest` is used. Real platform disconnects UNVERIFIED |
+
+## Not done in 0.12, with reasons
+
+- Local control API and mobile remote: no client exists; a listening socket needs its own security review (decision below).
+- Reading SRT statistics: needs a lossy link (netem) to test.
+- Feeding congestion findings into `AutoScaler`: untested thresholds could cause restarts; reported only for now.
+- Persistent ingest in the GUI: needs a display to verify the control and its stop behavior.
+- Viewer, relay and remote play: no transport browsers can play without a relay this project does not ship.
+- WEBM recording, instant replay: second encode or a rolling buffer costs the low-end budget.
+- GUI crash capture and sidebar rename: not started.
+
+## Detailed table (carried from 0.9 to 0.11, updated where 0.12 changed a row)
 
 | Area | Status | What exists or what is planned | Phase | Depends on | Why deferred |
 | --- | --- | --- | --- | --- | --- |
