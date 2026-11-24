@@ -128,6 +128,8 @@ class StreamWindow:
         self.audio_profile = tk.StringVar(
             value=gp.audio_profile_label(saved.get("audio_profile")))
         self.auto_scale = tk.BooleanVar(value=saved.get("auto_scale") is True)
+        self.persistent_ingest = tk.BooleanVar(
+            value=saved.get("persistent_ingest") is True)
         self.backup_url = tk.StringVar(value=saved.get("backup_url") or "")
         self.noise = saved.get("noise")
         self.status = tk.StringVar(value="")
@@ -689,8 +691,13 @@ class StreamWindow:
                         ).pack(anchor="w", pady=(8, 0))
         ttk.Checkbutton(frame, text="Skip near-identical frames",
                         variable=self.potato_skip_static).pack(anchor="w")
-        self._hint(frame, "Keeping one connection alive across encoder restarts "
-                   "(persistent ingest) is command line only: --persistent-ingest.")
+        ttk.Checkbutton(frame, text="Keep connection alive when quality changes "
+                        "(persistent ingest)", variable=self.persistent_ingest
+                        ).pack(anchor="w", pady=(8, 0))
+        self._hint(frame, "Off by default. A separate copy-only process holds the "
+                   "connection while the encoder restarts. The picture size stays "
+                   "fixed, and it cannot be combined with a backup server address "
+                   "or Emergency mode.")
 
     def _build_advanced(self, frame):
         self._heading(frame, "Advanced")
@@ -750,6 +757,7 @@ class StreamWindow:
             "audio_profile": gp.audio_profile_pref(self.audio_profile.get()),
             "auto_scale": self.auto_scale.get(),
             "backup_url": self.backup_url.get(),
+            "persistent_ingest": self.persistent_ingest.get(),
         }
 
     def apply_prefs(self, prefs):

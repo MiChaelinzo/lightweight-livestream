@@ -2,6 +2,7 @@
 
 import os
 import re
+import socket
 import subprocess
 import sys
 import threading
@@ -285,6 +286,13 @@ class PrefixedOut:
     def write(self, text):
         if text.strip():
             self._out.write("\n[publisher] " + text.strip() + "\n")
+
+
+def free_udp_port():
+    """A free local UDP port for the persistent publisher (loopback only)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 def run_with_publisher(publisher_argv, key, os_name, run_encoder,

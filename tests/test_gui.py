@@ -316,6 +316,59 @@ class ControllerTests(unittest.TestCase):
         c.stop()
         self.assertIsNone(calls[0][1]["max_failures"])
 
+    def test_persistent_ingest_conflicts_with_backup_url(self):
+        calls = []
+        c = make_controller(fake_runner_factory(calls))
+        prefs = dict(PREFS, persistent_ingest=True, backup_url="rtmp://backup/live")
+        message = c.start(prefs, SECRET)
+        self.assertEqual(gc.PERSISTENT_BACKUP_CONFLICT, message)
+        self.assertEqual(message, c.snapshot()[2])
+        self.assertEqual([], calls)
+        self.assertFalse(c.is_running())
+        # the conflict only applies when the box is ticked and a backup is set
+        self.assertIsNone(gc.persistent_conflict(dict(PREFS, backup_url="rtmp://b/x")))
+        self.assertIsNone(gc.persistent_conflict(dict(PREFS, persistent_ingest=True)))
+        self.assertIsNone(gc.persistent_conflict(prefs, test_local=True))
+
+    def test_persistent_ingest_is_off_by_default(self):
+        calls = []
+        c = make_controller(fake_runner_factory(calls))
+        with mock.patch.object(gc, "run_with_publisher") as publisher:
+            c.start(PREFS, SECRET)
+            c._thread.join(0.3)
+            c.stop()
+        publisher.assert_not_called()
+
+    def test_persistent_ingest_wraps_the_encoder_in_a_publisher(self):
+        seen = {}
+
+        def fake_publisher(publisher_argv, key, os_name, run_encoder, **kw):
+            seen["argv"] = publisher_argv
+            seen["kw"] = kw
+            return run_encoder()
+
+        calls = []
+        c = make_controller(fake_runner_factory(calls))
+        with mock.patch.object(gc, "run_with_publisher", fake_publisher):
+            self.assertIsNone(c.start(dict(PREFS, persistent_ingest=True), SECRET))
+            c._thread.join(0.3)
+            self.assertEqual(
+                gc.PERSISTENT_EMERGENCY_NOTE, c.emergency())
+            c.stop()
+        port = str(c._scale.current_settings.local_ingest_port)
+        self.assertTrue(any(port in part for part in calls[0][0]))
+        self.assertTrue(any(port in part for part in seen["argv"]))
+        self.assertIs(calls[0][1]["stop"], seen["kw"]["encoder_stop"])
+
+    def test_persistent_pref_is_remembered_and_never_the_key(self):
+        self.assertIn("persistent_ingest", gc.PREF_FIELDS)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "gui.json")
+            gc.save_prefs(path, dict(PREFS, persistent_ingest=True), SECRET)
+            self.assertTrue(gc.load_prefs(path)["persistent_ingest"])
+            with open(path, encoding="utf-8") as fh:
+                self.assertNotIn(SECRET, fh.read())
+
     def test_validation_blocks_start(self):
         calls = []
         c = make_controller(fake_runner_factory(calls), ffmpeg=None)

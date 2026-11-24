@@ -4,7 +4,6 @@ import argparse
 import getpass
 import os
 import shutil
-import socket
 import subprocess
 import sys
 import threading
@@ -42,7 +41,8 @@ from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_set
                         weak_connection_settings)
 from .perf_profiles import (PERF_PROFILES, STREAM_PRESETS, affinity_cpus)
 from .presets import PRESETS
-from .runner import format_command, run_with_publisher, run_with_reconnect
+from .runner import (format_command, free_udp_port, run_with_publisher,
+                     run_with_reconnect)
 from .overlays import missing_images
 from .scene_collections import (collection_dir, export_collection, export_scene,
                                 import_scenes, scene_filename,
@@ -198,13 +198,6 @@ def build_parser():
     s.add_argument("--dry-run", action="store_true",
                    help="print the ffmpeg command (key hidden) and exit")
     return p
-
-
-def free_udp_port():
-    """A free local UDP port for the persistent publisher (loopback only)."""
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
 
 
 def resolve_hardware(cli_value, file_cfg, os_name, detect=detect_gpu_names):
