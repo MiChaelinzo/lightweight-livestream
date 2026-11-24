@@ -376,3 +376,14 @@ Method: a synthetic 300 s 1280x720 30 fps H.264 file (`testsrc2` video with `-pr
 | decode only (1 run) | 2.46 | 14.93 |
 
 Reading the numbers: analysing 300 s of this file took about 2.9 s wall, roughly 100 times faster than real time, and about 18.2 s of CPU summed over ffmpeg's threads (CPU exceeds wall because decoding is multithreaded). About 14.9 s of that is decoding, so the scoring filters add about 3.2 CPU seconds per 300 s. This file is a high-bitrate synthetic one, so decode cost dominates and real recordings will differ; sine audio is not speech. Clip cutting was not timed: `-c copy` does not decode, and vertical re-encoding cost depends on the machine and was not measured.
+
+## v0.15 Benchmark Lab harness check
+
+Method: `tools/benchlab.py --command ... --duration 10 --interval 1` on this 8-core Linux sandbox, one target per run, ffmpeg 7.0.2 static. These check that the harness works on this repository's own tools. They are not a comparison with any other product, and no OBS or Streamlabs run was possible here (those columns are UNKNOWN).
+
+| Target | Startup (s) | CPU avg (% of one core) | CPU max | RSS avg (MB) | RSS peak (MB) |
+|---|---|---|---|---|---|
+| idle Python process (`time.sleep`), ready text `ready` | 0.009 | 0.0 | 0.0 | 7.67 | 8.23 |
+| ffmpeg `testsrc` 1280x720 30 fps, libx264 ultrafast 4500k, `-f null`, ready text `frame=` | 0.506 | 508.21 | 512.83 | 170.6 | 187.26 |
+
+Reading the numbers: the ffmpeg run is not real time; it encodes as fast as it can, so it uses several cores and the CPU figure is not what a live 30 fps stream costs. One run each, no repeats, so run-to-run spread is unknown. Startup here means time to the first output containing the ready text, not time to a usable window.
