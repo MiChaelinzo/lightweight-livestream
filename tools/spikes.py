@@ -11,6 +11,8 @@ Spikes (all traffic stays on 127.0.0.1; no network beyond loopback):
        after kill -9; numbered recording files across a reconnect
     c  potato filters and x264 CBR: CPU seconds and bitrate
     d  SRT loopback and the options libsrt exposes in this build
+    e  audio chains: CPU seconds of every audio profile chain (light and full)
+       on a synthetic sine plus noise input, against a no-filter baseline
 
 Only JSON goes to stdout. The pure helpers at the top (framecrc parsing,
 packet analysis, /proc parsing, summaries) are unit tested in
@@ -34,10 +36,11 @@ import time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
+from lightstream.audio import AUDIO_CHAINS, AUDIO_PROFILES, audio_profile_chain  # noqa: E402
 from lightstream.command import build_command, numbered_recording_path  # noqa: E402
 
 LOOPBACK = "127.0.0.1"
-SPIKE_NAMES = ("a", "b", "c", "d")
+SPIKE_NAMES = ("a", "b", "c", "d", "e")
 
 
 # ---------------------------------------------------------------- pure helpers
@@ -878,9 +881,54 @@ def spike_d(ffmpeg, workdir, repeats=1):
     }
 
 
+# ------------------------------------------------------------------- spike E
+
+AUDIO_SPIKE_SECONDS = 120
+AUDIO_SPIKE_RATE = 48000
+AUDIO_SPIKE_INPUT = (
+    "sine=f=440:r=%d:d=%d[tone];anoisesrc=a=0.05:r=%d:d=%d[noise];"
+    "[tone][noise]amix=inputs=2:duration=first"
+    % (AUDIO_SPIKE_RATE, AUDIO_SPIKE_SECONDS, AUDIO_SPIKE_RATE, AUDIO_SPIKE_SECONDS))
+
+
+def audio_chain_argv(ffmpeg, chain):
+    """Decode-free run of the synthetic input through a chain (None = baseline)."""
+    argv = [ffmpeg, "-hide_banner", "-y", "-v", "error", "-f", "lavfi",
+            "-i", AUDIO_SPIKE_INPUT]
+    if chain:
+        argv += ["-af", chain]
+    return argv + ["-f", "null", "-"]
+
+
+def spike_e(ffmpeg, workdir, repeats=3):
+    del workdir
+    configs = [("baseline (no filter)", None)]
+    for name in AUDIO_PROFILES:
+        for kind in AUDIO_CHAINS:
+            configs.append(("%s/%s" % (name, kind), audio_profile_chain(name, kind)))
+    results = []
+    for label, chain in configs:
+        cpus, walls = [], []
+        error = None
+        for _ in range(repeats):
+            code, wall, cpu, _mb, err = timed_run(audio_chain_argv(ffmpeg, chain))
+            if code != 0:
+                error = (err.strip().splitlines() or ["failed"])[-1][:160]
+                break
+            cpus.append(cpu)
+            walls.append(wall)
+        results.append({"config": label, "chain": chain, "error": error,
+                        "cpu_s": summarize(cpus), "wall_s": summarize(walls)})
+    return {"audio_seconds": AUDIO_SPIKE_SECONDS, "repeats": repeats,
+            "input": "synthetic: 440 Hz sine plus white noise (amplitude 0.05), "
+                     "%d Hz, processed as fast as possible to the null muxer"
+                     % AUDIO_SPIKE_RATE,
+            "results": results}
+
+
 # ----------------------------------------------------------------------- main
 
-SPIKE_FUNCS = {"a": spike_a, "b": spike_b, "c": spike_c, "d": spike_d}
+SPIKE_FUNCS = {"a": spike_a, "b": spike_b, "c": spike_c, "d": spike_d, "e": spike_e}
 
 
 def host_summary(ffmpeg):
@@ -911,7 +959,7 @@ def parse_args(argv):
         else:
             raise ValueError("unknown argument %s" % arg)
     if not opts["spikes"]:
-        raise ValueError("choose --all or --spike a|b|c|d")
+        raise ValueError("choose --all or --spike a|b|c|d|e")
     return opts
 
 
