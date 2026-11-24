@@ -7,7 +7,7 @@ from .audio import noise_filter_args
 from .filtergraph import letterbox_filter
 from .hardware import (low_resource_input_args, low_resource_output_args,
                        rate_control_bufsize_kbps, tuned_encoder_args)
-from .platforms import capture_inputs, ingest_url, silent_audio_input
+from .platforms import capture_inputs, ingest_url, is_srt_url, silent_audio_input
 from .scenes import compile_scene, scene_window
 
 DEFAULT_KEYINT_SECONDS = 2        # keyframe every 2 seconds
@@ -121,25 +121,27 @@ def local_ingest_url(port):
     return "udp://%s:%d?pkt_size=%d" % (LOCAL_INGEST_HOST, port, MPEGTS_PACKET_SIZE)
 
 
-def tee_output(live_url, record_to, local_ingest=False):
+def tee_output(live_url, record_to, live_format="flv"):
     """tee muxer spec: encode once, send to the live output and a local file.
 
     Live slot: onfail=abort makes ffmpeg exit when the ingest dies, so the
     runner's reconnect loop sees it (without it ffmpeg keeps running with only
     the file). Recording slot: onfail=ignore keeps the stream alive if the file
     cannot be written. The file is Matroska (crash safe) or fragmented MP4 by
-    extension. With local_ingest the live slot is MPEG-TS to the local
-    publisher (see publisher_command). The key stays inside live_url as plain
+    extension. live_format is flv (RTMP) or mpegts (SRT, or the local
+    publisher, see publisher_command). The key stays inside live_url as plain
     text, so redact() still hides it.
     """
     if "|" in live_url:
         raise ValueError("Stream URL or key must not contain '|' when recording")
     if any(c in record_to for c in "|[]'"):
         raise ValueError("Recording path %r must not contain | [ ] or '" % record_to)
-    if local_ingest:
+    if live_format == "mpegts":
         live = "[f=mpegts:onfail=abort]"
-    else:
+    elif live_format == "flv":
         live = "[f=flv:onfail=abort:flvflags=no_duration_filesize]"
+    else:
+        raise ValueError("Unknown live format %r" % live_format)
     if recording_format(record_to) == "mp4":
         record = "[f=mp4:%s:onfail=ignore]" % FRAGMENTED_MP4
     else:
@@ -232,6 +234,7 @@ def build_command(s, key, os_name, encoder, ffmpeg="ffmpeg", record_path=None):
         return args + ["-t", str(TEST_SECONDS), "-f", "matroska", "-y", record_path]
     url = ingest_url(s.platform, key, s.custom_url)
     local = s.local_ingest_port is not None
+    srt = is_srt_url(url)
     if s.record_to:
         if not s.scene:  # a scene graph already maps its own streams
             audio_index = 0 if os_name == "macos" and has_audio else 1
@@ -240,13 +243,16 @@ def build_command(s, key, os_name, encoder, ffmpeg="ffmpeg", record_path=None):
         args += ["-flags", "+global_header", "-flush_packets", "1"]
         if local:
             args += ["-f", "tee", tee_output(local_ingest_url(s.local_ingest_port),
-                                             s.record_to, local_ingest=True)]
+                                             s.record_to, "mpegts")]
         else:
-            args += ["-f", "tee", tee_output(url, s.record_to)]
+            args += ["-f", "tee", tee_output(url, s.record_to,
+                                             "mpegts" if srt else "flv")]
         return args
     if local:
         return args + ["-flush_packets", "1", "-f", "mpegts",
                        local_ingest_url(s.local_ingest_port)]
+    if srt:
+        return args + ["-flush_packets", "1", "-f", "mpegts", url]
     return args + [
         "-flush_packets", "1",
         "-flvflags", "no_duration_filesize",

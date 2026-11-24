@@ -12,7 +12,13 @@ further limited by bandwidth.recommend when the upload speed is known), a
 shorter keyframe interval so a viewer recovers sooner after packet loss, and
 a longer rate-control buffer so short upload dips are absorbed.
 
-Neither mode runs by itself. The CLI flags and the GUI Emergency button are
+Potato Stream: a CPU-first profile for very weak machines, built only on what
+the 0.12 spikes measured to cut CPU: lower frame rate, smaller size, one or two
+encoder threads and x264 ultrafast. Targets are 2000 and 4000 kbps. Grayscale
+and skipping static frames are separate opt-ins, not CPU savers (grayscale
+raised CPU in the measurements).
+
+None of these modes runs by itself. The CLI flags and the GUI Emergency button are
 the person's opt-in. What each mode does is a mechanism; the effect on real
 connections and games is UNVERIFIED.
 """
@@ -20,8 +26,10 @@ connections and games is UNVERIFIED.
 from .autoscale import DEFAULT_FLOOR_PRESET, MIN_LADDER_KBPS
 from .bandwidth import PLATFORM_VIDEO_CAP_KBPS, recommend
 from .hardware import LEAN_BUFSIZE_SECONDS
-from .perf_profiles import POTATO_THREAD_CAP
+from .perf_profiles import POTATO_THREAD_CAP, get_perf_profile
 from .presets import PRESETS
+
+POTATO_STREAM_PROFILES = {2000: "potato_2000", 4000: "potato_4000"}
 
 WEAK_BITRATE_FACTOR = 0.6        # share of the chosen video bitrate kept
 WEAK_KEYINT_SECONDS = 1          # keyframe every second: faster recovery
@@ -69,3 +77,29 @@ def failover_settings(settings):
     if not settings.backup_url:
         raise ValueError("No backup ingest address is set")
     return settings._replace(platform="custom", custom_url=settings.backup_url)
+
+
+def potato_stream_settings(settings, target_kbps, grayscale=False, skip_static=False):
+    """StreamSettings for Potato Stream at 2000 or 4000 kbps.
+
+    Size, fps and threads come from the potato_2000 / potato_4000 presets and profiles and are never raised
+    above what the person had (a smaller size or lower fps is kept). The
+    bitrate is the chosen target. Scenes are dropped (extra filters and
+    inputs), audio filters off, lean buffer, ultrafast. grayscale and
+    skip_static add filters (see StreamSettings); neither lowers CPU for sure.
+    """
+    if target_kbps not in POTATO_STREAM_PROFILES:
+        raise ValueError("Potato Stream targets are %s kbps, got %r" % (
+            " and ".join(str(k) for k in sorted(POTATO_STREAM_PROFILES)), target_kbps))
+    profile = get_perf_profile(POTATO_STREAM_PROFILES[target_kbps])
+    preset = PRESETS[profile.preset_name]
+    width, height = preset.width, preset.height
+    if settings.width * settings.height <= width * height:
+        width, height = settings.width, settings.height
+    return settings._replace(
+        width=width, height=height, fps=min(settings.fps, preset.fps),
+        video_kbps=target_kbps, audio_kbps=min(settings.audio_kbps, preset.audio_kbps),
+        x264_preset=preset.x264_preset, threads=profile.thread_cap, scene=None,
+        noise="off", noise_model=None, audio_filter=None,
+        bufsize_seconds=LEAN_BUFSIZE_SECONDS,
+        grayscale=bool(grayscale), skip_static=bool(skip_static))

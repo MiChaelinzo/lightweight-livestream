@@ -32,6 +32,26 @@
       "description": "Decent PCs or any PC with a hardware encoder."
     },
     {
+      "name": "potato_2000",
+      "width": 640,
+      "height": 360,
+      "fps": 15,
+      "video_kbps": 2000,
+      "audio_kbps": 64,
+      "x264_preset": "ultrafast",
+      "description": "Potato Stream 2000k: 15 fps, 360p, ultrafast. Built from the measured CPU levers (frame rate and size)."
+    },
+    {
+      "name": "potato_4000",
+      "width": 854,
+      "height": 480,
+      "fps": 15,
+      "video_kbps": 4000,
+      "audio_kbps": 96,
+      "x264_preset": "ultrafast",
+      "description": "Potato Stream 4000k: 15 fps, 480p, ultrafast."
+    },
+    {
       "name": "720p60",
       "width": 1280,
       "height": 720,

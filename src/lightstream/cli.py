@@ -32,7 +32,9 @@ from .analytics import (analytics_enabled, append_history, history_entry,
                         write_session_report)
 from .health import HealthTracker
 from .platforms import PLATFORMS, embedded_key_in_url, parse_audio_devices
-from .emergency import (emergency_settings, failover_settings,
+from .command import RATE_MODES
+from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_settings,
+                        potato_stream_settings,
                         weak_connection_settings)
 from .perf_profiles import (PERF_PROFILES, STREAM_PRESETS, affinity_cpus)
 from .presets import PRESETS
@@ -152,6 +154,24 @@ def build_parser():
                         "longer rate-control buffer")
     s.add_argument("--upload-mbps", help="your upload speed in Mbps; with "
                    "--weak-connection it can lower the bitrate further")
+    s.add_argument("--potato-stream", type=int, choices=sorted(POTATO_STREAM_PROFILES),
+                   metavar="KBPS",
+                   help="Potato Stream for very weak PCs (about 512 MB): target 2000 or "
+                        "4000 kbps with low fps, small size and 1-2 threads. Never automatic")
+    s.add_argument("--grayscale", action="store_true",
+                   help="with --potato-stream: grayscale picture. A bitrate/look option, "
+                        "NOT a CPU saver (it raised CPU in measurements)")
+    s.add_argument("--skip-static", action="store_true",
+                   help="with --potato-stream: drop near-identical frames (mpdecimate, "
+                        "variable frame rate). Helps static screens only; platform "
+                        "handling is UNVERIFIED")
+    s.add_argument("--rate-mode", choices=RATE_MODES,
+                   help="vbr (capped, default) or cbr (libx264 only; pads quiet pictures "
+                        "up to the bitrate)")
+    s.add_argument("--persistent-ingest", action="store_true",
+                   help="opt in: a second ffmpeg (-c copy) keeps the connection while "
+                        "the encoder restarts; recording stays one file. Keep one "
+                        "output size per session")
     s.add_argument("--backup-url", help="backup ingest rtmp://host/app (no key). Used "
                    "after repeated quick connection failures, same stream key")
     s.add_argument("--noise", choices=NOISE_LEVELS,
@@ -381,11 +401,16 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
          "noise": args.noise, "noise_model": args.noise_model,
          "profile": args.profile, "stream_preset": args.stream_preset,
          "audio_profile": args.audio_profile,
-         "backup_url": args.backup_url,
+         "backup_url": args.backup_url, "rate_mode": args.rate_mode,
          "hardware": hardware})
     settings = resolve_settings(cli_values, file_cfg)
     if args.emergency:
         settings = emergency_settings(settings)
+    if args.potato_stream:
+        settings = potato_stream_settings(settings, args.potato_stream,
+                                          args.grayscale, args.skip_static)
+    elif args.grayscale or args.skip_static:
+        raise ValueError("--grayscale and --skip-static need --potato-stream")
     if args.weak_connection:  # after emergency: its longer buffer is kept
         settings = weak_connection_settings(
             settings, mbps_to_kbps(args.upload_mbps) if args.upload_mbps else None)

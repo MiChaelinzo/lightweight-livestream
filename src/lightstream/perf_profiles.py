@@ -39,6 +39,14 @@ PERF_PROFILES = {
                     True, 1, None, DEFAULT_KEYINT_SECONDS, None,
                     "Lowest CPU use: smallest preset, two encoder threads, one core "
                     "left free, no audio filters."),
+        PerfProfile("potato_2000", "potato_2000", DEFAULT_X264_TUNE, 1,
+                    True, 1, None, DEFAULT_KEYINT_SECONDS, LEAN_BUFSIZE_SECONDS,
+                    "Potato Stream 2000k for about 512 MB and a weak CPU: 360p15, "
+                    "one encoder thread, lean buffer, no audio filters."),
+        PerfProfile("potato_4000", "potato_4000", DEFAULT_X264_TUNE, 2,
+                    True, 1, None, DEFAULT_KEYINT_SECONDS, LEAN_BUFSIZE_SECONDS,
+                    "Potato Stream 4000k: 480p15, two encoder threads, lean buffer, "
+                    "no audio filters."),
         PerfProfile("balanced", "balanced", DEFAULT_X264_TUNE, None,
                     True, 1, "gaming", DEFAULT_KEYINT_SECONDS, None,
                     "Everyday default: 720p30, one core left free for the game."),

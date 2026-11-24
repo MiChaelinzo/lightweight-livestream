@@ -13,7 +13,7 @@ from lightstream.config import resolve_settings
 from lightstream.presets import PRESETS
 from lightstream.runner import priority_kwargs
 
-EXPECTED_PROFILES = {"potato", "balanced", "quality", "competitive", "low_latency"}
+EXPECTED_PROFILES = {"potato", "potato_2000", "potato_4000", "balanced", "quality", "competitive", "low_latency"}
 EXPECTED_STREAMS = {"youtube_gaming", "twitch_gaming", "facebook_live", "kick", "podcast",
                     "just_chatting", "tutorial", "esports"}
 EXPECTED_AUDIO = {"gaming", "podcast", "music", "commentary", "asmr"}
