@@ -31,7 +31,7 @@ Status words: Done (implemented and unit tested), Partial (some of it exists), R
 | Network recovery | Partial | Reconnect with backoff and backup ingest failover (Done earlier, fakes only). Persistent ingest is opt-in and CLI only. Loopback VERIFIED; real platforms UNVERIFIED. Viewers can still see a stall |
 | Potato Mode | Partial | See area 2. Measured CPU savings come from fps and resolution, not from grayscale |
 | Hardware auto-tuning | Partial | Hardware detection, profiles and the `optimize` diff exist and are confirmed by the user. Real GPU encoders and dual-GPU choice are UNVERIFIED. Auto-scale applies changes only when opted in |
-| Health score | Done (logic), shown in GUI and CLI | Weights are heuristics, not fitted to data. Dropped percent is left out when unknown |
+| Health score | Done (logic), shown in GUI and CLI | Weights are heuristics, not fitted to data. `session_health` never passes dropped percent (no frame total in the summary), so the dropped-frames weight is unused in real sessions; only direct callers of `performance_health` can use it |
 | One-click Optimize | Partial | CLI and GUI button, write only after confirmation. The GUI dialog is UNVERIFIED, and it proposes from a short synthetic bench, not from a game |
 | Offline recording plus live hybrid | Partial | One tee process writes the file and the stream. The file survives an ingest failure but is split into numbered files unless `--persistent-ingest` is used. Real platform disconnects UNVERIFIED |
 

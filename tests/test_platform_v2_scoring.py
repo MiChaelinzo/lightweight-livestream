@@ -34,6 +34,8 @@ class TierTests(unittest.TestCase):
         t = bench.compute_tier(8, 16384, None)
         self.assertEqual("Creator", t["name"])
         self.assertEqual(["encode_speed"], t["skipped_metrics"])
+        self.assertTrue(t["partial"])
+        self.assertFalse(bench.compute_tier(8, 16384, 6.0)["partial"])
         self.assertEqual("Low-End", bench.compute_tier(None, None, None)["name"])
 
     def test_report_tier_reads_uncapped_speed(self):

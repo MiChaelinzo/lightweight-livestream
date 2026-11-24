@@ -382,7 +382,9 @@ def cmd_bench(args, out, build=build_report, find=find_ffmpeg, today=None):
     if tier:
         out.write("Tier: %s (%s)\n" % (tier["name"], tier["basis"]))
         if tier["skipped_metrics"]:
-            out.write("  not measured: %s\n" % ", ".join(tier["skipped_metrics"]))
+            out.write("  PARTIAL: not measured: %s. Tier is an upper bound; "
+                      "run again with ffmpeg available for a full result.\n"
+                      % ", ".join(tier["skipped_metrics"]))
     out.write("Wrote %s\n%s\n" % (path, report["caveat"]))
     return 0
 

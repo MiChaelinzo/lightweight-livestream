@@ -273,7 +273,7 @@ The 0.12 changes do not touch the encode settings of the four existing profiles,
 
 ## Benchmark tier (v0.12)
 
-`lightstream bench` now prints and stores a `tier`. A machine earns the highest tier whose three minimums it meets: CPU threads, RAM (MiB) and the ffmpeg speed (times real time) of the uncapped software `balanced` encode. Boundaries are inclusive. A metric that could not be measured is skipped and listed under `skipped_metrics`. Low-End has no minimum. These thresholds are heuristics chosen for this project, not an industry standard; they only rank results from this harness.
+`lightstream bench` now prints and stores a `tier`. A machine earns the highest tier whose three minimums it meets: CPU threads, RAM (MiB) and the ffmpeg speed (times real time) of the uncapped software `balanced` encode. Boundaries are inclusive. A metric that could not be measured is not checked and is listed under `skipped_metrics`, and the tier is marked `partial`: it is then an upper bound, not a measured result (for example 8 threads and 16 GiB with no ffmpeg gives Creator). `lightstream optimize` shows no tier when ffmpeg is missing. Low-End has no minimum. These thresholds are heuristics chosen for this project, not an industry standard; they only rank results from this harness.
 
 | Tier | CPU threads | RAM MiB | Speed |
 |---|---|---|---|

@@ -81,7 +81,8 @@ TIERS = (
     ("Power User", 12, 32768, 10.0),
 )
 TIER_BASIS = ("highest tier whose CPU threads, RAM and uncapped software "
-              "encode speed minimums are all met; unmeasured metrics skipped")
+              "encode speed minimums are all met; unmeasured metrics are not checked, so a "
+              "partial tier is an upper bound")
 
 # Child process code. Reads its own RSS from /proc (Linux). Kept as plain text
 # so it also runs against an older source tree (--compare-src).
@@ -459,7 +460,10 @@ def encode_speed_of(report):
 def compute_tier(cpu_count, ram_mb, speed):
     """Tier dict from three measured numbers (any may be None). Pure.
 
-    Boundaries are inclusive: a value equal to a minimum meets it.
+    Boundaries are inclusive: a value equal to a minimum meets it. A metric
+    that is None is not checked, so with skipped metrics the name is only
+    what the measured metrics support: "partial" is True then and the tier
+    may be higher than a full measurement would give.
     """
     measured = {"cpu_count": cpu_count, "ram_mb": ram_mb, "encode_speed": speed}
     skipped = [name for name, v in measured.items() if v is None]
@@ -473,7 +477,7 @@ def compute_tier(cpu_count, ram_mb, speed):
         else:
             break
     return {"name": earned, "basis": TIER_BASIS, "skipped_metrics": skipped,
-            "inputs": measured}
+            "partial": bool(skipped), "inputs": measured}
 
 
 def tier_of_report(report):
