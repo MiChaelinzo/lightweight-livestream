@@ -77,6 +77,7 @@ GPU_HIGH_PERCENT = 90.0
 CPU_TEMP_HOT_C = 90.0
 GPU_TEMP_HOT_C = 85.0
 STABILITY_LOW_BELOW = 70
+CONGESTION_CONFIDENCE = 0.5      # inference from ffmpeg speed, not a measurement
 RECENT_SAMPLES = 15              # about 30 seconds of telemetry at the 2 s interval
 LOWER_FPS_TARGET = 30
 LIGHT_NOISE = "light"
@@ -167,8 +168,13 @@ def _explain(found):
 
 
 def build_insights(advisor, summary, samples=(), stability=None, context=None,
-                   history=()):
-    """Insights, most confident first. Pure read; empty when nothing is wrong."""
+                   history=(), congestion=()):
+    """Insights, most confident first. Pure read; empty when nothing is wrong.
+
+    congestion is a list of network.Congestion findings. Each becomes a
+    network Insight with a fixed confidence (CONGESTION_CONFIDENCE) because a
+    congestion finding is an inference, not a measurement. Never auto-applied.
+    """
     context = context or OptimizerContext()
     found = classify_bottleneck(advisor, summary, samples, stability, context)
     seen = advisor.observations
@@ -184,6 +190,11 @@ def build_insights(advisor, summary, samples=(), stability=None, context=None,
         insights.extend(_followups(found, context, advisor, seen, score))
     insights.extend(_advisor_insights(advisor, seen, context, bonus,
                                       {i.area for i in insights}))
+    for finding in congestion:
+        insights.append(Insight(AREA_NETWORK, "congestion_" + finding.kind, None,
+                                CONGESTION_CONFIDENCE, finding.message,
+                                "Your connection may be congested. A wired "
+                                "connection or a lower video speed usually helps."))
     return sorted(insights, key=lambda i: -i.confidence)
 
 
@@ -270,3 +281,58 @@ def bottleneck_of(insights):
         if insight.area == AREA_BOTTLENECK:
             return insight.action
     return None
+
+
+# -- performance health score ------------------------------------------------
+# One 0..100 number from six signals. Each signal becomes a 0..100 sub-score by
+# a straight line between a "full marks" and a "zero" value, then the weighted
+# mean is taken over the signals that are KNOWN (unknown ones are left out and
+# the weights renormalised, so a missing GPU reading does not hurt the score).
+# Weights and lines are heuristics chosen for this project, not a standard.
+HEALTH_WEIGHTS = (("cpu", 20), ("gpu", 10), ("ram", 10), ("network", 25),
+                  ("encode_speed", 20), ("dropped_frames", 15))
+# name: (value giving 100, value giving 0)
+HEALTH_LINES = {
+    "cpu": (60.0, 100.0),            # system CPU percent
+    "gpu": (70.0, 100.0),            # GPU percent
+    "ram": (70.0, 100.0),            # RAM used percent
+    "network": (100.0, 0.0),         # NetworkStability score as is
+    "encode_speed": (1.0, 0.5),      # ffmpeg speed (x real time)
+    "dropped_frames": (0.0, 5.0),    # dropped frames as percent of frames
+}
+# (minimum score, band), checked in order
+HEALTH_BANDS = ((90, "Excellent"), (75, "Good"), (55, "Fair"), (35, "Poor"),
+                (0, "Critical"))
+HealthScore = namedtuple("HealthScore", "score band parts skipped")
+
+
+def _line_score(name, value):
+    full, zero = HEALTH_LINES[name]
+    fraction = (value - zero) / (full - zero)
+    return 100.0 * min(1.0, max(0.0, fraction))
+
+
+def performance_health(cpu=None, gpu=None, ram=None, network=None,
+                       encode_speed=None, dropped_percent=None):
+    """HealthScore from the six signals (None = unknown). Pure, deterministic.
+
+    score is None and band is None when every signal is unknown.
+    parts maps each known signal to its 0..100 sub-score.
+    """
+    values = {"cpu": cpu, "gpu": gpu, "ram": ram, "network": network,
+              "encode_speed": encode_speed, "dropped_frames": dropped_percent}
+    parts = {}
+    weighted = 0.0
+    total = 0
+    for name, weight in HEALTH_WEIGHTS:
+        if values[name] is None:
+            continue
+        parts[name] = _line_score(name, values[name])
+        weighted += weight * parts[name]
+        total += weight
+    skipped = [name for name, _ in HEALTH_WEIGHTS if values[name] is None]
+    if not total:
+        return HealthScore(None, None, parts, skipped)
+    score = round(weighted / total)
+    band = next(label for minimum, label in HEALTH_BANDS if score >= minimum)
+    return HealthScore(score, band, parts, skipped)
