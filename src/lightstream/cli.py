@@ -75,6 +75,10 @@ def build_parser():
     r.add_argument("--platform", choices=PLATFORMS,
                    help="also test how fast a connection to this platform opens")
     r.add_argument("--url", help="rtmp:// address to test (for --platform custom)")
+    sb = sub.add_parser("support-bundle",
+                        help="write a redacted JSON file to attach to a bug report")
+    sb.add_argument("--out", help="file to write (default: support-bundle.json "
+                                  "next to config.json)")
     bn = sub.add_parser("bench", help="measure this PC: startup, memory, CPU cost "
                                       "and a synthetic encode; writes a JSON report")
     bn.add_argument("--ffmpeg", help="path to ffmpeg (default: search as usual)")
@@ -335,6 +339,30 @@ def cmd_bench(args, out, build=build_report, find=find_ffmpeg, today=None):
     return 0
 
 
+def cmd_support_bundle(args, out, find=find_ffmpeg, probe=probe_encoders,
+                       environ=None):
+    """Opt-in: runs only when asked. The stream key and addresses are hidden."""
+    from .analytics import (BUNDLE_FILENAME, build_support_bundle, load_history,
+                            reports_dir, write_support_bundle)
+    environ = os.environ if environ is None else environ
+    os_name = detect_os()
+    cfg_file = config_path(os_name)
+    ffmpeg = find()
+    try:
+        encoders = probe(ffmpeg) if ffmpeg else set()
+    except RuntimeError:
+        encoders = set()
+    bundle = build_support_bundle(
+        __version__, os_name, encoders, load_file_config(cfg_file),
+        load_history(reports_dir(os_name)),
+        known_secrets=(environ.get("STREAM_KEY"),))
+    path = args.out or os.path.join(os.path.dirname(cfg_file), BUNDLE_FILENAME)
+    write_support_bundle(path, bundle)
+    out.write("Wrote %s (no stream key or address inside; check it before sharing)\n"
+              % path)
+    return 0
+
+
 def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
               report_dir=None):
     os_name = detect_os()
@@ -519,6 +547,8 @@ def main(argv=None, out=sys.stdout):
             return cmd_readiness(args, out)
         if args.command == "bench":
             return cmd_bench(args, out)
+        if args.command == "support-bundle":
+            return cmd_support_bundle(args, out)
         if args.command == "gui":
             from .gui import main as gui_main  # lazy: tkinter is optional
             return gui_main()

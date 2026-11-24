@@ -114,3 +114,60 @@ def append_history(directory, entry, limit=HISTORY_LIMIT):
     path = os.path.join(directory, HISTORY_FILENAME)
     write_private_text(path, json.dumps(rows, indent=2, sort_keys=True) + "\n")
     return path
+
+
+# -- opt-in support bundle ---------------------------------------------------
+BUNDLE_VERSION = 1
+BUNDLE_FILENAME = "support-bundle.json"
+REDACTED = "****"
+# Config keys whose values are dropped outright. Any key containing one of the
+# SECRET_NAME_PARTS is dropped too; any string holding "://" is a stream address.
+ADDRESS_KEYS = ("url", "backup_url")
+SECRET_NAME_PARTS = ("key", "token", "secret", "password")
+
+
+def redact_config(cfg):
+    """Copy of a config dict with stream keys and addresses hidden.
+
+    Addresses (and anything URL-shaped) can carry a key, so they become
+    "****" when set. Secret-looking names are hidden whatever their value.
+    Other values are kept: they are settings, not secrets.
+    """
+    out = {}
+    for name, value in sorted(cfg.items()):
+        lowered = str(name).lower()
+        url_shaped = isinstance(value, str) and "://" in value
+        secret_named = any(part in lowered for part in SECRET_NAME_PARTS)
+        if (name in ADDRESS_KEYS or secret_named or url_shaped) and value not in (None, ""):
+            out[name] = REDACTED
+        else:
+            out[name] = value
+    return out
+
+
+def build_support_bundle(version, platform_name, encoders, cfg, history,
+                         known_secrets=()):
+    """Plain dict a person can attach to a bug report. Opt-in: only built when
+    asked for. Holds the version, platform, an encoder summary, the redacted
+    config and recent history rows (numbers only). known_secrets (for example
+    a key from the environment) are scrubbed from the finished text as well.
+    """
+    bundle = {
+        "bundle_version": BUNDLE_VERSION,
+        "version": version,
+        "platform": platform_name,
+        "encoders": sorted(encoders),
+        "config": redact_config(cfg),
+        "recent_history": list(history),
+    }
+    text = json.dumps(bundle, indent=2, sort_keys=True)
+    for secret in known_secrets:
+        if secret:
+            text = text.replace(secret, REDACTED)
+    return json.loads(text)
+
+
+def write_support_bundle(path, bundle):
+    """Write the bundle as indented JSON (owner-only file) and return the path."""
+    write_private_text(path, json.dumps(bundle, indent=2, sort_keys=True) + "\n")
+    return path

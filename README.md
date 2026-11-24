@@ -314,7 +314,7 @@ Run `lightstream profiles` for the full list.
 
 Status: option parsing, settings resolution, thread math and command building are VERIFIED by unit tests. All ten audio chains (five profiles, light and full) were run through ffmpeg 7.0.2 (static build) on a 1 second sine and were accepted; set `LIGHTSTREAM_TEST_FFMPEG` to repeat that. Effects on real games, Windows/macOS telemetry, `nvidia-smi` and CPU affinity on real hardware are UNVERIFIED.
 
-`lightstream readiness [--upload-mbps N] [--platform twitch]` scores how ready this PC is (0 to 100) with a fix per factor. `lightstream bench --ffmpeg PATH` measures startup, memory, CPU cost and a synthetic encode; see `docs/BENCHMARKS.md` for the method and the numbers from the dev sandbox (not representative of low-end laptops).
+`lightstream readiness [--upload-mbps N] [--platform twitch]` scores how ready this PC is (0 to 100) with a fix per factor. `lightstream bench --ffmpeg PATH` measures startup, memory, CPU cost and a synthetic encode; see `docs/BENCHMARKS.md` for the method and the numbers from the dev sandbox (not representative of low-end laptops). `lightstream support-bundle` writes a redacted JSON file (no stream key or address) to attach to a bug report.
 
 ### Emergency, weak connection and backup ingest (0.11.0)
 

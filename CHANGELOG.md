@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.12.0 (unreleased)
+
+- New: `lightstream support-bundle [--out FILE]` writes a redacted JSON file for bug reports (version, platform, encoder list, config with keys and addresses hidden, recent history rows). Opt-in, never sent anywhere. A seeded secret is asserted absent in tests (VERIFIED); there is no log file yet, so none is included.
+- Test: golden ffmpeg argv files in `tests/golden/` for every performance and hardware profile (fixed config, placeholder key). Regenerate after an intended change with `LIGHTSTREAM_UPDATE_GOLDEN=1 python3 -m unittest tests.test_golden_argv`.
+- Build: `.gitattributes` forces LF line endings and marks images and fonts binary.
+
 ## 0.11.0 (unreleased)
 
 - New: `optimus_mx250` hardware profile, chosen automatically when an Intel graphics adapter and a GeForce MX250 are both detected (for example i7-1065G7 Iris Plus G7 + MX250). Quick Sync encodes first, NVENC second; recording on by default and the 4500 kbps cap as in `mx250_streamer`. Behavior change: such laptops used to get `mx250_streamer`. A deliberate design choice, UNVERIFIED on real hardware. Single-GPU machines are unchanged.
