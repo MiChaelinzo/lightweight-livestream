@@ -72,9 +72,15 @@
   "44100",
   "-ac",
   "2",
+  "-map",
+  "0:v",
+  "-map",
+  "1:a",
+  "-flags",
+  "+global_header",
   "-flush_packets",
   "1",
   "-f",
   "tee",
-  "[f=flv:flvflags=no_duration_filesize]rtmp://live.twitch.tv/app/FAKE-KEY-PLACEHOLDER|[f=matroska:onfail=ignore]lightstream-recording.mkv"
+  "[f=flv:onfail=abort:flvflags=no_duration_filesize]rtmp://live.twitch.tv/app/FAKE-KEY-PLACEHOLDER|[f=matroska:onfail=ignore]lightstream-recording.mkv"
 ]

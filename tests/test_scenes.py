@@ -227,9 +227,11 @@ class RecordingTests(unittest.TestCase):
         s = resolve_settings({}, {})._replace(record_to="C:\\Videos\\out.mkv")
         argv = build_command(s, KEY, "linux", "libx264")
         self.assertEqual(
-            ["-flush_packets", "1", "-f", "tee",
-             "[f=flv:flvflags=no_duration_filesize]rtmp://live.twitch.tv/app/%s"
-             "|[f=matroska:onfail=ignore]C:/Videos/out.mkv" % KEY], argv[-5:])
+            ["-flags", "+global_header", "-flush_packets", "1", "-f", "tee",
+             "[f=flv:onfail=abort:flvflags=no_duration_filesize]"
+             "rtmp://live.twitch.tv/app/%s"
+             "|[f=matroska:onfail=ignore]C:/Videos/out.mkv" % KEY], argv[-7:])
+        self.assertEqual(["-map", "0:v", "-map", "1:a"], argv[-11:-7])
         self.assertNotIn("-flvflags", argv)
 
     def test_key_redacted_inside_tee(self):
