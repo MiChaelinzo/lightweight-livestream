@@ -34,8 +34,12 @@ PALETTES = {
         "accent": "#0B57D0", "accent_hover": "#0A47A8", "accent_fg": "#FFFFFF",
         "button_bg": "#E6E9F0", "button_hover": "#D6DBE6",
         "sidebar": "#E9ECF2", "nav_hover": "#D8DDE8",
-        "banner_grey": "#555555", "banner_orange": "#A64F00",
-        "banner_green": "#1B7F3B", "banner_red": "#B00020", "banner_fg": "#FFFFFF",
+        # Banner: soft tint (bg) with a strong state color (accent bar and dot).
+        "banner_grey_bg": "#E8EBF1", "banner_grey": "#5F6B7A",
+        "banner_green_bg": "#DCF0E3", "banner_green": "#1B7F3B",
+        "banner_orange_bg": "#FBE9D5", "banner_orange": "#A64F00",
+        "banner_red_bg": "#F8DDE1", "banner_red": "#B00020",
+        "trough": "#E4E7EE",
     },
     THEME_DARK: {
         "background": "#1E1F22", "foreground": "#EDEDED",
@@ -50,8 +54,11 @@ PALETTES = {
         "accent": "#8AB4F8", "accent_hover": "#A8C7FA", "accent_fg": "#0F1F3D",
         "button_bg": "#3A3D44", "button_hover": "#4A4E57",
         "sidebar": "#26272B", "nav_hover": "#383B42",
-        "banner_grey": "#555555", "banner_orange": "#A64F00",
-        "banner_green": "#1B7F3B", "banner_red": "#B00020", "banner_fg": "#FFFFFF",
+        "banner_grey_bg": "#2F333B", "banner_grey": "#9AA4B2",
+        "banner_green_bg": "#1F3A2A", "banner_green": "#5CC17D",
+        "banner_orange_bg": "#40301C", "banner_orange": "#F0A04B",
+        "banner_red_bg": "#4A2229", "banner_red": "#F28B97",
+        "trough": "#232428",
     },
 }
 
@@ -70,9 +77,16 @@ TEXT_PAIRS = (
     ("foreground", "button_bg"), ("foreground", "button_hover"),
     ("foreground", "sidebar"), ("muted", "sidebar"),
     ("foreground", "nav_hover"),
-    ("banner_fg", "banner_grey"), ("banner_fg", "banner_orange"),
-    ("banner_fg", "banner_green"), ("banner_fg", "banner_red"),
+    ("foreground", "banner_grey_bg"), ("foreground", "banner_green_bg"),
+    ("foreground", "banner_orange_bg"), ("foreground", "banner_red_bg"),
 )
+
+# Non-text marks (banner accent bar and dot) need 3:1 against their banner tint.
+NON_TEXT_PAIRS = (
+    ("banner_grey", "banner_grey_bg"), ("banner_green", "banner_green_bg"),
+    ("banner_orange", "banner_orange_bg"), ("banner_red", "banner_red_bg"),
+)
+AA_NON_TEXT_RATIO = 3.0
 
 BIG_BUTTON_KINDS = ("start", "stop", "emergency")
 BANNER_COLOR_NAMES = ("grey", "orange", "green", "red")
@@ -93,7 +107,14 @@ def banner_colors(theme, name):
     if name not in BANNER_COLOR_NAMES:
         raise ValueError("unknown banner color %r" % (name,))
     colors = palette(theme)
-    return colors["banner_" + name], colors["banner_fg"]
+    return colors["banner_%s_bg" % name], colors["foreground"]
+
+
+def banner_accent(theme, name):
+    """Strong state color for the banner's accent bar and dot."""
+    if name not in BANNER_COLOR_NAMES:
+        raise ValueError("unknown banner color %r" % (name,))
+    return palette(theme)["banner_" + name]
 
 
 # Layered cards. ttk cannot blur or make anything translucent, so this is NOT
@@ -121,9 +142,9 @@ MONO_PREFERENCE = ("Consolas", "Menlo", "DejaVu Sans Mono", "Ubuntu Mono",
                    "Courier New")
 FALLBACK_FONT = "TkDefaultFont"
 FALLBACK_MONO_FONT = "TkFixedFont"
-FONT_SIZES = {"title": 18, "step": 12, "text": 11, "button": 20, "log": 10,
+FONT_SIZES = {"title": 18, "step": 12, "text": 11, "button": 15, "log": 10,
               "value": 16, "caption": 10, "nav": 11}
-COMPACT_FONT_SIZES = {"title": 14, "step": 10, "text": 9, "button": 14, "log": 9,
+COMPACT_FONT_SIZES = {"title": 14, "step": 10, "text": 9, "button": 11, "log": 9,
                       "value": 12, "caption": 8, "nav": 9}
 
 # First window size wanted, the space kept free for the taskbar / title bar,
@@ -142,6 +163,13 @@ def pick_font_family(available, preferred=FONT_PREFERENCE, fallback=FALLBACK_FON
         if family.lower() in lookup:
             return family
     return fallback
+
+
+def center_position(screen_width, screen_height, width, height):
+    """(x, y) that centers a window; never negative, slightly above middle."""
+    x = max(0, (screen_width - width) // 2)
+    y = max(0, (screen_height - height) // 3)
+    return x, y
 
 
 def fit_window(screen_width, screen_height):

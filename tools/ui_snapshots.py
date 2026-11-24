@@ -185,7 +185,6 @@ def run_gui(args):
             window = gui.StreamWindow(root)
             window.theme, window.compact = args.theme, args.compact
             window.apply_look()
-            root.geometry("+0+0")
             for page in pages:
                 window.show_page(page)
                 _settle(root)

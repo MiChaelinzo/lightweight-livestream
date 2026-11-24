@@ -73,6 +73,22 @@ class LookHelperTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             gt.banner_colors("light", "pink")
 
+    def test_banner_accents_are_visible_on_their_tint(self):
+        for theme in gt.THEMES:
+            colors = gt.palette(theme)
+            for fg, bg in gt.NON_TEXT_PAIRS:
+                self.assertGreaterEqual(
+                    gt.contrast_ratio(colors[fg], colors[bg]), gt.AA_NON_TEXT_RATIO,
+                    (theme, fg, bg))
+            for name in gt.BANNER_COLOR_NAMES:
+                self.assertEqual(colors["banner_" + name], gt.banner_accent(theme, name))
+        with self.assertRaises(ValueError):
+            gt.banner_accent("light", "pink")
+
+    def test_center_position(self):
+        self.assertEqual((203, 30), gt.center_position(1366, 768, 960, 678))
+        self.assertEqual((0, 0), gt.center_position(800, 480, 960, 700))
+
     def test_pick_font_family(self):
         self.assertEqual("Ubuntu", gt.pick_font_family(["Foo", "ubuntu", "DejaVu Sans"]))
         self.assertEqual("Segoe UI", gt.pick_font_family(["Segoe UI", "Ubuntu"]))

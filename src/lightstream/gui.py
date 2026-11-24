@@ -67,7 +67,7 @@ class StreamWindow:
         self._init_fonts()
         (width, height), self.min_size = gt.fit_window(
             root.winfo_screenwidth(), root.winfo_screenheight())
-        root.geometry("%dx%d" % (width, height))
+        root.geometry(self._centered_geometry(width, height))
         root.minsize(*self.min_size)
         self._init_variables(saved)
         self._pages = {}
@@ -87,6 +87,11 @@ class StreamWindow:
         self.family = gt.pick_font_family(families)
         self.mono_family = gt.pick_font_family(
             families, gt.MONO_PREFERENCE, gt.FALLBACK_MONO_FONT)
+
+    def _centered_geometry(self, width, height):
+        x, y = gt.center_position(self.root.winfo_screenwidth(),
+                                  self.root.winfo_screenheight(), width, height)
+        return "%dx%d+%d+%d" % (width, height, x, y)
 
     def font(self, role, weight="normal"):
         """Tk font tuple for a size role in gt.FONT_SIZES at the current density."""
@@ -154,18 +159,33 @@ class StreamWindow:
         right = ttk.Frame(outer, padding=(14, 12))
         right.pack(side="left", fill="both", expand=True)
         self.right = right
-        self.banner = tk.Label(right, text="", wraplength=WRAP, pady=10, padx=12,
-                               anchor="w", justify="left")
-        self.banner.pack(fill="x")
+        self.banner_row = tk.Frame(right, highlightthickness=0, borderwidth=0)
+        self.banner_row.pack(fill="x")
+        self.banner_bar = tk.Frame(self.banner_row, width=6, highlightthickness=0,
+                                   borderwidth=0)
+        self.banner_bar.pack(side="left", fill="y")
+        self.banner = tk.Label(self.banner_row, text="", wraplength=WRAP, pady=10,
+                               padx=12, anchor="w", justify="left")
+        self.banner.pack(side="left", fill="x", expand=True)
         self.status_label = ttk.Label(right, textvariable=self.status, wraplength=WRAP,
                                       justify="left", style="Hint.TLabel")
-        self.status_label.pack(side="bottom", fill="x", pady=(6, 0))
+        self.status.trace_add("write", self._on_status_changed)
         self._build_page_area(right)
+
+    def _on_status_changed(self, *_args):
+        """Show the status line only while it has text (no blank strip)."""
+        if self.status.get():
+            if not self.status_label.winfo_manager():
+                self.status_label.pack(side="bottom", fill="x", pady=(6, 0),
+                                       before=self.page_holder)
+        else:
+            self.status_label.pack_forget()
 
     def _build_page_area(self, parent):
         """Scrollable area: every page stays reachable on a small screen."""
         holder = ttk.Frame(parent)
         holder.pack(fill="both", expand=True, pady=(10, 0))
+        self.page_holder = holder
         holder.columnconfigure(0, weight=1)
         holder.rowconfigure(0, weight=1)
         self.page_canvas = tk.Canvas(holder, highlightthickness=0, borderwidth=0,
@@ -187,7 +207,7 @@ class StreamWindow:
         if float(first) <= 0.0 and float(last) >= 1.0:
             self.page_scroll.grid_remove()
         else:
-            self.page_scroll.grid(row=0, column=1, sticky="ns")
+            self.page_scroll.grid(row=0, column=1, sticky="ns", padx=(10, 0))
 
     def _on_page_resized(self, event):
         self.page_canvas.itemconfigure(self._page_window, width=event.width)
@@ -255,7 +275,7 @@ class StreamWindow:
 
     def _big_button(self, parent, text, command, kind, enabled, **pack):
         button = tk.Button(parent, text=text, command=command, relief="flat",
-                           borderwidth=0, cursor="hand2", pady=10,
+                           borderwidth=0, cursor="hand2", pady=8,
                            takefocus=True, highlightthickness=2)
         button.kind = kind
         button.pack(**pack)
@@ -268,7 +288,8 @@ class StreamWindow:
         button.config(bg=background, fg=foreground, disabledforeground=foreground,
                       activebackground=background, activeforeground=foreground,
                       highlightbackground=background, highlightcolor=colors["focus"],
-                      font=self.font("button", "bold"),
+                      font=self.font("step" if button.kind == "emergency" else "button",
+                                     "bold"),
                       state="normal" if enabled else "disabled")
 
     def _set_big_button(self, button, enabled, text=None):
@@ -426,7 +447,7 @@ class StreamWindow:
                 (width, height), self.min_size = gt.fit_window(
                     self.root.winfo_screenwidth(), self.root.winfo_screenheight())
                 self.root.minsize(*self.min_size)
-                self.root.geometry("%dx%d" % (width, height))
+                self.root.geometry(self._centered_geometry(width, height))
         except tk.TclError as err:
             self.status.set("Could not change the look: %s" % err)
 
@@ -448,6 +469,16 @@ class StreamWindow:
         style.configure("TCheckbutton", background=c["background"])
         style.configure("TRadiobutton", background=c["background"])
         style.map("TCheckbutton", background=[("active", c["background"])])
+        for name in ("TCheckbutton", "Card.TCheckbutton", "TRadiobutton"):
+            style.map(name,
+                      indicatorbackground=[("selected", c["accent"]),
+                                           ("!selected", c["surface"])],
+                      indicatorforeground=[("selected", c["accent_fg"]),
+                                           ("!selected", c["surface"])])
+            style.configure(name, indicatorbackground=c["surface"],
+                            indicatorforeground=c["accent_fg"],
+                            upperbordercolor=c["card_border"],
+                            lowerbordercolor=c["card_border"])
         # Cards: filled with the card color, so labels inside use Card.* styles.
         style.configure("Card.TFrame", background=c["card"], bordercolor=c["card_border"],
                         borderwidth=1, relief="solid")
@@ -482,8 +513,11 @@ class StreamWindow:
         style.map("TCombobox", fieldbackground=[("readonly", c["surface"])],
                   foreground=[("readonly", c["foreground"])])
         style.configure("TScale", background=c["background"], troughcolor=c["surface"])
-        style.configure("TScrollbar", background=c["button_bg"], troughcolor=c["background"],
-                        arrowcolor=c["foreground"])
+        style.configure("TScrollbar", background=c["button_bg"], troughcolor=c["trough"],
+                        bordercolor=c["trough"], lightcolor=c["button_bg"],
+                        darkcolor=c["button_bg"], arrowcolor=c["foreground"],
+                        gripcount=0, arrowsize=14)
+        style.map("TScrollbar", background=[("active", c["button_hover"])])
         self.root.option_add("*TCombobox*Listbox.background", c["surface"])
         self.root.option_add("*TCombobox*Listbox.foreground", c["foreground"])
         self.root.option_add("*TCombobox*Listbox.selectBackground", c["accent"])
@@ -531,6 +565,8 @@ class StreamWindow:
 
     def _paint_banner(self, text, color):
         background, foreground = gt.banner_colors(self.theme, color)
+        self.banner_row.config(bg=background)
+        self.banner_bar.config(bg=gt.banner_accent(self.theme, color))
         self.banner.config(text=text, bg=background, fg=foreground)
 
     def _save_look(self):
