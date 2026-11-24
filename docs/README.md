@@ -10,6 +10,7 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 | [ROADMAP.md](ROADMAP.md) | status table per area |
 | [ARCHITECTURE-NOTES.md](ARCHITECTURE-NOTES.md) | auto-scale design and alternatives, optimizer notes, 0.12 platform v2 decisions from measured spikes |
 | [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, v0.11 before and after, web page weight, v0.12 spikes (`tools/spikes.py`), v0.13 import cost and page weight before and after, v0.14 page weight and demo decision |
+| [architecture/V015-MAP.md](architecture/V015-MAP.md) | v0.15 upgrade paths mapped to existing code (existing, extended, new, roadmap) with decisions and the 0.14 test baseline |
 | [architecture/MULTI-DEVICE.md](architecture/MULTI-DEVICE.md) | dashboard panel map, viewer and relay design, OBS-style layers, Moonlight/Parsec class feasibility (covers remote play and P2P) |
 | [ARCHITECTURE-NOTES.md#diagrams-012](ARCHITECTURE-NOTES.md#diagrams-012) | Mermaid diagrams (process topology, recovery state machine, data flow) and refactoring recommendations |
 | [ROADMAP.md](ROADMAP.md) | v0.12 scorecards: 15 areas and 6 headline features with status and reason |
