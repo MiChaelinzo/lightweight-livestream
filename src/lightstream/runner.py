@@ -50,6 +50,10 @@ _PROGRESS_FIELDS = (
 )
 
 
+# An SRT passphrase travels in the URL query; hide it even when it is not the key.
+_SRT_PASSPHRASE = re.compile(r"(passphrase=)[^&\s\"']+", re.IGNORECASE)
+
+
 def redact(text, key):
     """Hide key (a string, or a tuple/list of secrets) in text, including its
     percent-encoded and quote_plus (spaces as +) forms."""
@@ -61,7 +65,7 @@ def redact(text, key):
                  urllib.parse.quote(secret), urllib.parse.quote_plus(secret))
         for form in sorted(set(forms), key=len, reverse=True):
             text = text.replace(form, "****")
-    return text
+    return _SRT_PASSPHRASE.sub(r"\1****", text)
 
 
 def format_command(argv, key):

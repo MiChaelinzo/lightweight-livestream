@@ -12,6 +12,11 @@ INGEST_URLS = {
 PLATFORMS = ("twitch", "youtube", "facebook", "custom")
 
 
+SRT_PASSPHRASE_MIN = 10   # libsrt requires 10..79 characters
+SRT_PASSPHRASE_MAX = 79
+SRT_KEY_LENGTHS = ("16", "24", "32")
+
+
 def is_srt_url(url):
     return (url or "").lower().startswith("srt://")
 
@@ -34,6 +39,14 @@ def validate_srt_url(url):
     if "streamid" in parts.query.lower():
         raise ValueError("Leave streamid out of the SRT address; the stream key "
                          "you enter is sent as the streamid")
+    options = urllib.parse.parse_qs(parts.query, keep_blank_values=True)
+    if "passphrase" in options:
+        length = len(options["passphrase"][0])
+        if not SRT_PASSPHRASE_MIN <= length <= SRT_PASSPHRASE_MAX:
+            raise ValueError("An SRT passphrase must be %d to %d characters long"
+                             % (SRT_PASSPHRASE_MIN, SRT_PASSPHRASE_MAX))
+    if "pbkeylen" in options and options["pbkeylen"][0] not in SRT_KEY_LENGTHS:
+        raise ValueError("SRT pbkeylen must be one of: %s" % ", ".join(SRT_KEY_LENGTHS))
     return url.strip()
 
 

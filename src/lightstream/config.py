@@ -272,11 +272,14 @@ def resolve_settings(cli, file_cfg, cpu_count=None):
     )
 
 
-def resolve_key(environ, prompt):
-    """Stream key from STREAM_KEY, else prompt (hidden input). Never from files."""
+def resolve_key(environ, prompt, saved=None):
+    """Stream key from STREAM_KEY, then the opt-in credential store value
+    (saved), else prompt (hidden input). Never from config files."""
     key = environ.get("STREAM_KEY")
     if key:
         return key.strip()
+    if saved:
+        return saved.strip()
     key = prompt("Stream key (hidden): ").strip()
     if not key:
         raise ValueError("No stream key. Set STREAM_KEY or type it when asked.")
