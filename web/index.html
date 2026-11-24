@@ -51,7 +51,7 @@
     <section id="performance" aria-labelledby="perf-title">
       <h2 id="perf-title">Built for old hardware</h2>
       <p>lightstream is a small Python program that starts one FFmpeg process. It adds no browser engine, no plugin system and no background services. Every extra feature is optional and off until you turn it on.</p>
-      <div class="cards">
+      <div class="cards four">
         <article class="card"><h3>Few moving parts</h3><p>One app process and one FFmpeg encode. Less running means less for a 10 year old CPU to do.</p></article>
         <article class="card"><h3>Hardware encoders first</h3><p>Quick Sync, VAAPI or NVENC are tried before software x264, so the GPU does the encoding when it can.</p></article>
         <article class="card"><h3>Hardware profiles</h3><p>Profiles for Intel HD and GeForce MX laptops cap presets, buffers and filters to settings that suit them.</p></article>
@@ -60,54 +60,20 @@
     </section>
 
     <section id="screens" aria-labelledby="screens-title">
-      <h2 id="screens-title">Screenshots (illustrative mockups)</h2>
-      <p class="note">These are hand-drawn SVG mockups that show the layout of the app. They are not real screen captures.</p>
-      <div class="cards">
+      <h2 id="screens-title">Screenshots</h2>
+      <p>The desktop app has a light and a dark theme. Pages are scrollable so they fit small laptop screens.</p>
+      <div class="cards shots">
         <figure class="card">
-          <svg viewBox="0 0 320 200" role="img" aria-label="Mockup of the dashboard page: sidebar, status banner, health numbers and a Start button">
-            <rect width="320" height="200" rx="8" fill="#101730"/>
-            <rect width="70" height="200" fill="#0b1127"/>
-            <rect x="10" y="16" width="50" height="10" rx="3" fill="#29e0ff"/>
-            <rect x="10" y="40" width="50" height="8" rx="3" fill="#2c3a78"/>
-            <rect x="10" y="58" width="50" height="8" rx="3" fill="#2c3a78"/>
-            <rect x="10" y="76" width="50" height="8" rx="3" fill="#2c3a78"/>
-            <rect x="86" y="16" width="218" height="26" rx="5" fill="#183a2a"/>
-            <text x="96" y="34" fill="#9be8b8" font-size="12" font-family="sans-serif">Ready to stream</text>
-            <rect x="86" y="56" width="104" height="60" rx="5" fill="#1a2350"/>
-            <rect x="200" y="56" width="104" height="60" rx="5" fill="#1a2350"/>
-            <rect x="86" y="140" width="90" height="30" rx="6" fill="#c04dff"/>
-            <text x="108" y="160" fill="#04101a" font-size="13" font-family="sans-serif">START</text>
-          </svg>
-          <figcaption>Dashboard (mockup)</figcaption>
+          <img src="img/gui-dashboard-light.webp" width="900" height="636" loading="lazy" decoding="async" alt="lightstream dashboard in the light theme: sidebar with pages, a status banner, health numbers and a Start button">
+          <figcaption>Dashboard, light theme. Real screenshot, rendered on Linux (Xvfb), fonts differ on Windows.</figcaption>
         </figure>
         <figure class="card">
-          <svg viewBox="0 0 320 200" role="img" aria-label="Mockup of the scene editor: a canvas with a screen layer and a webcam layer">
-            <rect width="320" height="200" rx="8" fill="#101730"/>
-            <rect x="16" y="16" width="200" height="112" fill="#0b1127" stroke="#2c3a78"/>
-            <rect x="24" y="24" width="140" height="80" fill="#1a2350"/>
-            <text x="34" y="68" fill="#9aa7cc" font-size="12" font-family="sans-serif">screen</text>
-            <rect x="172" y="84" width="36" height="36" fill="#c04dff"/>
-            <text x="176" y="106" fill="#04101a" font-size="9" font-family="sans-serif">cam</text>
-            <rect x="232" y="16" width="72" height="10" rx="3" fill="#2c3a78"/>
-            <rect x="232" y="34" width="72" height="10" rx="3" fill="#2c3a78"/>
-            <rect x="232" y="52" width="72" height="10" rx="3" fill="#29e0ff"/>
-          </svg>
-          <figcaption>Scene editor (mockup)</figcaption>
+          <img src="img/gui-dashboard-dark.webp" width="900" height="636" loading="lazy" decoding="async" alt="lightstream dashboard in the dark theme with the same layout">
+          <figcaption>Dashboard, dark theme. Real screenshot, rendered on Linux (Xvfb), fonts differ on Windows.</figcaption>
         </figure>
         <figure class="card">
-          <svg viewBox="0 0 320 200" role="img" aria-label="Mockup of the companion overlay: viewer count, timer, goal bar and chat lines">
-            <rect width="320" height="200" rx="8" fill="#101730"/>
-            <text x="16" y="34" fill="#9aa7cc" font-size="11" font-family="sans-serif">Viewers</text>
-            <text x="16" y="56" fill="#e6ecff" font-size="20" font-family="sans-serif">--</text>
-            <text x="200" y="34" fill="#9aa7cc" font-size="11" font-family="sans-serif">Live for</text>
-            <text x="200" y="56" fill="#e6ecff" font-size="20" font-family="sans-serif">00:12:30</text>
-            <rect x="16" y="76" width="288" height="12" rx="6" fill="#0b1127"/>
-            <rect x="16" y="76" width="150" height="12" rx="6" fill="#29e0ff"/>
-            <rect x="16" y="104" width="180" height="9" rx="3" fill="#2c3a78"/>
-            <rect x="16" y="122" width="240" height="9" rx="3" fill="#2c3a78"/>
-            <rect x="16" y="140" width="130" height="9" rx="3" fill="#2c3a78"/>
-          </svg>
-          <figcaption>Companion overlay (mockup)</figcaption>
+          <img src="img/gui-scenes-light.webp" width="900" height="636" loading="lazy" decoding="async" alt="lightstream scenes page in the light theme, where you arrange screen and webcam layers">
+          <figcaption>Scenes page. Real screenshot, rendered on Linux (Xvfb), fonts differ on Windows.</figcaption>
         </figure>
       </div>
     </section>

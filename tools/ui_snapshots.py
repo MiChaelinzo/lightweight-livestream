@@ -230,7 +230,8 @@ def run_web(args):
                 args=["--use-gl=swiftshader", "--enable-unsafe-swiftshader"])
             for width in widths:
                 page = browser.new_page(
-                    viewport={"width": width, "height": WEB_VIEWPORT_HEIGHT})
+                    viewport={"width": width, "height": WEB_VIEWPORT_HEIGHT},
+                    color_scheme=args.color_scheme)
                 page.on("console", lambda m, w=width: print(
                     "console[%d] %s: %s" % (w, m.type, m.text))
                     if m.type in ("error", "warning") else None)
@@ -265,6 +266,8 @@ def build_parser():
     web = sub.add_parser("web", help="screenshot the web/ site")
     web.add_argument("--out", required=True)
     web.add_argument("--widths", default=",".join(map(str, DEFAULT_WIDTHS)))
+    web.add_argument("--color-scheme", choices=("light", "dark"), default="dark",
+                     help="emulated prefers-color-scheme (default: dark)")
     return parser
 
 

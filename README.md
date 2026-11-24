@@ -287,7 +287,7 @@ The window now has a sidebar (Dashboard, Setup wizard, Scenes, Overlays, Recordi
 
 ### Web showcase upgrade (0.7.0)
 
-The `web/` showcase has an animated hero title (respects reduced motion), SVG mockups labeled as illustrations rather than screenshots, a design-difference comparison with OBS (no measurements are claimed) and setup guides for Intel HD and MX250. Browser rendering is UNVERIFIED.
+The `web/` showcase has an animated hero title (respects reduced motion), real GUI screenshots (`web/img/*.webp`, rendered on Linux under Xvfb, fonts differ on Windows), a design-difference comparison with OBS (no measurements are claimed) and setup guides for Intel HD and MX250. Browser rendering was checked in headless Chromium at 1280 and 390 px wide, light and dark, with zero page errors (VERIFIED for that browser only).
 
 ### Status of the 0.7.0 features
 

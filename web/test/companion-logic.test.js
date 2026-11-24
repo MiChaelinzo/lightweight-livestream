@@ -101,12 +101,13 @@ test("the two CSP rules are complementary and both set the other security header
   }
 });
 
-test("companion page and showcase carry no inline script or style and state mockups", () => {
+test("companion page and showcase carry no inline script or style and label screenshots honestly", () => {
   const companion = readFileSync(new URL("../companion/index.html", import.meta.url), "utf8");
   const index = readFileSync(new URL("../index.html", import.meta.url), "utf8");
   for (const html of [companion, index]) {
     assert.doesNotMatch(html, /\sstyle=/);
     assert.doesNotMatch(html, /<script(?![^>]*src=)/);
   }
-  assert.match(index, /not real screen captures/);
+  assert.match(index, /Real screenshot, rendered on Linux \(Xvfb\), fonts differ on Windows/);
+  assert.doesNotMatch(index, /mockup/i);
 });
