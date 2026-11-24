@@ -78,12 +78,15 @@ LADDER_SOURCES = dict(PRESETS, **LADDER_TIERS)
 assert UPSCALE_AFTER_SECONDS > DOWNSCALE_AFTER_SECONDS
 
 
-def build_ladder(top, floor_preset=DEFAULT_FLOOR_PRESET):
+def build_ladder(top, floor_preset=DEFAULT_FLOOR_PRESET, constant_size=False):
     """Ordered LadderSteps, index 0 = top (what the person chose).
 
     Order of lowering: bitrate first (BITRATE_STEPS of BITRATE_STEP_FACTOR),
     then fps (down FPS_STEPS), then resolution, using the sizes and bitrates
     of the existing presets down to floor_preset. top is a LadderStep.
+    constant_size keeps the top size on every step (only bitrate and fps
+    change), for persistent ingest where the output size must not change
+    inside a session.
     """
     steps = [top]
 
@@ -110,6 +113,9 @@ def build_ladder(top, floor_preset=DEFAULT_FLOOR_PRESET):
                              min(current.fps, preset.fps),
                              min(current.kbps, preset.video_kbps))
         add(current)
+    if constant_size:
+        same = [s._replace(width=top.width, height=top.height) for s in steps]
+        steps = [s for i, s in enumerate(same) if i == 0 or s != same[i - 1]]
     return steps
 
 

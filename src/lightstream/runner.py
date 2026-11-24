@@ -16,6 +16,7 @@ WINDOWS_BELOW_NORMAL = 0x00004000  # BELOW_NORMAL_PRIORITY_CLASS
 FALLBACK_AFTER_FAILURES = 2  # quick failures of a hardware encoder before libx264
 LAGGING_BELOW_SPEED = 0.95   # ffmpeg speed under 1.0x means it cannot keep up
 STOP_POLL_SECONDS = 0.2
+STOP_JOIN_SECONDS = 5.0
 FAILOVER_AFTER_FAILURES = 3  # consecutive quick network failures before switching ingest
 # Known ffmpeg messages for a hardware encoder that cannot start. Network and
 # key errors ("Connection refused", "Input/output error") never match these.
@@ -267,3 +268,29 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
         if stop is not None and stop.is_set():
             report(STATUS_STOPPED)
             return 0
+
+
+def run_with_publisher(publisher_argv, key, os_name, run_encoder,
+                       popen=subprocess.Popen, out=sys.stderr,
+                       on_publisher_status=None):
+    """Opt-in persistent ingest: keep a long-lived `-c copy` publisher alive
+    while run_encoder() (which may restart ffmpeg many times) feeds it.
+
+    The publisher has its own reconnect loop with backoff and never gives up;
+    the encoder runs through run_encoder, normally run_with_reconnect, whose
+    restarts no longer drop the ingest connection. The publisher is stopped
+    when run_encoder returns, and run_encoder's return value is returned.
+    Publisher output goes through the same redaction as the encoder's.
+    """
+    publisher_stop = threading.Event()
+    thread = threading.Thread(
+        target=run_with_reconnect, daemon=True,
+        args=(publisher_argv, key, os_name),
+        kwargs={"popen": popen, "out": out, "stop": publisher_stop,
+                "on_status": on_publisher_status or (lambda state, detail: None)})
+    thread.start()
+    try:
+        return run_encoder()
+    finally:
+        publisher_stop.set()
+        thread.join(STOP_JOIN_SECONDS)

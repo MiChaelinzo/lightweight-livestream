@@ -4,6 +4,7 @@ import argparse
 import getpass
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -31,14 +32,14 @@ from .analytics import (analytics_enabled, append_history, history_entry,
                         load_history, build_session_report, reports_dir,
                         write_session_report)
 from .health import HealthTracker
-from .platforms import PLATFORMS, embedded_key_in_url, parse_audio_devices
-from .command import RATE_MODES
+from .platforms import PLATFORMS, embedded_key_in_url, ingest_url, parse_audio_devices
+from .command import RATE_MODES, publisher_command
 from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_settings,
                         potato_stream_settings,
                         weak_connection_settings)
 from .perf_profiles import (PERF_PROFILES, STREAM_PRESETS, affinity_cpus)
 from .presets import PRESETS
-from .runner import format_command, run_with_reconnect
+from .runner import format_command, run_with_publisher, run_with_reconnect
 from .overlays import missing_images
 from .scene_collections import (collection_dir, export_collection, export_scene,
                                 import_scenes, scene_filename,
@@ -170,8 +171,8 @@ def build_parser():
                         "up to the bitrate)")
     s.add_argument("--persistent-ingest", action="store_true",
                    help="opt in: a second ffmpeg (-c copy) keeps the connection while "
-                        "the encoder restarts; recording stays one file. Keep one "
-                        "output size per session")
+                        "the encoder restarts, and a recording keeps going through "
+                        "ingest failures. The output size stays fixed per session")
     s.add_argument("--backup-url", help="backup ingest rtmp://host/app (no key). Used "
                    "after repeated quick connection failures, same stream key")
     s.add_argument("--noise", choices=NOISE_LEVELS,
@@ -182,6 +183,13 @@ def build_parser():
     s.add_argument("--dry-run", action="store_true",
                    help="print the ffmpeg command (key hidden) and exit")
     return p
+
+
+def free_udp_port():
+    """A free local UDP port for the persistent publisher (loopback only)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 def resolve_hardware(cli_value, file_cfg, os_name, detect=detect_gpu_names):
@@ -414,6 +422,13 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
     if args.weak_connection:  # after emergency: its longer buffer is kept
         settings = weak_connection_settings(
             settings, mbps_to_kbps(args.upload_mbps) if args.upload_mbps else None)
+    persistent = bool(args.persistent_ingest) and not args.test_local
+    if args.persistent_ingest and args.test_local:
+        out.write("Note: --persistent-ingest is ignored with --test-local.\n")
+    if persistent and settings.backup_url:
+        raise ValueError("--persistent-ingest cannot be combined with --backup-url")
+    if persistent:
+        settings = settings._replace(local_ingest_port=free_udp_port())
     cpu_affinity = affinity_cpus(os.cpu_count() or 1, settings.reserved_cores)
     record_path = args.test_local
     if settings.scene:
@@ -463,6 +478,15 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
 
     out.write("Encoder: %s\n" % encoder)
     out.write(format_command(argv, secrets) + "\n")
+    publisher_argv = None
+    if persistent:
+        publisher_argv = publisher_command(
+            settings.local_ingest_port,
+            ingest_url(settings.platform, key, settings.custom_url),
+            ffmpeg or "ffmpeg")
+        out.write("Persistent ingest (opt in): the publisher keeps the connection "
+                  "while the encoder restarts. The output size stays fixed.\n")
+        out.write(format_command(publisher_argv, secrets) + "\n")
     if backup:
         out.write("Backup ingest: %s (key hidden)\n"
                   % format_command(
@@ -480,7 +504,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         auto_scale = False
         out.write("Note: --auto-scale is ignored with --test-local.\n")
     scale = AutoScaleSession(
-        settings, advisor, AutoScaler(build_ladder(top_step(settings)), clock,
+        settings, advisor, AutoScaler(build_ladder(top_step(settings), constant_size=persistent), clock,
                                       enabled=auto_scale),
         threading.Event(), out.write, sampler,
         gaming_first=bool(settings.reserved_cores),
@@ -506,8 +530,9 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         return current
 
     started = clock()
-    try:
-        code = run_with_reconnect(
+
+    def run_encoder():
+        return run_with_reconnect(
             argv, secrets, os_name, on_status=on_status,
             max_failures=(1 if record_path else
                           None if args.keep_trying else MAX_QUICK_FAILURES),
@@ -522,6 +547,13 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                 lambda n, enc: build_command(
                     failover_settings(settings_for_attempt(n)), key, os_name, enc,
                     ffmpeg)) if backup else None)
+
+    try:
+        if persistent:
+            code = run_with_publisher(publisher_argv, secrets, os_name, run_encoder,
+                                      out=out)
+        else:
+            code = run_encoder()
         if tracker.samples or tracker.reconnects:
             out.write("\n" + "\n".join(tracker.report_lines()) + "\n")
             stability = tracker.network_stability()
