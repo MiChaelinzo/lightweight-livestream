@@ -213,6 +213,38 @@ def one_click_setup(os_name=None, platform="twitch", upload_mbps=None,
     return fields, message
 
 
+def optimize_proposal(os_name=None, platform="twitch", upload_mbps=None,
+                      cpu_count=None, ram_mb=None, gpu_text=None, facts=None,
+                      tier=None, current=None):
+    """One-click optimize for the GUI: (OptimizeProposal, plain-words message).
+
+    Proposes only. The window must ask the person and then call
+    apply_optimization; nothing is written here."""
+    from . import bandwidth, wizard  # lazy: wizard imports this module
+    from .hardware import detect_gpu_names
+    os_name = os_name or detect_os()
+    if gpu_text is None:
+        gpu_text = "\n".join(detect_gpu_names(os_name))
+    cpu_count = cpu_count if cpu_count is not None else (os.cpu_count() or 0)
+    ram_mb = ram_mb if ram_mb is not None else wizard.detect_ram_mb(os_name)
+    upload_kbps = bandwidth.mbps_to_kbps(upload_mbps) if upload_mbps else None
+    if facts is None:
+        facts = wizard.gather_readiness_facts(os_name, cpu_count, ram_mb, upload_kbps)
+    if current is None:
+        from .config import load_file_config
+        current = load_file_config(config_path(os_name))
+    proposal = wizard.propose_optimization(current, gpu_text, cpu_count, ram_mb,
+                                           upload_kbps, platform, facts, tier)
+    lines = ["%s: %s -> %s" % d for d in proposal.diff] or ["no changes"]
+    return proposal, "\n".join(proposal.notes + lines)
+
+
+def apply_optimization(proposal, os_name=None, path=None):
+    """Write a confirmed proposal to config.json. Call only after the person says yes."""
+    from . import wizard
+    wizard.save_config(path or config_path(os_name or detect_os()), proposal.config)
+
+
 def _blank_to_none(value):
     value = (value or "").strip() if isinstance(value, str) else value
     return value or None

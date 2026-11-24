@@ -15,7 +15,7 @@ import webbrowser
 
 try:
     import tkinter as tk
-    from tkinter import filedialog, ttk
+    from tkinter import filedialog, messagebox, ttk
 except ImportError:  # some Linux Pythons ship without tkinter
     tk = None
     ttk = None
@@ -322,6 +322,8 @@ class StreamWindow:
                     "change everything afterwards.")
         ttk.Button(frame, text="One-click setup: pick safe settings for this PC",
                    command=self.on_setup).pack(anchor="w", pady=6)
+        ttk.Button(frame, text="Optimize: propose settings (asks first)",
+                   command=self.on_optimize).pack(anchor="w", pady=2)
         ttk.Button(frame, text="Check my PC", command=self.on_doctor).pack(anchor="w")
         self._combo(frame, "PC type (hardware profile)", self.hardware,
                     gp.hardware_choices())
@@ -439,6 +441,19 @@ class StreamWindow:
                 pass  # remembering choices is optional
         else:
             self.status.set(error)
+
+    def on_optimize(self):
+        """Show the proposed config changes; write them only after Yes."""
+        platform = gc.value_for(gc.PLATFORM_CHOICES, self.platform.get())
+        proposal, message = gc.optimize_proposal(platform=platform)
+        if not proposal.diff:
+            self.status.set("Optimize: your config already matches this PC.")
+            return
+        if messagebox.askyesno("Apply these changes?", message):
+            gc.apply_optimization(proposal)
+            self.status.set("Optimize applied. Restart the window to see the new settings.")
+        else:
+            self.status.set("Optimize: nothing changed.")
 
     def on_test(self):
         self.controller.start(self.collect_prefs(), "", test_local=True)

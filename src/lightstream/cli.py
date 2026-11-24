@@ -94,6 +94,18 @@ def build_parser():
     bn.add_argument("--compare-src", help="another lightstream src folder "
                                           "(for example an older version) to compare startup")
     bn.add_argument("--out", help="report file (default: reports/bench-DATE.json)")
+    op = sub.add_parser("optimize", help="detect this PC, propose settings and show "
+                                         "the config diff; applies only if you confirm")
+    op.add_argument("--platform", choices=PLATFORMS)
+    op.add_argument("--upload-mbps", help="your upload speed in Mbps")
+    op.add_argument("--yes", action="store_true", help="confirm without asking")
+    op.add_argument("--no-bench", action="store_true",
+                    help="skip the short benchmark (tier is then not measured)")
+    ky = sub.add_parser("key", help="opt-in: keep the stream key in the system "
+                                    "credential store (never in config.json)")
+    ky.add_argument("action", choices=("status", "save", "forget"))
+    ky.add_argument("--yes", action="store_true",
+                    help="confirm that you want the key stored (required for save)")
     sc = sub.add_parser("scenes", help="list, check or create a scenes file")
     sc.add_argument("action", choices=("list", "validate", "example", "export", "import"))
     sc.add_argument("target", nargs="?",
@@ -364,7 +376,56 @@ def cmd_bench(args, out, build=build_report, find=find_ffmpeg, today=None):
     report = build(ffmpeg=ffmpeg, seconds=args.seconds, ticks=args.ticks,
                    import_runs=args.import_runs, compare_src=args.compare_src)
     path = write_report(report, args.out or report_path(report["date"]))
+    tier = report.get("tier")
+    if tier:
+        out.write("Tier: %s (%s)\n" % (tier["name"], tier["basis"]))
+        if tier["skipped_metrics"]:
+            out.write("  not measured: %s\n" % ", ".join(tier["skipped_metrics"]))
     out.write("Wrote %s\n%s\n" % (path, report["caveat"]))
+    return 0
+
+
+def _saved_key(os_name):
+    """Key from the system credential store if the person opted in earlier."""
+    from .secure_store import SecureKeyStore, SecureStoreError, select_backend
+    try:
+        return SecureKeyStore(select_backend(
+            os_name, os.path.dirname(config_path(os_name)))).load()
+    except (SecureStoreError, OSError, subprocess.SubprocessError):
+        return None
+
+
+def cmd_optimize(args, out, input_fn=input, tier_fn=None, **kwargs):
+    from . import wizard
+    if tier_fn is None and not args.no_bench:
+        def tier_fn():
+            ffmpeg = find_ffmpeg()
+            report = build_report(ffmpeg=ffmpeg, seconds=2, ticks=100, import_runs=1)
+            return report["tier"]["name"] if ffmpeg else None
+    return wizard.run_optimize(detect_os(), out, input_fn=input_fn, yes=args.yes,
+                               platform=args.platform or "twitch",
+                               upload_mbps=args.upload_mbps, tier_fn=tier_fn, **kwargs)
+
+
+def cmd_key(args, out, store=None, prompt=getpass.getpass):
+    from .secure_store import SecureKeyStore, SecureStoreError, select_backend
+    os_name = detect_os()
+    if store is None:
+        store = SecureKeyStore(select_backend(os_name, os.path.dirname(config_path(os_name))))
+    if args.action == "status":
+        out.write("Secure key storage: %s\n"
+                  % (store.backend_name or "not available on this system (key is never saved)"))
+        return 0
+    if args.action == "forget":
+        store.forget()
+        out.write("Saved key removed (if there was one).\n")
+        return 0
+    try:
+        store.save(prompt("Stream key (hidden): "), opt_in=args.yes)
+    except SecureStoreError as exc:
+        out.write("%s\n" % exc)
+        return 1
+    out.write("Saved to %s. It is not in config.json.\n" % store.backend_name)
     return 0
 
 
@@ -441,7 +502,8 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         prepare_recording_path(settings.record_to)  # ValueError -> "Error: ..."
         out.write("Recording a copy to %s (later attempts add -2, -3, ...)\n"
                   % settings.record_to)
-    key = "test" if record_path else resolve_key(os.environ, getpass.getpass)
+    key = "test" if record_path else resolve_key(
+        os.environ, getpass.getpass, saved=_saved_key(os_name))
     secrets = key
     backup = bool(settings.backup_url) and not record_path
     if settings.backup_url and record_path:
@@ -563,9 +625,10 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                           % (stability.score, stability.basis))
             kind = output_kind(ingest_url(settings.platform, "x", settings.custom_url))
             sample = sampler.latest
-            for finding in detect_congestion(
-                    tracker.summary(), scale.current_settings.video_kbps, kind,
-                    getattr(sample, "cpu_percent", None)):
+            congestion = detect_congestion(
+                tracker.summary(), scale.current_settings.video_kbps, kind,
+                getattr(sample, "cpu_percent", None))
+            for finding in congestion:
                 out.write("  network: %s\n" % finding.message)
             link = detect_link(os_name)
             out.write("  link: %s%s (probe UNVERIFIED on real machines)\n"
@@ -579,7 +642,8 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                 advisor, tracker.summary(), list(sampler.history), stability,
                 OptimizerContext(preset_name, scale.current_settings.video_kbps,
                                  scale.current_settings.fps, encoder, settings.noise),
-                load_history(directory) if recording_analytics else ())
+                load_history(directory) if recording_analytics else (),
+                congestion)
             for rec in advisor.recommendations():  # suggestions only, never applied
                 out.write("  suggestion (not applied): %s\n" % rec.message)
             for insight in insights:
@@ -616,6 +680,10 @@ def main(argv=None, out=sys.stdout):
             return cmd_readiness(args, out)
         if args.command == "bench":
             return cmd_bench(args, out)
+        if args.command == "optimize":
+            return cmd_optimize(args, out)
+        if args.command == "key":
+            return cmd_key(args, out)
         if args.command == "support-bundle":
             return cmd_support_bundle(args, out)
         if args.command == "gui":
