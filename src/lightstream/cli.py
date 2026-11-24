@@ -512,8 +512,8 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                   % settings.record_to)
     key = "test" if record_path else resolve_key(
         os.environ, getpass.getpass, saved=lambda: _saved_key(os_name))
-    if secret_sink is not None:
-        secret_sink.append(key)
+    if secret_sink is not None and not record_path:
+        secret_sink.append(key)  # --test-local uses a fixed placeholder, not a secret
     secrets = key
     backup = bool(settings.backup_url) and not record_path
     if settings.backup_url and record_path:

@@ -76,6 +76,27 @@ class StartDryRunTests(unittest.TestCase):
                                     "--record", "c.mkv"], d)
         self.assertIn("--record is ignored", text)
 
+    def sink_for(self, argv, env):
+        sink = []
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.dict(os.environ, env, clear=False), \
+                mock.patch.object(cli, "config_path",
+                                  return_value=os.path.join(d, "config.json")), \
+                mock.patch.object(cli, "find_ffmpeg", lambda: None):
+            args = cli.build_parser().parse_args(argv)
+            cli.cmd_start(args, io.StringIO(), secret_sink=sink)
+        return sink
+
+    def test_test_local_placeholder_key_is_not_a_crash_secret(self):
+        # "test" is a constant placeholder; scrubbing it masked every "test"
+        # substring in crash reports.
+        sink = self.sink_for(["start", "--dry-run", "--test-local", "t.mkv"], {})
+        self.assertNotIn("test", sink)
+
+    def test_real_key_is_a_crash_secret_in_normal_mode(self):
+        sink = self.sink_for(["start", "--dry-run"], {"STREAM_KEY": "live_REALKEY_1"})
+        self.assertEqual(["live_REALKEY_1"], sink)
+
     def test_unwritable_record_folder_is_a_clear_error(self):
         with tempfile.TemporaryDirectory() as d:
             blocker = os.path.join(d, "file")
