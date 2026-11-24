@@ -2,6 +2,10 @@
 
 Status: VERIFIED for the method and for the numbers below on the one machine named here. UNVERIFIED for every other machine, for hardware encoders, for Windows and macOS, and for any real game or live stream.
 
+## v0.15 sections index
+
+Measured in the same sandbox, nothing invented: [GUI animation tick](#v015-gui-animation-tick-health-card-easing), [audio chain CPU cost](#v015-audio-chain-cpu-cost-spike-e), [highlights analysis](#v015-highlights-analysis), [Benchmark Lab harness check](#v015-benchmark-lab-harness-check). OBS Studio and Streamlabs Desktop numbers are UNKNOWN.
+
 ## Read this first
 
 - The host is a Linux sandbox: 8 cores, 31560 MB RAM, Python 3.11.15, no GPU, no display. It is **not** representative of an MX250 laptop or an Intel i5-U.

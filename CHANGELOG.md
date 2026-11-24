@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.15.0 (unreleased)
+## 0.15.0
 
 - New: `lightstream audio-check FILE` reports clipping and loudness (LUFS) of an audio or video file using ffmpeg `volumedetect` and `ebur128`. Pure parser in `audio_check.py`. VERIFIED by unit tests and a real-ffmpeg test (clipped sine detected, -12 dB sine not).
 - New: audio profiles `teaching` and `meeting` (dynaudnorm auto-gain; meeting adds stronger denoise) and `audio_profile_chain(..., autogain=True)`. Echo removal is not available in FFmpeg and is documented as such. No existing chain changed, so the golden argv files were not regenerated.
@@ -13,6 +13,7 @@
 - Docs: native Tk cannot blur or make widgets translucent. The "glass" look here is layered, tinted cards. Real backdrop blur exists only on the web page.
 - New: plugin runtime v1 (`src/lightstream/plugins.py`) and `lightstream plugins list|check|run-demo`, implementing `docs/architecture/PLUGIN-PROTOCOL.md`: manifest validation, subprocess without shell and with a minimal environment, JSON lines with `v:1`, 5 s handshake, 16 KiB lines, 20 msg/s rate limit, permissions, disable after 10 violations, one restart, shutdown sequence, 4 KiB redacted stderr tail. Off by default (`plugins` list in `config.json`). VERIFIED by tests with real subprocess plugins on Linux, including that a seeded `LIGHTSTREAM_KEY` is absent from the plugin environment. Not connected to `start` (Roadmap); subprocess isolation is not an OS sandbox. Example: `examples/plugins/hello`.
 - New: `tools/benchlab.py` samples CPU, RSS and startup of a process by PID or command from `/proc` and writes JSON plus a markdown table. OBS Studio and Streamlabs Desktop columns are UNKNOWN unless you measure them; no competitor numbers are included. Linux only. Method in `docs/architecture/DELIVERY.md`, harness check in `docs/BENCHMARKS.md`.
+- Version bumped to 0.15.0 (`pyproject.toml`, `__init__.py`, README artifact names, RELEASING example).
 - Docs: decision recorded not to restructure the source tree into `/core`, `/plugins` and similar folders (`docs/architecture/DELIVERY.md`).
 
 ## 0.14.0
