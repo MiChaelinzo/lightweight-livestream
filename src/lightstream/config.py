@@ -6,12 +6,11 @@ import sys
 
 from .audio import (CHAIN_FULL, CHAIN_LIGHT, NOISE_LEVELS, audio_profile_chain,
                     get_audio_profile, require_model_file)
-from .command import StreamSettings
+from .command import RATE_MODES, StreamSettings, recording_format
 from .fileio import write_private_text
 from .hardware import cap_preset_name, cap_video_kbps, get_profile
 from .portable import data_dir, is_portable, recordings_dir
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
-from .command import RATE_MODES, recording_format
 from .platforms import is_srt_url, validate_backup_url, validate_srt_url
 from .perf_profiles import (get_perf_profile, get_stream_preset, resolve_tuning,
                             stream_preset_bitrate_cap)
