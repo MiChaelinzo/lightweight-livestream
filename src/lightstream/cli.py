@@ -601,6 +601,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         return current
 
     started = clock()
+    encoder_stop = threading.Event()  # set when the publisher gives up
 
     def run_encoder():
         return run_with_reconnect(
@@ -608,6 +609,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
             max_failures=(1 if record_path else
                           None if args.keep_trying else MAX_QUICK_FAILURES),
             encoder=encoder, cpu_affinity=cpu_affinity, restart=scale.restart,
+            stop=encoder_stop if persistent else None,
             argv_factory=lambda enc: build_command(
                 scale.current_settings, key, os_name, enc, ffmpeg, record_path),
             argv_for_attempt=(None if record_path or not (
@@ -621,8 +623,12 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
 
     try:
         if persistent:
-            code = run_with_publisher(publisher_argv, secrets, os_name, run_encoder,
-                                      out=out)
+            code = run_with_publisher(
+                publisher_argv, secrets, os_name, run_encoder, out=out,
+                on_publisher_status=lambda state, detail: (
+                    tracker.on_status(state, detail) if state == "reconnecting" else None),
+                max_failures=None if args.keep_trying else MAX_QUICK_FAILURES,
+                encoder_stop=encoder_stop)
         else:
             code = run_encoder()
         if tracker.samples or tracker.reconnects:

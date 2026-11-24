@@ -20,7 +20,7 @@ from lightstream import autoscale as au
 from lightstream import cli
 from lightstream.command import build_command, publisher_command
 from lightstream.config import resolve_settings
-from lightstream.runner import run_with_publisher, run_with_reconnect
+from lightstream.runner import PrefixedOut, run_with_publisher, run_with_reconnect
 
 FFMPEG = os.environ.get("LIGHTSTREAM_TEST_FFMPEG")
 KEY = "live_SECRET123"
@@ -82,6 +82,71 @@ class RunWithPublisherTests(unittest.TestCase):
             run_with_publisher(["pub"], KEY, "linux", encoder, popen=popen,
                                out=io.StringIO())
         self.assertTrue(procs[0].terminated)
+
+
+class FailingProc:
+    stderr = iter(())
+
+    def wait(self):
+        return 1
+
+    def terminate(self):
+        pass
+
+
+class PublisherFailureTests(unittest.TestCase):
+    def test_publisher_giving_up_stops_encoder_and_returns_its_code(self):
+        encoder_stop = threading.Event()
+        out = io.StringIO()
+        states = []
+        # real sleeps: backoff is 1s then 2s, so three failures take about 3s
+        code = run_with_publisher(
+            ["pub", KEY], KEY, "linux",
+            lambda: 0 if encoder_stop.wait(10) else 99,
+            popen=lambda argv, **kw: FailingProc(), out=out,
+            on_publisher_status=lambda s, d: states.append(s),
+            max_failures=3, encoder_stop=encoder_stop)
+        self.assertEqual(1, code)
+        self.assertTrue(encoder_stop.is_set())
+        self.assertIn("failed", states)
+        self.assertIn("reconnecting", states)
+        text = out.getvalue()
+        self.assertIn("[publisher]", text)
+        self.assertIn("could not keep the ingest connection", text)
+        self.assertNotIn(KEY, text)
+
+    def test_popen_exception_is_reported_not_silent(self):
+        def popen(argv, **kw):
+            raise OSError("no ffmpeg for " + KEY)
+        encoder_stop = threading.Event()
+        out = io.StringIO()
+        code = run_with_publisher(
+            ["pub"], KEY, "linux", lambda: 0 if encoder_stop.wait(5) else 99,
+            popen=popen, out=out, encoder_stop=encoder_stop)
+        self.assertEqual(1, code)
+        self.assertIn("stopped unexpectedly", out.getvalue())
+        self.assertNotIn(KEY, out.getvalue())
+
+    def test_publisher_is_not_relaunched_after_encoder_returns(self):
+        launches = []
+
+        def popen(argv, **kw):
+            launches.append(argv)
+            return FailingProc()  # as if Ctrl-C ended it too
+
+        def encoder():
+            while not launches:
+                time.sleep(0.01)
+            return 0
+        run_with_publisher(["pub"], KEY, "linux", encoder, popen=popen,
+                           out=io.StringIO())
+        time.sleep(1.3)  # longer than the first backoff
+        self.assertEqual(1, len(launches))
+
+    def test_prefixed_out_keeps_lines_apart(self):
+        buf = io.StringIO()
+        PrefixedOut(buf).write("error one\n")
+        self.assertEqual("\n[publisher] error one\n", buf.getvalue())
 
 
 class ConstantSizeLadderTests(unittest.TestCase):
