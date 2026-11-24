@@ -100,6 +100,10 @@ class HealthTracker:
             if not lagging:
                 self._lag_started = None
 
+    def speed_readings(self):
+        """Recent ffmpeg speed readings (a copy), oldest first."""
+        return list(self._speeds)
+
     def note_reconnect(self):
         self.reconnects += 1
         self._lag_started = None

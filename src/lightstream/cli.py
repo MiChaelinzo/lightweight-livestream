@@ -32,6 +32,7 @@ from .analytics import (analytics_enabled, append_history, history_entry,
                         load_history, build_session_report, reports_dir,
                         write_session_report)
 from .health import HealthTracker
+from .network import detect_congestion, detect_link, link_advice, output_kind
 from .platforms import PLATFORMS, embedded_key_in_url, ingest_url, parse_audio_devices
 from .command import RATE_MODES, publisher_command
 from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_settings,
@@ -560,6 +561,17 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
             if stability:
                 out.write("  network stability: %d/100 (%s)\n"
                           % (stability.score, stability.basis))
+            kind = output_kind(ingest_url(settings.platform, "x", settings.custom_url))
+            sample = sampler.latest
+            for finding in detect_congestion(
+                    tracker.summary(), scale.current_settings.video_kbps, kind,
+                    getattr(sample, "cpu_percent", None)):
+                out.write("  network: %s\n" % finding.message)
+            link = detect_link(os_name)
+            out.write("  link: %s%s (probe UNVERIFIED on real machines)\n"
+                      % (link.kind, ", hotspot hint" if link.hotspot_hint else ""))
+            for line in link_advice(link, tracker.speed_readings(), tracker.reconnects):
+                out.write("  network: %s\n" % line)
             recording_analytics = not record_path and analytics_enabled(
                 args.analytics, file_cfg)
             directory = report_dir or reports_dir(os_name)
