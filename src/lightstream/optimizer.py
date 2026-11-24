@@ -336,3 +336,25 @@ def performance_health(cpu=None, gpu=None, ram=None, network=None,
     score = round(weighted / total)
     band = next(label for minimum, label in HEALTH_BANDS if score >= minimum)
     return HealthScore(score, band, parts, skipped)
+
+
+def session_health(summary, sample=None, stability=None):
+    """HealthScore from live objects: HealthTracker.summary(), a telemetry
+    Sample (or None) and NetworkStability (or None). Dropped-frame percent is
+    left unknown on purpose: the summary has a count, not a frame total."""
+    speed = summary.get("recent_speed")
+    if speed is None:
+        speed = summary.get("avg_speed")
+    return performance_health(
+        cpu=getattr(sample, "cpu_percent", None),
+        gpu=getattr(sample, "gpu_percent", None),
+        ram=getattr(sample, "ram_percent", None),
+        network=None if stability is None else stability.score,
+        encode_speed=speed)
+
+
+def health_line(health, tier=None):
+    """One plain line for the GUI and the end of a CLI session."""
+    text = ("Health: not enough readings yet" if health.score is None
+            else "Health: %d/100 (%s)" % (health.score, health.band))
+    return text if not tier else "%s. PC tier: %s" % (text, tier)

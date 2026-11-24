@@ -26,10 +26,12 @@ from .portable import find_ffmpeg, is_portable
 from .hardware import PROFILES, classify_gpus, detect_gpu_names, get_profile
 from .adaptive import AdaptiveAdvisor
 from .autoscale import AutoScaleSession, AutoScaler, build_ladder, top_step
-from .optimizer import OptimizerContext, bottleneck_of, build_insights, insight_line
+from .optimizer import (OptimizerContext, bottleneck_of, build_insights, health_line,
+                        insight_line, session_health)
 from .telemetry import TelemetrySampler
 from .analytics import (analytics_enabled, append_history, history_entry,
                         load_history, build_session_report, reports_dir,
+                        performance_snapshot, save_performance_snapshot,
                         write_session_report)
 from .health import HealthTracker
 from .network import detect_congestion, detect_link, link_advice, output_kind
@@ -433,7 +435,8 @@ def cmd_support_bundle(args, out, find=find_ffmpeg, probe=probe_encoders,
                        environ=None):
     """Opt-in: runs only when asked. The stream key and addresses are hidden."""
     from .analytics import (BUNDLE_FILENAME, build_support_bundle, load_history,
-                            reports_dir, write_support_bundle)
+                            load_performance_snapshot, reports_dir,
+                            write_support_bundle)
     environ = os.environ if environ is None else environ
     os_name = detect_os()
     cfg_file = config_path(os_name)
@@ -445,7 +448,8 @@ def cmd_support_bundle(args, out, find=find_ffmpeg, probe=probe_encoders,
     bundle = build_support_bundle(
         __version__, os_name, encoders, load_file_config(cfg_file),
         load_history(reports_dir(os_name)),
-        known_secrets=(environ.get("STREAM_KEY"),))
+        known_secrets=(environ.get("STREAM_KEY"),),
+        performance=load_performance_snapshot(reports_dir(os_name)))
     path = args.out or os.path.join(os.path.dirname(cfg_file), BUNDLE_FILENAME)
     write_support_bundle(path, bundle)
     out.write("Wrote %s (no stream key or address inside; check it before sharing)\n"
@@ -648,6 +652,8 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                 out.write("  suggestion (not applied): %s\n" % rec.message)
             for insight in insights:
                 out.write("  insight: %s\n" % insight_line(insight))
+            health = session_health(tracker.summary(), sample, stability)
+            out.write("  %s\n" % health_line(health))
             if recording_analytics:
                 path = write_session_report(
                     directory,
@@ -657,7 +663,10 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                         preset=preset_name,
                         hardware_profile=settings.hardware_profile))
                 append_history(directory, history_entry(
-                    tracker.summary(), bottleneck_of(insights), preset_name))
+                    tracker.summary(), bottleneck_of(insights), preset_name,
+                    health_score=health.score))
+                save_performance_snapshot(directory, performance_snapshot(
+                    tracker.summary(), sample, health))
                 out.write("Session report saved to %s (no stream key inside)\n" % path)
         return code
     except OSError as exc:
@@ -710,3 +719,23 @@ def main(argv=None, out=sys.stdout):
     except (ValueError, FileExistsError) as exc:
         out.write("Error: %s\n" % exc)
         return 2
+    except Exception as exc:  # unexpected: keep a local report, never upload
+        return _report_crash(exc, out)
+
+
+def _report_crash(exc, out, directory=None):
+    """Write crashes/crash-*.json next to the config (this PC only) and say so."""
+    from .analytics import CRASH_DIRNAME, build_crash_report, write_crash_report
+    os_name = detect_os()
+    directory = directory or os.path.join(
+        os.path.dirname(config_path(os_name)), CRASH_DIRNAME)
+    report = build_crash_report(exc, __version__, os_name,
+                                known_secrets=(os.environ.get("STREAM_KEY"),))
+    out.write("Unexpected error: %s: %s\n" % (report["error_type"], report["message"]))
+    try:
+        path = write_crash_report(directory, report)
+        out.write("A crash report was saved to %s. It stays on this PC and is "
+                  "never sent anywhere; check it before sharing.\n" % path)
+    except OSError as err:
+        out.write("Could not save a crash report (%s).\n" % err)
+    return 70

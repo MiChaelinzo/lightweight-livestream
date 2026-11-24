@@ -38,12 +38,13 @@ TEXT_FONT = ("Segoe UI", 11)
 BUTTON_FONT = ("Segoe UI", 20, "bold")
 LOG_FONT = ("Consolas", 10)
 WRAP = 480
-GRAPH_NAMES = ("fps", "bitrate", "cpu")
+GRAPH_NAMES = tuple(name for name, _ in gt.SERIES)
+GRAPH_COLUMNS = 4
 GRAPH_SAMPLES = 60  # one reading per redraw (about 1 Hz): the last minute
 GRAPH_SIZE = (150, 36)
 BANNER_COLORS = {"grey": "#555555", "orange": "#B35900",
                  "green": "#1B7F3B", "red": "#B00020"}
-GRAPH_TITLES = {"fps": "FPS", "bitrate": "Bitrate", "cpu": "CPU %"}
+GRAPH_TITLES = dict(gt.SERIES)
 NO_GUI_MESSAGE = ("The window could not open. This computer has no screen "
                   "for it (or Python has no 'tkinter').\n"
                   "You can still use the command line: lightstream start")
@@ -62,7 +63,7 @@ class StreamWindow:
         self.ui_file = gt.ui_prefs_path(self.prefs_file)
         look = gt.load_ui_prefs(self.ui_file)
         self.theme, self.compact = look["theme"], look["compact"]
-        self.graph_data = {name: gt.RingBuffer(GRAPH_SAMPLES) for name in GRAPH_NAMES}
+        self.graph_data = gt.PerformanceBuffers(GRAPH_SAMPLES)
         self.graph_canvases = {}
         self.redraw_gate = gt.RedrawGate(1.0)
         root.title("Lightstream" + (" (portable)" if is_portable() else ""))
@@ -86,6 +87,14 @@ class StreamWindow:
             gc.STRENGTH_CHOICES,
             saved.get("preset") or gc.suggest_strength(os.cpu_count())))
         self.record = tk.BooleanVar(value=bool(saved.get("record")))
+        self.record_format = tk.StringVar(value=gc.label_for(
+            gc.RECORD_FORMAT_CHOICES, saved.get("record_format")))
+        self.rate_mode = tk.StringVar(value=gc.label_for(
+            gc.RATE_MODE_CHOICES, saved.get("rate_mode")))
+        self.potato = tk.StringVar(value=gc.label_for(
+            gc.POTATO_CHOICES, saved.get("potato")))
+        self.potato_grayscale = tk.BooleanVar(value=bool(saved.get("potato_grayscale")))
+        self.potato_skip_static = tk.BooleanVar(value=bool(saved.get("potato_skip_static")))
         self.fps = tk.StringVar(value=str(saved.get("fps") or ""))
         self.bitrate = tk.StringVar(value=str(saved.get("bitrate") or ""))
         self.window_title = tk.StringVar(value=saved.get("window") or "")
@@ -206,6 +215,12 @@ class StreamWindow:
             value.grid(row=1, column=index, padx=6)
             self.telemetry_values.append(value)
         self.telemetry = TelemetrySampler()
+        self.health_label = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
+        self.health_label.pack(fill="x")
+        self.compare_label = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
+        ttk.Button(frame, text="Compare last two saved sessions",
+                   command=self.on_compare).pack(anchor="w")
+        self.compare_label.pack(fill="x")
         self.advice = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
         self.advice.pack(fill="x")
         self.rec_frame = ttk.LabelFrame(
@@ -221,10 +236,12 @@ class StreamWindow:
         graphs.pack(fill="x", pady=6)
         try:
             for index, name in enumerate(GRAPH_NAMES):
-                ttk.Label(graphs, text=GRAPH_TITLES[name]).grid(row=0, column=index, padx=6)
+                row, column = divmod(index, GRAPH_COLUMNS)
+                ttk.Label(graphs, text=GRAPH_TITLES[name]).grid(
+                    row=row * 2, column=column, padx=6)
                 canvas = tk.Canvas(graphs, width=GRAPH_SIZE[0], height=GRAPH_SIZE[1],
                                    highlightthickness=1, takefocus=False)
-                canvas.grid(row=1, column=index, padx=6)
+                canvas.grid(row=row * 2 + 1, column=column, padx=6)
                 self.graph_canvases[name] = canvas
         except tk.TclError:
             self.graph_canvases = {}  # numbers on the cards still work
@@ -237,16 +254,14 @@ class StreamWindow:
 
     def _record_graphs(self, summary, sample):
         """Add one reading per graph. Called at most once per second."""
-        self.graph_data["fps"].append(summary.get("recent_fps"))
-        self.graph_data["bitrate"].append(summary.get("recent_bitrate_kbps"))
-        self.graph_data["cpu"].append(sample.cpu_percent if sample else None)
+        self.graph_data.record(summary, sample)
 
     def _draw_graphs(self):
         colors = gt.palette(self.theme)
         width, height = GRAPH_SIZE
         for name, canvas in self.graph_canvases.items():
             canvas.delete("all")
-            values = gt.downsample(self.graph_data[name].values(), width // 2)
+            values = gt.downsample(self.graph_data.values(name), width // 2)
             coords = gt.sparkline_points(values, width, height)
             if coords:
                 canvas.create_line(*coords, fill=colors["graph_line"], width=2)
@@ -260,6 +275,11 @@ class StreamWindow:
             style = ttk.Style(self.root)
             style.configure(".", background=colors["background"],
                             foreground=colors["foreground"])
+            card = gt.card_style(self.theme, 1)
+            # Only the border is themed: child labels keep the window background,
+            # so a filled card color would leave patches (UNVERIFIED on screen).
+            style.configure("TLabelframe", bordercolor=card["bordercolor"],
+                            borderwidth=card["borderwidth"], relief=card["relief"])
             style.configure("TLabelframe.Label", foreground=colors["foreground"])
             style.configure("TCheckbutton", background=colors["background"])
             style.configure("TRadiobutton", background=colors["background"])
@@ -373,6 +393,21 @@ class StreamWindow:
         ttk.Checkbutton(frame, text="Record a copy to a file while streaming",
                         variable=self.record).pack(anchor="w")
         self._label(frame, "Files go to the recordings folder in the app data folder.")
+        self._combo(frame, "File type", self.record_format,
+                    [l for l, _ in gc.RECORD_FORMAT_CHOICES])
+        self._combo(frame, "Bitrate mode", self.rate_mode,
+                    [l for l, _ in gc.RATE_MODE_CHOICES])
+        self._label(frame, "Potato Stream: very low CPU use for old PCs. Replaces "
+                    "size, frame rate and quality. Grayscale and skipping still "
+                    "frames are options; neither is guaranteed to save CPU.")
+        self._combo(frame, "Potato Stream", self.potato,
+                    [l for l, _ in gc.POTATO_CHOICES])
+        ttk.Checkbutton(frame, text="Grayscale picture", variable=self.potato_grayscale
+                        ).pack(anchor="w")
+        ttk.Checkbutton(frame, text="Skip near-identical frames",
+                        variable=self.potato_skip_static).pack(anchor="w")
+        self._label(frame, "Keeping one connection alive across encoder restarts "
+                    "(persistent ingest) is command line only: --persistent-ingest.")
 
     def _build_advanced(self, frame):
         for label, var in (("Frames per second (empty = automatic)", self.fps),
@@ -400,6 +435,9 @@ class StreamWindow:
                         variable=self.analytics).pack(anchor="w")
 
     # -- actions --------------------------------------------------------------
+    def on_compare(self):
+        self.compare_label.config(text="\n".join(self.controller.comparison_lines()))
+
     def toggle_key(self):
         self.key_entry.config(show="" if self.show_key.get() else "*")
 
@@ -416,6 +454,11 @@ class StreamWindow:
             "mute": self.mute.get(),
             "scene": "" if self.scene.get() == gc.NO_SCENE_LABEL else self.scene.get(),
             "record": self.record.get(),
+            "record_format": gc.value_for(gc.RECORD_FORMAT_CHOICES, self.record_format.get()),
+            "rate_mode": gc.value_for(gc.RATE_MODE_CHOICES, self.rate_mode.get()),
+            "potato": gc.value_for(gc.POTATO_CHOICES, self.potato.get()),
+            "potato_grayscale": self.potato_grayscale.get(),
+            "potato_skip_static": self.potato_skip_static.get(),
             "hardware": gp.hardware_pref(self.hardware.get()),
             "noise": self.noise,
             "analytics": self.analytics.get(),
@@ -576,6 +619,7 @@ class StreamWindow:
             text=gt.with_accelerator(gp.emergency_button_label(
                 self.controller.emergency_active()), "emergency"))
         self._show_recommendations(self.inbox.visible(self.controller.recommendations()))
+        self.health_label.config(text=self.controller.health_line() if running else "")
         if self.graph_canvases and self.redraw_gate.ready(time.monotonic()):
             self._record_graphs(self.controller.health_summary(),
                                 self.telemetry.latest)

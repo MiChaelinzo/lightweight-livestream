@@ -337,7 +337,7 @@ class StudioFeatureTests(unittest.TestCase):
         c = make_controller(fake_runner_factory(calls))
         with tempfile.TemporaryDirectory() as d:
             with mock.patch.object(gc, "recording_path",
-                                   lambda: os.path.join(d, "rec", "a.mkv")):
+                                   lambda **_kw: os.path.join(d, "rec", "a.mkv")):
                 c.start(dict(PREFS, record=True), SECRET)
                 c._thread.join(0.3)
                 c.stop()

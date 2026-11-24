@@ -25,6 +25,7 @@ PALETTES = {
         "focus": "#0B57D0", "graph_line": "#0B57D0", "graph_back": "#FFFFFF",
         "start_bg": "#1B7F3B", "stop_bg": "#B00020", "emergency_bg": "#8F4600",
         "button_fg": "#FFFFFF",
+        "card": "#FFFFFF", "card_border": "#B5B5B5",
     },
     THEME_DARK: {
         "background": "#1E1E1E", "foreground": "#EDEDED",
@@ -32,6 +33,7 @@ PALETTES = {
         "focus": "#8AB4F8", "graph_line": "#8AB4F8", "graph_back": "#2B2B2B",
         "start_bg": "#1B7F3B", "stop_bg": "#B00020", "emergency_bg": "#8F4600",
         "button_fg": "#FFFFFF",
+        "card": "#363636", "card_border": "#5A5A5A",
     },
 }
 
@@ -42,7 +44,25 @@ TEXT_PAIRS = (
     ("button_fg", "start_bg"), ("button_fg", "stop_bg"),
     ("button_fg", "emergency_bg"),
     ("focus", "background"), ("graph_line", "graph_back"),
+    ("foreground", "card"), ("muted", "card"),
 )
+
+# Layered cards. ttk cannot blur or make anything translucent, so this is NOT
+# glassmorphism: it is a native equivalent made of a lighter card color, a soft
+# border and a thicker bottom edge for a hint of elevation. True glass exists
+# only on the web page (web/style.css). How it looks on screen is UNVERIFIED.
+ELEVATION_BORDER_WIDTH = {0: 0, 1: 1, 2: 2}
+
+
+def card_style(theme, level=1):
+    """Tk option values for a card at elevation 0 (flat), 1 or 2 (raised)."""
+    if level not in ELEVATION_BORDER_WIDTH:
+        raise ValueError("elevation must be one of %s, got %r"
+                         % (sorted(ELEVATION_BORDER_WIDTH), level))
+    colors = palette(theme)
+    return {"background": colors["card"], "bordercolor": colors["card_border"],
+            "borderwidth": ELEVATION_BORDER_WIDTH[level],
+            "relief": "flat" if level == 0 else "solid"}
 
 SPACING = {"small": 4, "medium": 8, "large": 16}
 FONT_FAMILY = "Segoe UI"
@@ -191,6 +211,45 @@ def sparkline_points(values, width, height, pad=2):
         y = pad + inner_h * (1 - fraction)
         coords.extend((round(x, 1), round(y, 1)))
     return coords
+
+
+# Performance panel series, in display order: (name, title).
+SERIES = (("fps", "FPS"), ("bitrate", "Bitrate"), ("speed", "Speed"),
+          ("drops", "Drops"), ("ram", "RAM %"), ("cpu", "CPU %"), ("gpu", "GPU %"))
+
+
+class PerformanceBuffers:
+    """One RingBuffer per series. record() takes HealthTracker.summary() and a
+    telemetry.Sample (or None) and appends one reading to each.
+
+    "drops" is dropped frames since the previous reading (not the running
+    total), so the graph shows when drops happen. Unknown values stay None.
+    """
+
+    def __init__(self, capacity=60):
+        self.buffers = {name: RingBuffer(capacity) for name, _ in SERIES}
+        self._last_dropped = None
+
+    def record(self, summary, sample=None):
+        total = summary.get("dropped_frames")
+        drops = None
+        if total is not None:
+            drops = 0 if self._last_dropped is None else max(0, total - self._last_dropped)
+            self._last_dropped = total
+        readings = {
+            "fps": summary.get("recent_fps"),
+            "bitrate": summary.get("recent_bitrate_kbps"),
+            "speed": summary.get("recent_speed"),
+            "drops": drops,
+            "ram": getattr(sample, "ram_percent", None),
+            "cpu": getattr(sample, "cpu_percent", None),
+            "gpu": getattr(sample, "gpu_percent", None),
+        }
+        for name, value in readings.items():
+            self.buffers[name].append(value)
+
+    def values(self, name):
+        return self.buffers[name].values()
 
 
 class RedrawGate:
