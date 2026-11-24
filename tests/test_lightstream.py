@@ -282,6 +282,10 @@ class ConfigTests(unittest.TestCase):
     def test_key_from_env_then_prompt(self):
         self.assertEqual(KEY, resolve_key({"STREAM_KEY": " %s " % KEY}, None))
         self.assertEqual("typed", resolve_key({}, lambda _: "typed"))
+        def not_called():
+            raise AssertionError("credential store asked although STREAM_KEY is set")
+        self.assertEqual(KEY, resolve_key({"STREAM_KEY": KEY}, None, saved=not_called))
+        self.assertEqual("stored", resolve_key({}, None, saved=lambda: " stored "))
         with self.assertRaises(ValueError):
             resolve_key({}, lambda _: "  ")
 

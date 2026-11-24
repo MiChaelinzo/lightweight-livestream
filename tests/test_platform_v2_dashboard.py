@@ -171,6 +171,17 @@ class SupportBundleSnapshotTests(unittest.TestCase):
             self.assertEqual(None, analytics.load_performance_snapshot(tmp + "/missing"))
 
 
+class RedactConfigNameTests(unittest.TestCase):
+    def test_tuning_values_kept_and_secret_names_hidden(self):
+        cfg = {"keyint_seconds": 2, "passphrase": "hunter2", "stream_key": "abc",
+               "streamKey": "abc", "api_token": "t", "preset": "light"}
+        out = analytics.redact_config(cfg)
+        self.assertEqual(2, out["keyint_seconds"])
+        self.assertEqual("light", out["preset"])
+        for name in ("passphrase", "stream_key", "streamKey", "api_token"):
+            self.assertEqual(analytics.REDACTED, out[name])
+
+
 class OptInTests(unittest.TestCase):
     def test_analytics_is_off_by_default(self):
         self.assertFalse(analytics.analytics_enabled(False, {}))
@@ -210,6 +221,20 @@ class CrashReportTests(unittest.TestCase):
             folder = os.path.join(tmp, analytics.CRASH_DIRNAME)
             self.assertEqual(1, len(os.listdir(folder)))
             self.assertIn("never sent anywhere", buf.getvalue())
+
+    def test_cli_crash_report_scrubs_key_typed_at_prompt(self):
+        def boom(args, out, **kwargs):
+            kwargs["secret_sink"].append("promptkey123")
+            raise RuntimeError("bad promptkey123 value")
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(cli, "cmd_start", side_effect=boom), \
+                    mock.patch.object(cli, "config_path",
+                                      return_value=os.path.join(tmp, "config.json")):
+                cli.main(["start", "--dry-run"], io.StringIO())
+            folder = os.path.join(tmp, analytics.CRASH_DIRNAME)
+            name = os.listdir(folder)[0]
+            with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                self.assertNotIn("promptkey123", fh.read())
 
     def test_no_network_imports_in_analytics(self):
         with open(analytics.__file__, encoding="utf-8") as fh:

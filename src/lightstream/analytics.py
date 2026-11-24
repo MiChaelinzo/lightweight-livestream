@@ -175,9 +175,16 @@ BUNDLE_VERSION = 1
 BUNDLE_FILENAME = "support-bundle.json"
 REDACTED = "****"
 # Config keys whose values are dropped outright. Any key containing one of the
-# SECRET_NAME_PARTS is dropped too; any string holding "://" is a stream address.
+# SECRET_NAME_PARTS is dropped too (matched against the end of each word of the
+# name, so "stream_key" is hidden and "keyint_seconds" is not); any string
+# holding "://" is a stream address.
 ADDRESS_KEYS = ("url", "backup_url")
-SECRET_NAME_PARTS = ("key", "token", "secret", "password")
+SECRET_NAME_PARTS = ("key", "token", "secret", "password", "passphrase")
+
+
+def _secret_named(name):
+    words = re.split(r"[^a-z0-9]+", str(name).lower())
+    return any(word.endswith(part) for word in words for part in SECRET_NAME_PARTS)
 
 
 def redact_config(cfg):
@@ -189,9 +196,8 @@ def redact_config(cfg):
     """
     out = {}
     for name, value in sorted(cfg.items()):
-        lowered = str(name).lower()
         url_shaped = isinstance(value, str) and "://" in value
-        secret_named = any(part in lowered for part in SECRET_NAME_PARTS)
+        secret_named = _secret_named(name)
         if (name in ADDRESS_KEYS or secret_named or url_shaped) and value not in (None, ""):
             out[name] = REDACTED
         else:

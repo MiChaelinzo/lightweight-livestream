@@ -458,7 +458,9 @@ def cmd_support_bundle(args, out, find=find_ffmpeg, probe=probe_encoders,
 
 
 def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
-              report_dir=None):
+              report_dir=None, secret_sink=None):
+    """secret_sink (a list) receives the resolved stream key so a crash report
+    can scrub it even when it came from the prompt or the credential store."""
     os_name = detect_os()
     file_cfg = load_file_config(config_path(os_name))
     hardware = resolve_hardware(args.hardware, file_cfg, os_name, detect)
@@ -507,7 +509,9 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         out.write("Recording a copy to %s (later attempts add -2, -3, ...)\n"
                   % settings.record_to)
     key = "test" if record_path else resolve_key(
-        os.environ, getpass.getpass, saved=_saved_key(os_name))
+        os.environ, getpass.getpass, saved=lambda: _saved_key(os_name))
+    if secret_sink is not None:
+        secret_sink.append(key)
     secrets = key
     backup = bool(settings.backup_url) and not record_path
     if settings.backup_url and record_path:
@@ -676,6 +680,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
 
 def main(argv=None, out=sys.stdout):
     args = build_parser().parse_args(argv)
+    secret_sink = []
     try:
         if args.command == "doctor":
             return cmd_doctor(out)
@@ -715,22 +720,22 @@ def main(argv=None, out=sys.stdout):
                 return 1
             out.write("Wrote %s (the stream key is never stored here)\n" % path)
             return 0
-        return cmd_start(args, out)
+        return cmd_start(args, out, secret_sink=secret_sink)
     except (ValueError, FileExistsError) as exc:
         out.write("Error: %s\n" % exc)
         return 2
     except Exception as exc:  # unexpected: keep a local report, never upload
-        return _report_crash(exc, out)
+        return _report_crash(exc, out, secrets=secret_sink)
 
 
-def _report_crash(exc, out, directory=None):
+def _report_crash(exc, out, directory=None, secrets=()):
     """Write crashes/crash-*.json next to the config (this PC only) and say so."""
     from .analytics import CRASH_DIRNAME, build_crash_report, write_crash_report
     os_name = detect_os()
     directory = directory or os.path.join(
         os.path.dirname(config_path(os_name)), CRASH_DIRNAME)
     report = build_crash_report(exc, __version__, os_name,
-                                known_secrets=(os.environ.get("STREAM_KEY"),))
+                                known_secrets=(os.environ.get("STREAM_KEY"),) + tuple(secrets))
     out.write("Unexpected error: %s: %s\n" % (report["error_type"], report["message"]))
     try:
         path = write_crash_report(directory, report)
