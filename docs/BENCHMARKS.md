@@ -284,3 +284,29 @@ The 0.12 changes do not touch the encode settings of the four existing profiles,
 | Power User | 12 | 32768 | 10.0x |
 
 Real run (VERIFIED on this machine only): `lightstream bench --ffmpeg ffmpeg-7.0.2-static`, 10 stream-seconds per encode, Linux x86_64 cloud sandbox, Intel Xeon Platinum 8488C (model string from `/proc/cpuinfo`), 8 threads, 31560 MiB RAM, Python 3.11. Uncapped software balanced encode ran at 14.4x real time, 0.26 CPU-seconds per stream-second. Result: tier **Creator** (stopped there because 8 threads is below the 12 needed for Power User). This is a shared virtual machine, a single run, no game running, and says nothing about a real laptop. The raw JSON is written to `reports/bench-DATE.json` and not committed.
+
+## v0.13.0 against v0.12.0 (polish release)
+
+Method: `python -c "import lightstream.cli"` and `python -c "import lightstream.gui"` in a fresh interpreter, wall time via `time.perf_counter` around `subprocess.run`, median of 21 runs after one warm-up run (so `.pyc` files exist), next to `python -c pass`. RSS is `VmRSS` from `/proc/self/status` read after the import in a separate child. Before is commit `0969294` (checked out as a temporary git worktree, removed afterwards), after is the 0.13.0 tree. The whole comparison was run twice, alternating base and head. Same Linux x86_64 VM, tkinter available, no display needed for the import. These numbers are about the cost of importing the code; they do not measure a running window.
+
+| Metric | Before run 1 | After run 1 | Before run 2 | After run 2 |
+|---|---|---|---|---|
+| bare interpreter median (ms) | 10.3 | 10.3 | 10.4 | 10.5 |
+| `import lightstream.cli` median (ms) | 74.3 | 73.9 | 74.7 | 74.8 |
+| `import lightstream.gui` median (ms) | 85.6 | 86.3 | 87.2 | 87.0 |
+| RSS after `import lightstream.cli` (MiB) | 22.68 | 22.44 | 22.43 | 22.26 |
+| RSS after `import lightstream.gui` (MiB) | 27.48 | 27.60 | 27.64 | 27.65 |
+
+Reading: no measurable change in import time or memory. The differences between runs (up to 1.6 ms, 0.25 MiB) are as large as the differences between trees, so the GUI polish costs nothing at import that this method can see. Window creation time and memory of a running GUI were not measured.
+
+A first attempt used `PYTHONDONTWRITEBYTECODE=1` with no warm-up, which made the base tree look 40 ms slower on `import lightstream.cli` (about 112 ms against 75 ms) only because it had no cached `.pyc` files while the head tree did. That run is discarded as a method error; the table above is the fair comparison.
+
+Web page weight (`tools/page_weight.py`):
+
+| Item | Before (0.12.0) | After (0.13.0) |
+|---|---|---|
+| Text assets, bytes | 55,632 | 55,265 |
+| Text assets, gzip bytes | 20,588 | 20,655 |
+| Images, bytes | none (no files in `web/img/`) | 84,984 (three `.webp` files in `web/img/`) |
+
+The text assets are 367 bytes smaller raw and 67 bytes larger gzipped. The three real GUI screenshots add 84,984 bytes, loaded lazily. Before, `web/img/` did not exist. Load time was not measured.

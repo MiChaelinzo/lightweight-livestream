@@ -1,12 +1,19 @@
 # Changelog
 
-## 0.12.0 (unreleased)
+## 0.13.0
 
 - Fix: `--test-local` no longer adds its constant placeholder key ("test") to the crash report scrub list, so ordinary text containing "test" is no longer masked. The real key is still scrubbed in normal mode.
 - Fix: with `--persistent-ingest`, a "reconnecting" report from the publisher thread that arrives after shutdown began (Ctrl-C also reaches the publisher's ffmpeg) is dropped, so it no longer adds a spurious reconnect to the session report.
 - New: uncaught errors in GUI callbacks write a local, redacted `crashes/crash-*.json` (same module and rules as the CLI, current stream key and addresses hidden) and show a short message in the status line instead of a console traceback. Logic is in `gui_controller.report_gui_crash` (VERIFIED by unit tests); the Tk hook itself (`root.report_callback_exception`) is UNVERIFIED on a real display.
 - Test: `tools/ui_snapshots.py web` makes lazy images eager and waits for them before the full-page capture, and reports images that fail to load.
 - Style: desktop window polish. The page area scrolls and the first window size fits the screen (1280x720 and 1366x768 show every page and both sidebar buttons). Clear active sidebar item, cards with readable captions and values, accent buttons, START/STOP/EMERGENCY colors from palette tokens with readable disabled states, graph placeholder ("Waiting for data"), installed-font fallback (no Segoe UI needed), name shown as LightStream. No behavior or saved setting changed. Verified by unit tests (helpers, WCAG AA pairs) and Xvfb screenshots on Linux; Windows and macOS look is UNVERIFIED.
+- New: `tools/ui_snapshots.py` (dev only) renders the GUI under Xvfb and the web page in headless Chromium; the stack is described in `docs/DEV-RENDERING.md`.
+- Style: web showcase polish. The hero glass panel no longer covers the 3D shape, the feature grid is 4, 2 or 1 columns by width, and the page uses real GUI screenshots (`web/img/*.webp`, 84,984 bytes in total) instead of illustrative mockups. Text assets: 55,632 B (20,588 gzip) to 55,265 B (20,655 gzip). The service worker cache name was bumped.
+- Docs: README shows real screenshots and the verification table moves GUI rendering on Linux/Xvfb and web rendering in headless Chromium to VERIFIED; Windows and macOS looks stay UNVERIFIED. Measured before and after in `docs/BENCHMARKS.md`.
+- Version bumped to 0.13.0 (`pyproject.toml`, `__init__.py`, README artifact names, RELEASING example).
+
+## 0.12.0 (unreleased)
+
 - Fix: recording while streaming now works with ffmpeg 7.0.2. The tee output maps video and audio, sets `-flags +global_header`, and uses `onfail=abort` on the live slot so ffmpeg exits when the ingest dies (the reconnect loop fires) while the file slot uses `onfail=ignore`. Behavior change: the argv for `--record` differs from 0.11. VERIFIED with a real loopback RTMP listener killed mid-stream (the recording is readable, the runner continues in `name-2.mkv`); real platform disconnects are UNVERIFIED.
 - Fix: `bench` tiers computed from partial data are marked `partial` (an upper bound) and the CLI says so; the docs no longer say "never guessed".
 - New: recording by extension: `.mkv` (default, Matroska) or `.mp4` (fragmented MP4, readable after a crash). `.webm` is refused with a reason (it needs a second VP9 encode).
