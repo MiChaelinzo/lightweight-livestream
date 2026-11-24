@@ -65,6 +65,24 @@ CAVEAT = ("These numbers come from one machine. They measure software or detecte
           "counts), not a game FPS measurement. Do not treat them as typical for "
           "other hardware.")
 
+# Benchmark tiers. A machine earns the HIGHEST tier whose three minimums it
+# meets (CPU threads, RAM in MiB, and ffmpeg speed of the uncapped software
+# balanced encode, as a multiple of real time). Low-End has no minimums, so it
+# is the floor. A metric that could not be measured is skipped (and listed),
+# never guessed. The numbers are plain heuristics chosen for this project, not
+# vendor or industry standards; they only rank results from this harness.
+TIER_LOW_END = "Low-End"
+TIERS = (
+    # (name, min cpu threads, min RAM MiB, min speed x)
+    (TIER_LOW_END, 0, 0, 0.0),
+    ("Balanced", 4, 4096, 2.0),
+    ("Performance", 6, 8192, 4.0),
+    ("Creator", 8, 16384, 6.0),
+    ("Power User", 12, 32768, 10.0),
+)
+TIER_BASIS = ("highest tier whose CPU threads, RAM and uncapped software "
+              "encode speed minimums are all met; unmeasured metrics skipped")
+
 # Child process code. Reads its own RSS from /proc (Linux). Kept as plain text
 # so it also runs against an older source tree (--compare-src).
 RSS_PROBE = (
@@ -419,6 +437,55 @@ def measure_thread_comparison(ffmpeg, seconds, cpus, spawn=spawn_encode):
             "runs": runs}
 
 
+# -- tiers ------------------------------------------------------------------
+
+def _value(entry):
+    """The number inside a metric dict, or None when unavailable."""
+    if isinstance(entry, dict) and entry.get("status") == "measured":
+        return entry.get("value")
+    return None
+
+
+def encode_speed_of(report):
+    """Speed (x real time) of the uncapped software balanced run, or None."""
+    encode = report.get("encode") or {}
+    proxy = encode.get("gaming_first_proxy") or {}
+    for run in proxy.get("runs", ()):
+        if run.get("label") == "uncapped" and run.get("ok"):
+            return _value(run.get("ffmpeg_speed"))
+    return None
+
+
+def compute_tier(cpu_count, ram_mb, speed):
+    """Tier dict from three measured numbers (any may be None). Pure.
+
+    Boundaries are inclusive: a value equal to a minimum meets it.
+    """
+    measured = {"cpu_count": cpu_count, "ram_mb": ram_mb, "encode_speed": speed}
+    skipped = [name for name, v in measured.items() if v is None]
+    earned = TIERS[0][0]
+    for name, min_cpu, min_ram, min_speed in TIERS[1:]:
+        checks = ((cpu_count, min_cpu), (ram_mb, min_ram), (speed, min_speed))
+        if all(v is None or v >= m for v, m in checks):
+            if all(v is None for v, _ in checks):
+                break  # nothing measured: stay at the floor
+            earned = name
+        else:
+            break
+    return {"name": earned, "basis": TIER_BASIS, "skipped_metrics": skipped,
+            "inputs": measured}
+
+
+def tier_of_report(report):
+    host = report.get("host") or {}
+    return compute_tier(_value(host.get("cpu_count")), _value(host.get("ram_mb")),
+                        encode_speed_of(report))
+
+
+def tier_table_lines():
+    return ["  %-11s cpu>=%-3d ram>=%-6d MiB speed>=%.1fx" % t for t in TIERS[1:]]
+
+
 # -- report -----------------------------------------------------------------
 
 def build_report(ffmpeg=None, seconds=DEFAULT_ENCODE_SECONDS, ticks=DEFAULT_TICKS,
@@ -445,6 +512,7 @@ def build_report(ffmpeg=None, seconds=DEFAULT_ENCODE_SECONDS, ticks=DEFAULT_TICK
     else:
         report["encode"] = {"status": "unavailable",
                             "reason": "ffmpeg not found; pass --ffmpeg PATH"}
+    report["tier"] = tier_of_report(report)
     return report
 
 
