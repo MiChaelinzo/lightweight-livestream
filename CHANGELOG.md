@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased (v0.15)
+## 0.15.0 (unreleased)
+
+- New: `lightstream audio-check FILE` reports clipping and loudness (LUFS) of an audio or video file using ffmpeg `volumedetect` and `ebur128`. Pure parser in `audio_check.py`. VERIFIED by unit tests and a real-ffmpeg test (clipped sine detected, -12 dB sine not).
+- New: audio profiles `teaching` and `meeting` (dynaudnorm auto-gain; meeting adds stronger denoise) and `audio_profile_chain(..., autogain=True)`. Echo removal is not available in FFmpeg and is documented as such. No existing chain changed, so the golden argv files were not regenerated.
+- New: optimizer rules `reduce_input_gain`, `high_latency` and upload-based `lower_bitrate` (only when their input is passed in); `Insight.expected_gain` is filled only from local history with at least 3 sessions per side and is always shown with its session counts n; `AIStreamingAssistant` facade over `build_insights`; optional `audio` factor in the health score.
+- Dev: `tools/spikes.py --spike e` measures the CPU cost of every audio chain (numbers in `docs/BENCHMARKS.md`).
+- Also in this release so far:
 
 - New: six more GUI themes next to light and dark: Midnight, Cyberpunk, Aurora, Synthwave, Minimal Dark and OLED True Black. Every palette passes the WCAG AA text (4.5:1) and non-text (3:1) tests (VERIFIED, unit tests). A Theme picker (combobox) in the sidebar replaces the Dark / light button; Ctrl+Shift+D now cycles through all themes. `ui.json` accepts the new theme names. Rendered at 1366x768 under Xvfb and inspected by eye for dark, midnight, cyberpunk, aurora, synthwave, minimal_dark and oled: PARTIALLY VERIFIED (Linux fonts).
 - New: "Reduce motion" setting (saved in `ui.json` as `reduce_motion`). Motion is also off while a Potato Stream choice or Emergency mode is active (`gui_theme.animation_enabled`). The only animation is easing of the Speed, FPS and Bitrate health card values (`gui_theme.ease_step`); the tick stops when the values settle.
