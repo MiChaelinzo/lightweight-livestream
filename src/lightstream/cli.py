@@ -21,7 +21,7 @@ from .encoders import (HARDWARE_ORDER, SOFTWARE_ENCODER, choose_encoder,
                        choose_working_encoder, probe_encoders)
 from .bench import (DEFAULT_ENCODE_SECONDS, DEFAULT_IMPORT_RUNS, DEFAULT_TICKS,
                     build_report, report_path, write_report)
-from .portable import find_ffmpeg, is_portable
+from .portable import find_ffmpeg, is_portable, recordings_dir
 from .hardware import PROFILES, classify_gpus, detect_gpu_names, get_profile
 from .adaptive import AdaptiveAdvisor
 from .autoscale import AutoScaleSession, AutoScaler, build_ladder, top_step
@@ -85,6 +85,26 @@ def build_parser():
                                             "clipping and loudness (needs ffmpeg)")
     ac.add_argument("file", help="audio or video file to analyze")
     ac.add_argument("--ffmpeg", help="path to ffmpeg (default: search as usual)")
+    hl = sub.add_parser("highlights", help="HEURISTIC: find loud, busy or fast-changing "
+                                           "moments in a recording and cut clips (needs ffmpeg)")
+    hl.add_argument("file", help="recording to analyze")
+    hl.add_argument("--top", type=int, default=5, help="number of moments (default 5)")
+    hl.add_argument("--length", type=float, default=30.0,
+                    help="clip length in seconds (default 30)")
+    hl.add_argument("--min-gap", type=float, default=20.0,
+                    help="least seconds between two moments (default 20)")
+    hl.add_argument("--out", help="folder for clips and the JSON report "
+                                  "(default: NAME-highlights next to the file)")
+    hl.add_argument("--no-clips", action="store_true", help="write the report only")
+    hl.add_argument("--vertical", action="store_true",
+                    help="re-encode clips to 1080x1920 (9:16, centre crop) for Shorts/TikTok")
+    hl.add_argument("--blur-background", action="store_true",
+                    help="with --vertical: show the whole frame over a blurred copy")
+    hl.add_argument("--ffmpeg", help="path to ffmpeg (default: search as usual)")
+    db = sub.add_parser("dashboard", help="one-page summary of sessions, recordings, "
+                                          "clips and free disk space")
+    db.add_argument("--recordings", help="recordings folder (default: the app "
+                                         "recordings folder in portable mode, else here)")
     sb = sub.add_parser("support-bundle",
                         help="write a redacted JSON file to attach to a bug report")
     sb.add_argument("--out", help="file to write (default: support-bundle.json "
@@ -370,6 +390,36 @@ def cmd_audio_check(args, out, find=find_ffmpeg, analyze=None):
     analyze = analyze or audio_check.analyze_file
     check = analyze(args.ffmpeg or find(), args.file)
     for line in audio_check.check_lines(check):
+        out.write(line + "\n")
+    return 0
+
+
+def cmd_highlights(args, out, find=find_ffmpeg, run=None):
+    from . import highlights
+    if args.blur_background and not args.vertical:
+        raise ValueError("--blur-background needs --vertical")
+    kwargs = {"run": run} if run else {}
+    report, path = highlights.find_highlights(
+        args.ffmpeg or find(), args.file, top=args.top, length=args.length,
+        min_gap=args.min_gap, out_dir=args.out, cut=not args.no_clips,
+        vertical=args.vertical, blur=args.blur_background, **kwargs)
+    for line in highlights.report_lines(report, path):
+        out.write(line + "\n")
+    return 0
+
+
+def cmd_dashboard(args, out, history_dir=None, disk_usage=shutil.disk_usage):
+    from . import highlights
+    folder = args.recordings or (recordings_dir() if is_portable() else os.getcwd())
+    try:
+        usage = disk_usage(folder)
+        disk = (usage.free, usage.total)
+    except OSError:
+        disk = None
+    history = load_history(history_dir or reports_dir(detect_os()))
+    for line in highlights.dashboard_lines(
+            history, highlights.list_media(folder), highlights.list_clips(folder),
+            folder, disk):
         out.write(line + "\n")
     return 0
 
@@ -710,6 +760,10 @@ def main(argv=None, out=sys.stdout):
             return cmd_readiness(args, out)
         if args.command == "audio-check":
             return cmd_audio_check(args, out)
+        if args.command == "highlights":
+            return cmd_highlights(args, out)
+        if args.command == "dashboard":
+            return cmd_dashboard(args, out)
         if args.command == "bench":
             return cmd_bench(args, out)
         if args.command == "optimize":
