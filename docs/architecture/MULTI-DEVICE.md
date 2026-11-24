@@ -37,7 +37,7 @@ ttk cannot blur or draw translucent widgets, so true glassmorphism is not possib
 
 ## 3. Multi-device viewing (design only)
 
-`viewer_models.py` holds typed models (`ViewerEndpoint`, `RelayConfig`) and validators. Nothing calls them from the streaming path and nothing listens on a port.
+This section is design only. No viewer or relay code exists and nothing listens on a port. Typed models were removed in the 0.12 review because nothing called them; add them back with the first real viewer feature.
 
 | Idea | Status | Notes |
 | --- | --- | --- |

@@ -149,7 +149,7 @@ Covered in [MULTI-DEVICE.md](architecture/MULTI-DEVICE.md#5-moonlight-parsec-and
 
 Ordered by value. None were done in 0.12 because each needs its own tested change.
 
-1. `viewer_models.py` (61 lines): typed models and validators, imported only by `tests/test_platform_v2_dashboard.py`. It is dead code in the product. Either wire it to a real viewer or relay feature when one is built, or delete it with its tests. Keeping it for a hypothetical need conflicts with the technical debt policy. Recommendation: delete unless a viewer feature starts in 0.13.
+1. `viewer_models.py` was dead code and was deleted with its tests in the 0.12 review. Add typed viewer models back only with a real viewer feature.
 2. Persistent ingest is wired only in the CLI (`run_with_publisher`). The GUI controller builds its own run path. Before adding a GUI control, move the choice of runner into one shared function so both paths cannot drift.
 3. Congestion findings reach the optimizer output at session end but not `AutoScaler`. If they are fed in, do it inside `autoscale.py` with a tested rule, not a second decision path.
 4. `gui.py` and `gui_pages.py` are the only large untested-by-execution files. Keep drawing code thin and add a headless render check when a display is available.

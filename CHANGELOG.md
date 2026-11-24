@@ -24,7 +24,7 @@
 - New: web cards use `backdrop-filter` glass with a solid fallback and `prefers-reduced-transparency`; the native window gets layered card tokens (not glass). Service worker fingerprint updated.
 - New: opt-in history rows gain `health_score` and `avg_bitrate_kbps`; an opted-in session saves `last-performance.json`, which `support-bundle` includes. CLI prints a health line at the end of a session.
 - New: unexpected CLI errors write a local `crashes/crash-*.json` (addresses and key hidden, exit code 70, never uploaded).
-- Docs: [MULTI-DEVICE.md](docs/architecture/MULTI-DEVICE.md) (panel map, viewer and relay design, OBS-style layers, Moonlight/Parsec class feasibility) and typed viewer models in `viewer_models.py` (data only).
+- Docs: [MULTI-DEVICE.md](docs/architecture/MULTI-DEVICE.md) (panel map, viewer and relay design, OBS-style layers, Moonlight/Parsec class feasibility) (design only, no code).
 - Build: `.gitattributes` forces LF line endings and marks images and fonts binary.
 - Version bumped to 0.12.0 (`pyproject.toml`, `__init__.py`, README artifact names, RELEASING example). Docs: v0.12 scorecards in `docs/ROADMAP.md`, diagrams and refactoring recommendations in `docs/ARCHITECTURE-NOTES.md`, v0.12 vs v0.11 bench in `docs/BENCHMARKS.md`.
 

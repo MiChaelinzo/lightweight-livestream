@@ -10,7 +10,7 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from lightstream import analytics, cli, gui_controller as gc, gui_pages as gp
-from lightstream import gui_theme as gt, optimizer, viewer_models as vm
+from lightstream import gui_theme as gt, optimizer
 from lightstream.telemetry import Sample
 
 KEY = "live_SEEDED_SECRET_789"
@@ -216,26 +216,6 @@ class CrashReportTests(unittest.TestCase):
             source = fh.read()
         for word in ("urllib", "socket", "http.client", "requests"):
             self.assertNotIn("import " + word, source)
-
-
-class ViewerModelTests(unittest.TestCase):
-    def test_lan_preview_only_srt_or_udp(self):
-        ok = vm.ViewerEndpoint("lan_preview", "srt", "192.168.1.20", 9000)
-        self.assertEqual(ok, vm.validate_endpoint(ok))
-        with self.assertRaises(ValueError):
-            vm.validate_endpoint(ok._replace(transport="hls"))
-        with self.assertRaises(ValueError):
-            vm.validate_endpoint(ok._replace(host="srt://x"))
-        with self.assertRaises(ValueError):
-            vm.validate_endpoint(ok._replace(port=0))
-
-    def test_relay(self):
-        endpoint = vm.ViewerEndpoint("browser", "hls", "relay.example", 443)
-        vm.validate_relay(vm.RelayConfig("self_hosted", endpoint, 5))
-        with self.assertRaises(ValueError):
-            vm.validate_relay(vm.RelayConfig("other", endpoint))
-        with self.assertRaises(ValueError):
-            vm.validate_relay(vm.RelayConfig("self_hosted", endpoint, 0))
 
 
 if __name__ == "__main__":
