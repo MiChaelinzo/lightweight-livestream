@@ -232,7 +232,7 @@ Readings:
 
 - Grayscale does **not** reduce CPU here: +21 percent (yuv400) and +82 percent (gray then yuv420p) on testsrc2, +64 and +162 percent on smptebars. It lowered CRF bitrate on the moving source only (5835 to 3787 kbps).
 - Frame rate and size are what cut CPU: `fps=10` -57 percent, `fps=15` -42 percent, 640x360 -31 percent, 640x360 at 15 fps -48 percent against baseline on testsrc2.
-- `mpdecimate` did nothing on a source where every frame changes and cut CPU by 76 percent and bitrate to 4.2 kbps on a static picture. Its output has a variable frame rate; how platforms handle that is UNVERIFIED.
+- `mpdecimate` did nothing on a source where every frame changes and cut CPU by 76 percent and bitrate to 4.2 kbps on a static picture. Its output has a variable frame rate; how platforms handle that is UNVERIFIED: `-fps_mode vfr` into FLV/RTMP was only tested against loopback listeners, never a real ingest.
 - Fewer threads used less total CPU but took longer (wall median 0.65 s with 1 thread, 0.42 s with 4). Whether 1 thread keeps up in real time on a weak CPU is UNVERIFIED.
 - CBR padded the static source up to the target (2088 and 4098 kbps for a picture CRF encodes at 112 kbps). CPU was close to the CRF baseline.
 

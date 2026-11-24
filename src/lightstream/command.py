@@ -161,6 +161,22 @@ def publisher_command(port, url, ffmpeg="ffmpeg"):
             "-c", "copy", "-flvflags", "no_duration_filesize", "-f", "flv", url]
 
 
+def ignored_setting_notes(s, encoder):
+    """Plain sentences for settings build_command cannot apply, so a choice is
+    never silently dropped. Pure: same inputs, same notes."""
+    notes = []
+    if s.rate_mode == "cbr" and encoder != "libx264":
+        notes.append("--rate-mode cbr only applies to libx264; %s keeps its own "
+                     "rate control." % encoder)
+    filtered_out = encoder == "h264_vaapi" or bool(s.scene)
+    reason = "the VAAPI encoder" if encoder == "h264_vaapi" else "a scene"
+    if s.grayscale and filtered_out:
+        notes.append("--grayscale is ignored with %s." % reason)
+    if s.skip_static and filtered_out:
+        notes.append("--skip-static is ignored with %s." % reason)
+    return notes
+
+
 def build_command(s, key, os_name, encoder, ffmpeg="ffmpeg", record_path=None):
     """Return the full ffmpeg argv list. Contains the key; redact before display.
 

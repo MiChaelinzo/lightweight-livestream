@@ -36,7 +36,7 @@ from .analytics import (analytics_enabled, append_history, history_entry,
 from .health import HealthTracker
 from .network import detect_congestion, detect_link, link_advice, output_kind
 from .platforms import PLATFORMS, embedded_key_in_url, ingest_url, parse_audio_devices
-from .command import RATE_MODES, publisher_command
+from .command import RATE_MODES, ignored_setting_notes, publisher_command
 from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_settings,
                         potato_stream_settings,
                         weak_connection_settings)
@@ -550,6 +550,8 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                          record_path)
 
     out.write("Encoder: %s\n" % encoder)
+    for note in ignored_setting_notes(settings, encoder):
+        out.write("Note: %s\n" % note)
     out.write(format_command(argv, secrets) + "\n")
     publisher_argv = None
     if persistent:

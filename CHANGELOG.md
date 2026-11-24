@@ -6,6 +6,7 @@
 - Fix: `bench` tiers computed from partial data are marked `partial` (an upper bound) and the CLI says so; the docs no longer say "never guessed".
 - New: recording by extension: `.mkv` (default, Matroska) or `.mp4` (fragmented MP4, readable after a crash). `.webm` is refused with a reason (it needs a second VP9 encode).
 - New: `--rate-mode vbr|cbr` (config key `rate_mode`). CBR is libx264 only and pads quiet pictures up to the bitrate.
+- Fix: settings that cannot apply are now reported (`Note: ...`): `--rate-mode cbr` with a non-libx264 encoder, and `--grayscale` or `--skip-static` with the VAAPI encoder or a scene. `--skip-static` (variable frame rate into FLV/RTMP) is UNVERIFIED against real ingests.
 - New: Potato Stream, `--potato-stream 2000|4000`, also the `potato_2000` / `potato_4000` presets and profiles (re-exported to `web/presets.json`): 15 fps, 360p or 480p, ultrafast, one or two threads. Optional `--grayscale` and `--skip-static` (mpdecimate, variable frame rate); grayscale is NOT a CPU saver. Memory use on a 512 MB machine is UNVERIFIED.
 - New: ladder tiers 240p (`tier-240p`, opt-in floor) and 1080p, `build_ladder(constant_size=True)`.
 - New: opt-in `--persistent-ingest`: a long-lived `-c copy` publisher keeps the RTMP connection while the encoder restarts (auto-scale, Emergency). Output size stays fixed; incompatible with `--backup-url`. VERIFIED on loopback only. The publisher gives up after 5 quick failures in a row (rejected key, unreachable ingest) and ends the run unless `--keep-trying`; its messages are marked `[publisher]`.

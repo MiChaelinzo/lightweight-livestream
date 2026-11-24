@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from lightstream import autoscale as au
 from lightstream import cli
-from lightstream.command import build_command
+from lightstream.command import build_command, ignored_setting_notes
 from lightstream.config import resolve_settings
 from lightstream.emergency import POTATO_STREAM_PROFILES, potato_stream_settings
 from lightstream.platforms import ingest_url, validate_srt_url
@@ -68,6 +68,27 @@ class PotatoStreamTests(unittest.TestCase):
         self.assertTrue(argv[argv.index("-vf") + 1].endswith("mpdecimate"))
         self.assertEqual("vfr", argv[argv.index("-fps_mode") + 1])
         self.assertNotIn("-r", argv)
+
+    def test_inapplicable_settings_are_reported_not_dropped_silently(self):
+        s = potato_stream_settings(base(rate_mode="cbr"), 2000, grayscale=True,
+                                   skip_static=True)
+        self.assertEqual([], ignored_setting_notes(s, "libx264"))
+        notes = " ".join(ignored_setting_notes(s, "h264_vaapi"))
+        for word in ("cbr", "grayscale", "skip-static", "VAAPI"):
+            self.assertIn(word, notes)
+        self.assertEqual(1, len(ignored_setting_notes(s, "h264_nvenc")))
+
+    def test_cli_prints_note_for_cbr_with_hardware_encoder(self):
+        out = io.StringIO()
+        with tempfile.TemporaryDirectory() as d, \
+                mock.patch.dict(os.environ, {"HOME": d, "XDG_CONFIG_HOME": d,
+                                             "STREAM_KEY": KEY}, clear=True), \
+                mock.patch.object(cli, "detect_gpu_names", lambda _o: []), \
+                mock.patch.object(cli, "detect_os", lambda: "linux"), \
+                mock.patch.object(cli, "find_ffmpeg", lambda: None):
+            cli.main(["start", "--dry-run", "--rate-mode", "cbr",
+                      "--encoder", "h264_nvenc"], out)
+        self.assertIn("Note: --rate-mode cbr only applies to libx264", out.getvalue())
 
     def test_default_filters_have_neither(self):
         argv = build_command(potato_stream_settings(base(), 2000), KEY, "linux",
