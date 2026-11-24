@@ -363,3 +363,16 @@ The hero gained a one-line pitch, Download and Try presets buttons and a verific
 Demo GIF or WebM: not added. A screen capture of the window would exceed the 150 KB budget set for this release at any useful size, and the three real screenshots already show the app. Decision: skip.
 
 Rendering check: the web page was rendered in headless Chromium at 1280 and 390 px and read by eye. The Recording page of the Tk window was rendered under Xvfb in light and dark at 1280x720 with the persistent-ingest checkbox and its caption visible and unclipped (PARTIALLY VERIFIED, Linux fonts). One 1280 px capture showed the first lazy screenshot still blank, which is a capture timing artifact of the tool; at 390 px all three loaded.
+
+## v0.15 highlights analysis
+
+Method: a synthetic 300 s 1280x720 30 fps H.264 file (`testsrc2` video with `-preset ultrafast -g 60`, plus a 440 Hz sine in AAC; 285,831,035 bytes, which is a much higher bitrate than a typical recording) was analysed with `highlights.analyze_file` three times on this 8-core machine, ffmpeg 7.0.2 static. Wall time is `time.perf_counter()`; CPU time is user plus system from `resource.getrusage(RUSAGE_CHILDREN)` before and after. A plain decode (`-f null -`) of the same file was measured once as a baseline.
+
+| Run | Wall (s) | CPU (s) |
+|---|---|---|
+| analysis 1 | 2.87 | 18.15 |
+| analysis 2 | 2.89 | 18.31 |
+| analysis 3 | 2.86 | 18.08 |
+| decode only (1 run) | 2.46 | 14.93 |
+
+Reading the numbers: analysing 300 s of this file took about 2.9 s wall, roughly 100 times faster than real time, and about 18.2 s of CPU summed over ffmpeg's threads (CPU exceeds wall because decoding is multithreaded). About 14.9 s of that is decoding, so the scoring filters add about 3.2 CPU seconds per 300 s. This file is a high-bitrate synthetic one, so decode cost dominates and real recordings will differ; sine audio is not speech. Clip cutting was not timed: `-c copy` does not decode, and vertical re-encoding cost depends on the machine and was not measured.
