@@ -246,3 +246,17 @@ Setup: listener `ffmpeg -i "srt://127.0.0.1:P?mode=listener&latency=L"`, caller 
 | 500000 us (500 ms) | 0 | 0.301 | 167 | 0 |
 
 A caller with no listener failed after 3.04 s (`connect_timeout` default 3000 ms), exit 251. The lower count at 500 ms was not investigated (one run; likely the listener stopping before the receive buffer drained, not loss). Not measured: packet loss and retransmission (ARQ) behavior, because loopback has no loss and no `tc netem` was used. libsrt options in this build include `latency`, `rcvlatency`, `peerlatency`, `tlpktdrop`, `nakreport`, `maxbw`, `oheadbw`, `inputbw`, `passphrase`, `pbkeylen`, `enforced_encryption`, `streamid`, `connect_timeout`, `mode`, `transtype`, `payload_size`, `pkt_size`, `lossmaxttl` and others (full list in the JSON).
+
+## Benchmark tier (v0.12)
+
+`lightstream bench` now prints and stores a `tier`. A machine earns the highest tier whose three minimums it meets: CPU threads, RAM (MiB) and the ffmpeg speed (times real time) of the uncapped software `balanced` encode. Boundaries are inclusive. A metric that could not be measured is skipped and listed under `skipped_metrics`. Low-End has no minimum. These thresholds are heuristics chosen for this project, not an industry standard; they only rank results from this harness.
+
+| Tier | CPU threads | RAM MiB | Speed |
+|---|---|---|---|
+| Low-End | any | any | any |
+| Balanced | 4 | 4096 | 2.0x |
+| Performance | 6 | 8192 | 4.0x |
+| Creator | 8 | 16384 | 6.0x |
+| Power User | 12 | 32768 | 10.0x |
+
+Real run (VERIFIED on this machine only): `lightstream bench --ffmpeg ffmpeg-7.0.2-static`, 10 stream-seconds per encode, Linux x86_64 cloud sandbox, Intel Xeon Platinum 8488C (model string from `/proc/cpuinfo`), 8 threads, 31560 MiB RAM, Python 3.11. Uncapped software balanced encode ran at 14.4x real time, 0.26 CPU-seconds per stream-second. Result: tier **Creator** (stopped there because 8 threads is below the 12 needed for Power User). This is a shared virtual machine, a single run, no game running, and says nothing about a real laptop. The raw JSON is written to `reports/bench-DATE.json` and not committed.

@@ -25,7 +25,7 @@ Status after 0.9.0, with 0.10 (Facebook Live) and 0.11 changes noted. Plans for 
 | Backup endpoints | Roadmap | Design only (BLUEPRINT section 3) | 2 | `backup_url` config, restart path | Needs a network and a real ingest to test |
 | Emergency mode and weak connection mode | Done (0.11.0), PARTIALLY VERIFIED | `emergency.py`; `--emergency`, `--weak-connection`, GUI Emergency button with Restore. Argv accepted by real ffmpeg; effect on real streams UNVERIFIED. Reuses the auto-scale floor and restart path | 2 | auto-scale restart path | Needs a real stream to validate triggers |
 | Low-end super mode | Partial | Potato Stream 2000k/4000k (0.12, fps/size/threads from measurements; grayscale rejected as a CPU saver), `potato` profile, hardware profiles, auto-scale. Not a single switch and not measured on a low-end laptop | 2 | real low-end benchmark | No such hardware here |
-| Mobile remote | Roadmap | Design: stdlib `http.server` bound to 127.0.0.1 by default, random token per run, off by default, never exposes stream keys. LAN binding only by explicit option | 3 | start/stop controller API | Network exposure needs a security review and a phone to test |
+| Mobile remote | Roadmap (v0.12 decision: not started) | Design: stdlib `http.server` bound to 127.0.0.1 by default, random token per run, off by default, never exposes stream keys. LAN binding only by explicit option | 3 | start/stop controller API | Network exposure needs a security review and a phone to test |
 | Plugin architecture | Partial (spec only, 0.11.0) | Protocol spec in [architecture/PLUGIN-PROTOCOL.md](architecture/PLUGIN-PROTOCOL.md), no code. Design: each plugin is a subprocess that talks a narrow JSON protocol over stdin and stdout. In-process Python cannot be sandboxed, so in-process plugins are rejected | 3 | protocol spec, event list | A protocol should follow real use cases, not precede them |
 | Onboarding | Done | Setup wizard, readiness score, first-run FFmpeg helper. Window rendering UNVERIFIED | | | |
 | UI/UX (dark mode, compact mode, shortcuts) | Done (0.11.0), rendering UNVERIFIED | Dark and light themes, compact mode, shortcuts, sparkline graphs; contrast tested to WCAG AA. On-screen rendering never run | 2 | none | Cannot be checked without a display |
@@ -34,3 +34,7 @@ Status after 0.9.0, with 0.10 (Facebook Live) and 0.11 changes noted. Plans for 
 | Adaptive Creator Intelligence | Partial | Phase 1 done: opt-in local history raises optimizer confidence. Later phases: deterministic rules that compare sessions (same game, same hour) and suggest a profile. No cloud, no learning model | 2 | history from real users | Rules need real data to avoid guessing thresholds |
 
 Phase 2 is the next release, phase 3 is after that. These are ordering notes, not dates.
+
+## Local control API (decision for v0.12)
+
+Not implemented. Reason: the plugin protocol in `docs/architecture/PLUGIN-PROTOCOL.md` is stdio only, so no consumer needs a network port yet, and a listening socket adds attack surface that needs its own review (bind to 127.0.0.1 only, random token from `secrets`, constant-time compare, nonce replay protection, off by default). Building it without a client would be infrastructure for a hypothetical need. It stays Roadmap until a concrete client exists.
