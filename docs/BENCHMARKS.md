@@ -310,3 +310,19 @@ Web page weight (`tools/page_weight.py`):
 | Images, bytes | none (no files in `web/img/`) | 84,984 (three `.webp` files in `web/img/`) |
 
 The text assets are 367 bytes smaller raw and 67 bytes larger gzipped. The three real GUI screenshots add 84,984 bytes, loaded lazily. Before, `web/img/` did not exist. Load time was not measured.
+
+## v0.14.0 (showcase release)
+
+Web page weight with `python3 tools/page_weight.py` (sums bytes and gzip level 9 bytes of the text assets in `web/`, and image bytes separately), run before and after the hero change:
+
+| Item | Before (0.13.0) | After (0.14.0) |
+|---|---|---|
+| Text assets, bytes | 55,265 | 55,450 |
+| Text assets, gzip bytes | 20,655 | 20,728 |
+| Images, bytes | 84,984 | 84,984 |
+
+The hero gained a one-line pitch, Download and Try presets buttons and a verification badge: 185 bytes raw, 73 bytes gzipped. Load time was not measured.
+
+Demo GIF or WebM: not added. A screen capture of the window would exceed the 150 KB budget set for this release at any useful size, and the three real screenshots already show the app. Decision: skip.
+
+Rendering check: the web page was rendered in headless Chromium at 1280 and 390 px and read by eye. The Recording page of the Tk window was rendered under Xvfb in light and dark at 1280x720 with the persistent-ingest checkbox and its caption visible and unclipped (PARTIALLY VERIFIED, Linux fonts). One 1280 px capture showed the first lazy screenshot still blank, which is a capture timing artifact of the tool; at 390 px all three loaded.

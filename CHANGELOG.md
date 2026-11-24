@@ -5,6 +5,9 @@
 - New: the health score uses a real dropped-frame percent (dropped / frames from ffmpeg's running totals) when a frame total is known, otherwise that signal is left out. `HealthTracker.summary()` gains `frames`; `parse_progress` reads `frame=`. Counters restart if ffmpeg restarts. Tests VERIFIED with fakes; real streams UNVERIFIED.
 - New: Recording page checkbox "Keep connection alive when quality changes (persistent ingest)", off by default and remembered as `persistent_ingest`. It refuses to start with a backup server address (same rule as the CLI) and Emergency mode is declined while it is on, because that changes the picture size. Controller logic VERIFIED with fakes; real platforms and the Tk checkbox rendering UNVERIFIED.
 - Dev: `tools/ui_snapshots.py gui --state offline|live|reconnecting|error` renders the banner through a fake controller (no ffmpeg). All four states were rendered at 1280x720 in light and dark and inspected: PARTIALLY VERIFIED (Linux fonts, not Windows).
+- Docs: README cut from 480 to about 215 lines (hero, 3-step quick start, downloads, verification table); every moved section is in the new `docs/FEATURES.md` with its text and VERIFIED labels unchanged.
+- Style: web hero has a one-line pitch, Download and Try presets buttons and an honest verification badge. Checked at 1280 and 390 px in headless Chromium. CSP unchanged, no new files or dependencies; the service worker cache name was bumped. Text assets 55,265 B to 55,450 B (20,655 to 20,728 gzip), measured in `docs/BENCHMARKS.md`. No demo GIF added (decision recorded there).
+- Version bumped to 0.14.0 (`pyproject.toml`, `__init__.py`, README artifact names, RELEASING example).
 - Internal: `free_udp_port` moved from `cli.py` to `runner.py` so the GUI and CLI share it.
 
 ## 0.13.0
