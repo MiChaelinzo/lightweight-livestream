@@ -182,9 +182,16 @@ def build_event(name, fields, secrets=()):
             raise ValueError("event %s field %s has the wrong type" % (name, key))
     if name == "status" and fields.get("state") not in STATE_VALUES:
         raise ValueError("status state must be one of %s" % ", ".join(STATE_VALUES))
-    serialized = json.dumps(fields)
+    # Check raw string values and both JSON forms: json.dumps escapes quotes,
+    # backslashes and (by default) non-ASCII, so a secret with such characters
+    # would not match the serialized text alone.
+    raw_values = [v for v in fields.values() if isinstance(v, str)]
+    serialized_forms = (json.dumps(fields), json.dumps(fields, ensure_ascii=False))
     for secret in secrets:
-        if secret and secret in serialized:
+        if not secret:
+            continue
+        if (any(secret in value for value in raw_values)
+                or any(secret in form for form in serialized_forms)):
             raise ValueError("event %s would expose a protected value" % name)
     message = {"v": PROTOCOL_VERSION, "event": name}
     message.update(fields)
@@ -492,6 +499,9 @@ class PluginHost:
     def start_all(self):
         """Start each enabled plugin; a bad one is reported and skipped."""
         for name in self.enabled:
+            if not isinstance(name, str) or not NAME_PATTERN.match(name):
+                self.log("plugin %r not started: name must match [a-z0-9-]{1,32}" % (name,))
+                continue
             folder = os.path.join(self.directory, name)
             try:
                 plugin = PluginProcess(folder, self.host_version, self.secrets)

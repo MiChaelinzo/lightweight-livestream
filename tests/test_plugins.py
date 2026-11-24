@@ -1,5 +1,6 @@
 """Plugin runtime v1 against real subprocess plugins (python3 scripts)."""
 
+import argparse
 import io
 import json
 import os
@@ -287,6 +288,20 @@ class RuntimeCase(unittest.TestCase):
         finally:
             host.stop_all()
 
+    def test_host_refuses_enabled_names_that_leave_the_plugins_folder(self):
+        outside = os.path.join(self.root, "outer")
+        inside = os.path.join(outside, "plugins")
+        os.makedirs(inside)
+        write_plugin(outside, "one", "good")
+        logs = []
+        host = plugins.PluginHost(inside, ["../one", "..", 5], "0.15.0", log=logs.append)
+        try:
+            self.assertEqual(host.start_all(), [])
+        finally:
+            host.stop_all()
+        self.assertEqual(len(logs), 3)
+        self.assertTrue(all("not started" in line for line in logs))
+
 
 class EventCase(unittest.TestCase):
     def test_extra_field_wrong_type_and_unknown_event_are_refused(self):
@@ -303,6 +318,12 @@ class EventCase(unittest.TestCase):
         message = plugins.build_event("health", {"fps": 30.0, "bitrate_kbps": 4500, "dropped": 0})
         self.assertEqual(message["v"], 1)
         self.assertEqual(message["event"], "health")
+
+    def test_secret_with_json_escaped_characters_is_refused(self):
+        for secret in ('ab"cd', "ab\\cd", "k\u00e9y-12345"):
+            with self.assertRaises(ValueError, msg=secret):
+                plugins.build_event("insight", {"text": "oops " + secret, "confidence": "high"},
+                                    secrets=[secret])
 
     def test_minimal_env(self):
         self.assertEqual(plugins.minimal_env({"PATH": "/bin", "LIGHTSTREAM_KEY": "k"}),
@@ -406,6 +427,20 @@ class CliCase(unittest.TestCase):
         code, text = self.run_cli("list", "--plugins-dir", self.root)
         self.assertEqual(code, 0)
         self.assertIn("off unless", text)
+
+    def test_check_rejects_traversal_name(self):
+        code, text = self.run_cli("check", "../hello", "--plugins-dir", self.root)
+        self.assertNotEqual(code, 0)
+        self.assertNotIn("manifest valid", text)
+
+    def test_list_rejects_non_list_plugins_setting(self):
+        config = os.path.join(self.root, "config.json")
+        for bad in ("hello", [1], {"a": 1}):
+            with open(config, "w", encoding="utf-8") as fh:
+                json.dump({"plugins": bad}, fh)
+            args = argparse.Namespace(action="list", name=None, plugins_dir=self.root)
+            with self.assertRaises(ValueError, msg=repr(bad)):
+                cli.cmd_plugins(args, io.StringIO(), config_file=config)
 
 
 if __name__ == "__main__":

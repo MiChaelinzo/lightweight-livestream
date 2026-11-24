@@ -58,6 +58,16 @@ class ExpectedGainTests(SlowSetup):
             else:
                 self.assertIn("n=", opt.gain_text(item))
 
+    def test_gain_text_is_a_comparison_not_a_cause(self):
+        history = rows("balanced", 0.6, 4) + rows("fast", 1.1, 3)
+        gain = opt.expected_gain_from_history(history, "balanced", "fast")
+        insight = opt.Insight("speed", "lower_preset", None, 0.5, "e", "m", expected_gain=gain)
+        text = opt.gain_text(insight)
+        self.assertNotIn("going from", text)
+        self.assertIn("sessions at 'fast' (n=3) averaged", text)
+        self.assertIn("compared with sessions at 'balanced' (n=4)", text)
+        self.assertIn("Not a controlled comparison", text)
+
 
 class AudioLatencyUploadTests(unittest.TestCase):
     def healthy(self, **kwargs):

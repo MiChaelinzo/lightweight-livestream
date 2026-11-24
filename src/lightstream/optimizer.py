@@ -209,10 +209,11 @@ def gain_text(insight):
     gain = insight.expected_gain
     if gain is None:
         return None
-    return ("Measured on this PC: %s %+.2f going from '%s' (n=%d sessions) to "
-            "'%s' (n=%d sessions)."
-            % (GAIN_METRIC_LABEL, gain.delta, gain.preset_from, gain.n_from,
-               gain.preset_to, gain.n_to))
+    return ("Measured on this PC: sessions at '%s' (n=%d) averaged %s %+.2f "
+            "compared with sessions at '%s' (n=%d). Not a controlled comparison: "
+            "the sessions may have had different content."
+            % (gain.preset_to, gain.n_to, GAIN_METRIC_LABEL, gain.delta,
+               gain.preset_from, gain.n_from))
 
 
 def _audio_insights(audio, latency_ms, upload_kbps, context, seen, have_areas):
