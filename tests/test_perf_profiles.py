@@ -16,7 +16,8 @@ from lightstream.runner import priority_kwargs
 EXPECTED_PROFILES = {"potato", "potato_2000", "potato_4000", "balanced", "quality", "competitive", "low_latency"}
 EXPECTED_STREAMS = {"youtube_gaming", "twitch_gaming", "facebook_live", "kick", "podcast",
                     "just_chatting", "tutorial", "esports"}
-EXPECTED_AUDIO = {"gaming", "podcast", "music", "commentary", "asmr"}
+EXPECTED_AUDIO = {"gaming", "podcast", "music", "commentary", "asmr", "teaching",
+                  "meeting"}
 
 
 def argv_for(cli_values, file_cfg=None, cpus=8, hardware=None, os_name="linux"):
@@ -142,7 +143,8 @@ class AffinityRunnerTests(unittest.TestCase):
 
 class AudioProfileTests(unittest.TestCase):
     def test_chains_are_built_from_allowed_filters(self):
-        allowed = {"highpass", "afftdn", "acompressor", "equalizer", "alimiter"}
+        allowed = {"highpass", "afftdn", "acompressor", "equalizer", "alimiter",
+                   "dynaudnorm"}
         for p in audio.AUDIO_PROFILES.values():
             for chain in (p.light, p.full):
                 names = {stage.split("=")[0] for stage in chain.split(",")}

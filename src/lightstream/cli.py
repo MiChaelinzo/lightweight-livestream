@@ -81,6 +81,10 @@ def build_parser():
     r.add_argument("--platform", choices=PLATFORMS,
                    help="also test how fast a connection to this platform opens")
     r.add_argument("--url", help="rtmp:// address to test (for --platform custom)")
+    ac = sub.add_parser("audio-check", help="check an audio or video file for "
+                                            "clipping and loudness (needs ffmpeg)")
+    ac.add_argument("file", help="audio or video file to analyze")
+    ac.add_argument("--ffmpeg", help="path to ffmpeg (default: search as usual)")
     sb = sub.add_parser("support-bundle",
                         help="write a redacted JSON file to attach to a bug report")
     sb.add_argument("--out", help="file to write (default: support-bundle.json "
@@ -357,6 +361,15 @@ def cmd_readiness(args, out, run=subprocess.run, connect=None, find=find_ffmpeg)
         detect_os(), upload_kbps=kbps, ffmpeg=args.ffmpeg, latency_target=target,
         run=run, find=find, connect=connect)
     for line in wizard.readiness_lines(wizard.readiness_report(facts)):
+        out.write(line + "\n")
+    return 0
+
+
+def cmd_audio_check(args, out, find=find_ffmpeg, analyze=None):
+    from . import audio_check
+    analyze = analyze or audio_check.analyze_file
+    check = analyze(args.ffmpeg or find(), args.file)
+    for line in audio_check.check_lines(check):
         out.write(line + "\n")
     return 0
 
@@ -695,6 +708,8 @@ def main(argv=None, out=sys.stdout):
             return cmd_profiles(out)
         if args.command == "readiness":
             return cmd_readiness(args, out)
+        if args.command == "audio-check":
+            return cmd_audio_check(args, out)
         if args.command == "bench":
             return cmd_bench(args, out)
         if args.command == "optimize":
