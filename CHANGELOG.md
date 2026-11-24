@@ -2,9 +2,17 @@
 
 ## 0.12.0 (unreleased)
 
+- Fix: recording while streaming now works with ffmpeg 7.0.2. The tee output maps video and audio, sets `-flags +global_header`, and uses `onfail=abort` on the live slot so ffmpeg exits when the ingest dies (the reconnect loop fires) while the file slot uses `onfail=ignore`. Behavior change: the argv for `--record` differs from 0.11. VERIFIED with a real loopback RTMP listener killed mid-stream (the recording is readable, the runner continues in `name-2.mkv`); real platform disconnects are UNVERIFIED.
+- New: recording by extension: `.mkv` (default, Matroska) or `.mp4` (fragmented MP4, readable after a crash). `.webm` is refused with a reason (it needs a second VP9 encode).
+- New: `--rate-mode vbr|cbr` (config key `rate_mode`). CBR is libx264 only and pads quiet pictures up to the bitrate.
+- New: Potato Stream, `--potato-stream 2000|4000`, also the `potato_2000` / `potato_4000` presets and profiles (re-exported to `web/presets.json`): 15 fps, 360p or 480p, ultrafast, one or two threads. Optional `--grayscale` and `--skip-static` (mpdecimate, variable frame rate); grayscale is NOT a CPU saver. Memory use on a 512 MB machine is UNVERIFIED.
+- New: ladder tiers 240p (`tier-240p`, opt-in floor) and 1080p, `build_ladder(constant_size=True)`.
+- New: opt-in `--persistent-ingest`: a long-lived `-c copy` publisher keeps the RTMP connection while the encoder restarts (auto-scale, Emergency). Output size stays fixed; incompatible with `--backup-url`. VERIFIED on loopback only.
+- New: `srt://host:port` custom URLs (key sent as `streamid`), validated, for custom servers and relays. UNVERIFIED against any real server.
+- New: end-of-session network lines (`network.py`): backpressure for RTMP, packet loss only named for SRT/UDP (not read yet), link kind and hotspot hint via `/proc`, `netsh` or `networksetup` (Windows and macOS probes UNVERIFIED, shown as `n/a` when missing).
 - New: `lightstream support-bundle [--out FILE]` writes a redacted JSON file for bug reports (version, platform, encoder list, config with keys and addresses hidden, recent history rows). Opt-in, never sent anywhere. A seeded secret is asserted absent in tests (VERIFIED); there is no log file yet, so none is included.
 - Test: golden ffmpeg argv files in `tests/golden/` for every performance and hardware profile (fixed config, placeholder key). Regenerate after an intended change with `LIGHTSTREAM_UPDATE_GOLDEN=1 python3 -m unittest tests.test_golden_argv`.
-- Test: `tools/spikes.py` runs loopback ffmpeg experiments (split publisher, tee recording, potato filters, SRT) and prints JSON; results and decisions in `docs/BENCHMARKS.md` and `docs/ARCHITECTURE-NOTES.md`. Found: with ffmpeg 7.0.2, recording while streaming (`record_to`) fails to start (tee output without `-map`), the Matroska slot needs `-flags +global_header`, and a tee slot without `onfail` keeps ffmpeg running after the RTMP server drops, so the reconnect loop never fires. Not fixed yet (planned in this release).
+- Test: `tools/spikes.py` runs loopback ffmpeg experiments (split publisher, tee recording, potato filters, SRT) and prints JSON; results and decisions in `docs/BENCHMARKS.md` and `docs/ARCHITECTURE-NOTES.md`. Found: with ffmpeg 7.0.2, recording while streaming (`record_to`) fails to start (tee output without `-map`), the Matroska slot needs `-flags +global_header`, and a tee slot without `onfail` keeps ffmpeg running after the RTMP server drops, so the reconnect loop never fires. Fixed below.
 - Build: `.gitattributes` forces LF line endings and marks images and fonts binary.
 
 ## 0.11.0 (unreleased)

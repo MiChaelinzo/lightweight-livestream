@@ -211,7 +211,7 @@ Background handling: only chroma key (`chromakey`) and `blur`. `blur` is a plain
 
 ### Recording a copy
 
-`lightstream start --record [FILE]` (or the "Record a copy" checkbox) encodes once and writes to RTMP and a Matroska file through FFmpeg's tee muxer, so there is no second encode. Matroska survives a crash. The folder is created and checked for write access before starting (an error is printed if it fails), but a write error later (full disk) is ignored so the stream keeps going. After an automatic reconnect the copy goes to a new file (`name-2.mkv`, `name-3.mkv`) so earlier footage is never overwritten. The window saves to `recordings/` in the app data folder with a timestamp and prints the path. `--record` is ignored with `--test-local` (a notice is printed). The path may not contain `| [ ] '`.
+`lightstream start --record [FILE]` (or the "Record a copy" checkbox) encodes once and writes to RTMP and a Matroska file through FFmpeg's tee muxer, so there is no second encode. Matroska survives a crash. The folder is created and checked for write access before starting (an error is printed if it fails), but a write error later (full disk) is ignored so the stream keeps going. After an automatic reconnect the copy goes to a new file (`name-2.mkv`, `name-3.mkv`) so earlier footage is never overwritten. The window saves to `recordings/` in the app data folder with a timestamp and prints the path. `--record` is ignored with `--test-local` (a notice is printed). Since 0.12 the tee maps video and audio explicitly and the live slot aborts on ingest failure so the reconnect loop works; `.mp4` records fragmented MP4, `.webm` is refused, `--rate-mode cbr` is optional (libx264 only). `--persistent-ingest` (opt in) keeps one publisher connection and a continuous file across ingest failures; see [docs/ARCHITECTURE-NOTES.md](docs/ARCHITECTURE-NOTES.md). The path may not contain `| [ ] '`.
 
 ### Noise suppression
 
@@ -318,6 +318,7 @@ Status: option parsing, settings resolution, thread math and command building ar
 
 ### Emergency, weak connection and backup ingest (0.11.0)
 
+- `start --potato-stream 2000|4000` (Potato Stream for very weak PCs: 15 fps, 360p or 480p, ultrafast, 1-2 threads; `--grayscale` and `--skip-static` are opt-in looks, not CPU savers). CPU numbers are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md); the 512 MB memory budget is UNVERIFIED.
 - `start --emergency` starts with the safest settings. In the window, the orange EMERGENCY button does it while live (ffmpeg restarts briefly); press it again (it then reads RESTORE) to go back. Never automatic.
 - `start --weak-connection [--upload-mbps 5]` lowers the bitrate, uses 1 second keyframes and a 2 second buffer for a poor uplink.
 - `start --backup-url rtmp://backup-host/app` (no key in it) switches to that server after 3 quick connection failures, using the same stream key. A recording continues in the next numbered file. Real ingest servers are UNVERIFIED; the logic is tested with fakes and the ffmpeg argv with real ffmpeg.
@@ -339,7 +340,7 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|optimus_mx250|nvidia|generic] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|optimus_mx250|nvidia|generic] [--potato-stream 2000|4000] [--grayscale] [--skip-static] [--rate-mode vbr|cbr] [--persistent-ingest] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 
