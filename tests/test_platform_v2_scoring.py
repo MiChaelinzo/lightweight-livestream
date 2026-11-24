@@ -17,6 +17,31 @@ Done = namedtuple("Done", "returncode stdout stderr")
 KEY = "live_SECRET_key_123"
 
 
+class DroppedPercentTests(unittest.TestCase):
+    def test_known_frame_total_gives_a_dropped_part(self):
+        health = optimizer.session_health(
+            {"recent_speed": 1.0, "frames": 1000, "dropped_frames": 25})
+        self.assertAlmostEqual(2.5, optimizer.dropped_percent(
+            {"frames": 1000, "dropped_frames": 25}))
+        self.assertIn("dropped_frames", health.parts)
+        self.assertAlmostEqual(50.0, health.parts["dropped_frames"])
+
+    def test_zero_or_missing_frames_stay_unknown(self):
+        for summary in ({"frames": 0, "dropped_frames": 5}, {"dropped_frames": 5}, {}):
+            self.assertIsNone(optimizer.dropped_percent(summary))
+            health = optimizer.session_health(dict(summary, recent_speed=1.0))
+            self.assertIn("dropped_frames", health.skipped)
+
+    def test_tracker_summary_feeds_the_percent(self):
+        from lightstream.health import HealthTracker
+        from lightstream.runner import parse_progress
+        tracker = HealthTracker()
+        tracker.update(parse_progress(
+            "frame=  600 fps= 30 q=28.0 size=1kB time=00:00:20 bitrate=2500.0kbits/s "
+            "dup=0 drop=6 speed=1.0x"))
+        self.assertAlmostEqual(1.0, optimizer.dropped_percent(tracker.summary()))
+
+
 class TierTests(unittest.TestCase):
     def test_every_boundary(self):
         for name, cpu, ram, speed in bench.TIERS[1:]:

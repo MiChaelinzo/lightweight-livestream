@@ -341,7 +341,8 @@ def performance_health(cpu=None, gpu=None, ram=None, network=None,
 def session_health(summary, sample=None, stability=None):
     """HealthScore from live objects: HealthTracker.summary(), a telemetry
     Sample (or None) and NetworkStability (or None). Dropped-frame percent is
-    left unknown on purpose: the summary has a count, not a frame total."""
+    dropped / frames when the summary has a frame total above zero, and
+    unknown (None) otherwise."""
     speed = summary.get("recent_speed")
     if speed is None:
         speed = summary.get("avg_speed")
@@ -350,7 +351,17 @@ def session_health(summary, sample=None, stability=None):
         gpu=getattr(sample, "gpu_percent", None),
         ram=getattr(sample, "ram_percent", None),
         network=None if stability is None else stability.score,
-        encode_speed=speed)
+        encode_speed=speed,
+        dropped_percent=dropped_percent(summary))
+
+
+def dropped_percent(summary):
+    """Dropped frames as a percent of all frames, or None when the frame
+    total is unknown or zero."""
+    frames = summary.get("frames") or 0
+    if frames <= 0:
+        return None
+    return 100.0 * (summary.get("dropped_frames") or 0) / frames
 
 
 def health_line(health, tier=None):

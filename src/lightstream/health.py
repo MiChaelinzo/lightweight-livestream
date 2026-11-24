@@ -56,6 +56,7 @@ class HealthTracker:
         self._fps = deque(maxlen=window)
         self.samples = 0
         self.dropped_frames = 0
+        self.frames = 0
         self.dup_frames = 0
         self.reconnects = 0
         self.fallbacks = 0
@@ -78,6 +79,8 @@ class HealthTracker:
             self._bitrates.append(health["bitrate_kbps"])
             self._bitrate_total += health["bitrate_kbps"]
             self._bitrate_count += 1
+        if "frame" in health:  # ffmpeg reports a running total
+            self.frames = int(health["frame"])
         if "dropped" in health:  # ffmpeg reports a running total
             self.dropped_frames = int(health["dropped"])
         if "dup" in health:
@@ -130,6 +133,7 @@ class HealthTracker:
             "recent_bitrate_kbps": recent_bitrate,
             "recent_fps": _mean(self._fps),
             "dropped_frames": self.dropped_frames,
+            "frames": self.frames,
             "dup_frames": self.dup_frames,
             "reconnects": self.reconnects,
             "fallbacks": self.fallbacks,

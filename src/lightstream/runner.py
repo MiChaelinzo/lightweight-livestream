@@ -42,6 +42,7 @@ STATUS_STOPPED = "stopped"
 STATUS_FAILED = "failed"
 
 _PROGRESS_FIELDS = (
+    ("frame", re.compile(r"frame=\s*(\d+)")),
     ("fps", re.compile(r"fps=\s*([\d.]+)")),
     ("bitrate_kbps", re.compile(r"bitrate=\s*([\d.]+)\s*kbits/s")),
     ("speed", re.compile(r"speed=\s*([\d.]+)x")),

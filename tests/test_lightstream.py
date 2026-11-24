@@ -394,7 +394,7 @@ class ReliabilityTests(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertEqual(
             [("starting", None), ("reconnecting", 1), ("starting", None),
-             ("live", {"fps": 30.0, "bitrate_kbps": 900.5, "speed": 1.0}),
+             ("live", {"frame": 1.0, "fps": 30.0, "bitrate_kbps": 900.5, "speed": 1.0}),
              ("stopped", None)], events)
 
     def test_failed_status_and_keep_trying_forever(self):
@@ -462,7 +462,7 @@ class ReliabilityTests(unittest.TestCase):
         health = parse_progress(
             "frame=  99 fps= 28 q=-1.0 size=N/A time=00:00:03 "
             "bitrate=1500.2kbits/s speed=0.80x")
-        self.assertEqual({"fps": 28.0, "bitrate_kbps": 1500.2, "speed": 0.8},
+        self.assertEqual({"frame": 99.0, "fps": 28.0, "bitrate_kbps": 1500.2, "speed": 0.8},
                          health)
         self.assertTrue(is_lagging(health))
         self.assertFalse(is_lagging({"speed": 1.0}))
