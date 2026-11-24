@@ -152,3 +152,5 @@ main a { padding: 2px 0; }
   .button.ghost { color: var(--cyan); border-color: var(--cyan); background: transparent; }
   .animated-title { background: linear-gradient(90deg, #05566b, #6a1fa8, #05566b); background-size: 200% 100%; -webkit-background-clip: text; background-clip: text; }
 }
+
+.badge { margin: 16px 0 0; font-size: .85rem; color: var(--muted); }
