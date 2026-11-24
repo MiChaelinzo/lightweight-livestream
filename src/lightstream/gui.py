@@ -966,6 +966,17 @@ class StreamWindow:
         ttk.Button(row, text="Choose ffmpeg file...", command=choose).pack(side="left", padx=4)
         ttk.Button(row, text="Close", command=dialog.destroy).pack(side="left", padx=4)
 
+    def on_callback_error(self, exc_type, exc, tb):
+        """Tk calls this for an uncaught error in any callback: keep a local,
+        redacted crash report and tell the user, instead of printing a
+        traceback (which could quote the key) to a console nobody sees."""
+        if exc is not None and exc.__traceback__ is None:
+            exc = exc.with_traceback(tb)
+        try:
+            self.status.set(gc.report_gui_crash(exc, self.key.get().strip()))
+        except Exception:  # never let the handler itself raise into Tk
+            pass
+
     def on_close(self, waited=0):
         """Ask ffmpeg to stop, then close once it has (or after a few seconds)."""
         self.controller.stop(wait=False)
@@ -985,6 +996,7 @@ def main(argv=None):
         print(NO_GUI_MESSAGE)
         return 1
     window = StreamWindow(root)
+    root.report_callback_exception = window.on_callback_error
     if find_ffmpeg() is None:
         root.after(200, window.offer_ffmpeg_help)
     root.mainloop()

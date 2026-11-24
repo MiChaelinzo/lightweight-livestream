@@ -19,7 +19,8 @@ from .config import config_path, detect_os, effective_preset_name, resolve_setti
 from .config import scenes_path
 from .encoders import choose_working_encoder, probe_encoders
 from .adaptive import AdaptiveAdvisor
-from .analytics import (append_history, build_session_report, history_entry,
+from .analytics import (CRASH_DIRNAME, append_history, build_crash_report,
+                        write_crash_report, build_session_report, history_entry,
                         performance_snapshot, reports_dir, save_performance_snapshot,
                         write_session_report)
 from .health import HealthTracker
@@ -150,6 +151,34 @@ def _contains_key(value, key):
     if len(key) < MIN_SUBSTRING_KEY_LENGTH:
         return text == key
     return key in text
+
+
+def report_gui_crash(error, key="", directory=None, os_name=None):
+    """Save a local, redacted crash report for an uncaught GUI callback error.
+
+    Same module and rules as the CLI: the file stays on this PC, and addresses
+    and the current stream key are replaced by "****". A key shorter than
+    MIN_SUBSTRING_KEY_LENGTH is not scrubbed as a substring because it would
+    mask innocent text. Returns a short friendly message for the status line.
+    Never raises, so the handler cannot take the window down.
+    """
+    from . import __version__
+    name = type(error).__name__
+    secrets = (os.environ.get("STREAM_KEY"),)
+    if key and len(key) >= MIN_SUBSTRING_KEY_LENGTH:
+        secrets += (key,)
+    try:
+        os_name = os_name or detect_os()
+        report = build_crash_report(error, __version__, os_name, known_secrets=secrets)
+        directory = directory or os.path.join(
+            os.path.dirname(config_path(os_name)), CRASH_DIRNAME)
+        path = write_crash_report(directory, report)
+    except Exception as exc:
+        return ("Something went wrong (%s). The crash report could not be saved (%s)."
+                % (name, type(exc).__name__))
+    return ("Something went wrong (%s). A crash report was saved to %s. It stays on "
+            "this PC and is never sent anywhere; check it before sharing."
+            % (name, path))
 
 
 def save_prefs(path, prefs, key=""):

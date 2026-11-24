@@ -33,6 +33,45 @@ def make_controller(runner, ffmpeg="/bin/ffmpeg"):
         probe=lambda _f: set(), pick_encoder=lambda *a, **k: "libx264")
 
 
+class GuiCrashReportTests(unittest.TestCase):
+    def raise_error(self, text):
+        try:
+            raise RuntimeError(text)
+        except RuntimeError as exc:
+            return exc
+
+    def test_report_is_local_and_redacts_key_and_address(self):
+        key = "live_GUIKEY_123456"
+        exc = self.raise_error("push rtmp://host/app/%s failed, key %s" % (key, key))
+        with tempfile.TemporaryDirectory() as d:
+            message = gc.report_gui_crash(exc, key, directory=d, os_name="linux")
+            files = os.listdir(d)
+            self.assertEqual(1, len(files))
+            with open(os.path.join(d, files[0]), encoding="utf-8") as fh:
+                text = fh.read()
+        self.assertNotIn(key, text)
+        self.assertNotIn("rtmp://host", text)
+        self.assertIn("RuntimeError", message)
+        self.assertIn("never sent anywhere", message)
+        self.assertNotIn(key, message)
+
+    def test_short_key_does_not_mask_ordinary_text(self):
+        exc = self.raise_error("test failed")
+        with tempfile.TemporaryDirectory() as d:
+            gc.report_gui_crash(exc, "test", directory=d, os_name="linux")
+            with open(os.path.join(d, os.listdir(d)[0]), encoding="utf-8") as fh:
+                self.assertIn("test failed", fh.read())
+
+    def test_unwritable_directory_returns_message_instead_of_raising(self):
+        exc = self.raise_error("boom")
+        with tempfile.TemporaryDirectory() as d:
+            blocker = os.path.join(d, "file")
+            open(blocker, "w").close()
+            message = gc.report_gui_crash(exc, "", directory=os.path.join(blocker, "x"),
+                                          os_name="linux")
+        self.assertIn("could not be saved", message)
+
+
 class ValidationTests(unittest.TestCase):
     def test_empty_key(self):
         self.assertEqual(gc.validate(PREFS, "  ", "/ffmpeg"), gc.HELP_TEXT["no_key"])
