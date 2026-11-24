@@ -3,13 +3,14 @@
 `tools/ui_snapshots.py` renders the Tk GUI and the web page to PNG files so visual work can be looked at, not guessed. It is never imported by the runtime, and its dependencies are optional dev tools. Without them it prints a one-line install hint and exits non-zero.
 
 ```
-python3 tools/ui_snapshots.py gui --out DIR [--size 1366x768] [--theme light|dark] [--compact] [--pages all|dashboard,setup]
+python3 tools/ui_snapshots.py gui --out DIR [--size 1366x768] [--theme light|dark] [--compact] [--pages all|dashboard,setup] [--state offline|live|reconnecting|error]
 python3 tools/ui_snapshots.py web --out DIR [--widths 1280,390]
 ```
 
 - `gui` captures the whole virtual screen at `--size`. The window keeps the size Tk requests, so a window taller than the screen shows as clipped, as it would for a user. It builds `StreamWindow` directly (not `gui.main()`), so the ffmpeg help dialog never appears, and it uses a temporary HOME so real prefs are not read or written. If `DISPLAY` is set it is used as is; otherwise Xvfb is started from `$LIGHTSTREAM_XVFB` or `PATH` on a free display number and stopped afterwards.
+- `--state` swaps the controller snapshot for a fake one so the banner shows offline, live, reconnecting or error without running ffmpeg. Output names then include the state: `gui-<theme>-<page>-<state>-<W>x<H>.png`.
 - `web` serves `web/` on a local port, saves full-page screenshots with headless Chromium (SwiftShader for WebGL), prints console warnings and errors, and fails on any page error.
-- Output names: `gui-<theme>[-compact]-<page>-<W>x<H>.png`, `web-<width>.png`.
+- Output names (without --state): `gui-<theme>[-compact]-<page>-<W>x<H>.png`, `web-<width>.png`.
 
 ## How the stack was obtained in the sandbox
 

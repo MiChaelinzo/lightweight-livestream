@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0
+
+- New: the health score uses a real dropped-frame percent (dropped / frames from ffmpeg's running totals) when a frame total is known, otherwise that signal is left out. `HealthTracker.summary()` gains `frames`; `parse_progress` reads `frame=`. Counters restart if ffmpeg restarts. Tests VERIFIED with fakes; real streams UNVERIFIED.
+- New: Recording page checkbox "Keep connection alive when quality changes (persistent ingest)", off by default and remembered as `persistent_ingest`. It refuses to start with a backup server address (same rule as the CLI) and Emergency mode is declined while it is on, because that changes the picture size. Controller logic VERIFIED with fakes; real platforms and the Tk checkbox rendering UNVERIFIED.
+- Dev: `tools/ui_snapshots.py gui --state offline|live|reconnecting|error` renders the banner through a fake controller (no ffmpeg). All four states were rendered at 1280x720 in light and dark and inspected: PARTIALLY VERIFIED (Linux fonts, not Windows).
+- Internal: `free_udp_port` moved from `cli.py` to `runner.py` so the GUI and CLI share it.
+
 ## 0.13.0
 
 - Fix: `--test-local` no longer adds its constant placeholder key ("test") to the crash report scrub list, so ordinary text containing "test" is no longer masked. The real key is still scrubbed in normal mode.
