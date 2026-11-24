@@ -13,6 +13,7 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 | [ARCHITECTURE-NOTES.md#diagrams-012](ARCHITECTURE-NOTES.md#diagrams-012) | Mermaid diagrams (process topology, recovery state machine, data flow) and refactoring recommendations |
 | [ROADMAP.md](ROADMAP.md) | v0.12 scorecards: 15 areas and 6 headline features with status and reason |
 | [RELEASING.md](RELEASING.md) | how to cut a release |
+| [DEV-RENDERING.md](DEV-RENDERING.md) | dev-only GUI and web screenshots (`tools/ui_snapshots.py`) and how the stack was obtained |
 
 ## v0.10 audit and blueprint
 
