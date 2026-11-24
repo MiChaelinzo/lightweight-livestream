@@ -35,6 +35,19 @@ WEB_VIEWPORT_HEIGHT = 900
 FIRST_DISPLAY = 90
 LAST_DISPLAY = 199
 THEMES = ("light", "dark")
+# Lazy <img> elements outside the viewport never load in a full-page capture
+# (they show as empty boxes). Make them eager, then wait until every image has
+# finished (or failed) so the screenshot shows the real pictures.
+LOAD_IMAGES_JS = """async () => {
+  const images = Array.from(document.images);
+  images.forEach(img => { img.loading = 'eager'; });
+  await Promise.all(images.map(img => img.complete ? null : new Promise(done => {
+    img.addEventListener('load', done, {once: true});
+    img.addEventListener('error', done, {once: true});
+  })));
+  return images.filter(img => !img.naturalWidth).map(img => img.src);
+}"""
+IMAGE_LOAD_TIMEOUT_MS = 10000
 INSTALL_HINTS = {
     "PIL": "Pillow is missing: pip install pillow",
     "playwright": ("playwright is missing: pip install playwright && "
@@ -239,6 +252,9 @@ def run_web(args):
                     "pageerror[%d]: %s" % (w, e)))
                 page.goto(url)
                 page.wait_for_timeout(1500)
+                broken = page.evaluate(LOAD_IMAGES_JS)
+                for src in broken:
+                    errors.append("image[%d] did not load: %s" % (width, src))
                 path = os.path.join(args.out, web_filename(width))
                 page.screenshot(path=path, full_page=True)
                 written.append(path)

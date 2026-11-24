@@ -119,5 +119,49 @@ class MissingDependencyTests(unittest.TestCase):
         self.assertIn("size must look like", text)
 
 
+class WebImageLoadingTests(unittest.TestCase):
+    def test_images_are_loaded_before_each_screenshot(self):
+        calls = []
+        page = mock.MagicMock()
+        page.evaluate.side_effect = lambda js: calls.append(("evaluate", js)) or []
+        page.screenshot.side_effect = lambda **kw: calls.append(("screenshot", None))
+        browser = mock.MagicMock()
+        browser.new_page.return_value = page
+        playwright = mock.MagicMock()
+        playwright.chromium.launch.return_value = browser
+        sync_api = mock.MagicMock()
+        sync_api.sync_playwright.return_value.__enter__.return_value = playwright
+        args = mock.MagicMock(widths="1280", color_scheme="dark")
+        with tempfile.TemporaryDirectory() as out, \
+                mock.patch.object(snap, "_require", return_value=sync_api):
+            args.out = out
+            with contextlib.redirect_stdout(io.StringIO()):
+                snap.run_web(args)
+        self.assertEqual([("evaluate", snap.LOAD_IMAGES_JS), ("screenshot", None)], calls)
+
+    def test_broken_image_is_reported(self):
+        page = mock.MagicMock()
+        page.evaluate.return_value = ["http://x/img/missing.webp"]
+        browser = mock.MagicMock()
+        browser.new_page.return_value = page
+        playwright = mock.MagicMock()
+        playwright.chromium.launch.return_value = browser
+        sync_api = mock.MagicMock()
+        sync_api.sync_playwright.return_value.__enter__.return_value = playwright
+        args = mock.MagicMock(widths="1280", color_scheme="dark")
+        with tempfile.TemporaryDirectory() as out, \
+                mock.patch.object(snap, "_require", return_value=sync_api):
+            args.out = out
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()) as err:
+                with self.assertRaises(RuntimeError):
+                    snap.run_web(args)
+        self.assertIn("missing.webp", err.getvalue())
+
+    def test_script_makes_images_eager_and_waits(self):
+        self.assertIn("loading = 'eager'", snap.LOAD_IMAGES_JS)
+        self.assertIn("img.complete", snap.LOAD_IMAGES_JS)
+
+
 if __name__ == "__main__":
     unittest.main()
