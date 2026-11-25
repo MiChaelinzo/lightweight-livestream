@@ -16,9 +16,11 @@ import webbrowser
 try:
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
+    from tkinter import font as tkfont
 except ImportError:  # some Linux Pythons ship without tkinter
     tk = None
     ttk = None
+    tkfont = None
     filedialog = None
 
 from . import gui_controller as gc
@@ -32,18 +34,13 @@ from .portable import (ffmpeg_download_url, ffmpeg_guidance, find_ffmpeg,
 
 POLL_MS = 500
 CLOSE_WAIT_MS = 5000
-TITLE_FONT = ("Segoe UI", 18, "bold")
-STEP_FONT = ("Segoe UI", 12, "bold")
-TEXT_FONT = ("Segoe UI", 11)
-BUTTON_FONT = ("Segoe UI", 20, "bold")
-LOG_FONT = ("Consolas", 10)
-WRAP = 480
+APP_NAME = "LightStream"
+TAGLINE = "Streaming made simple"
+WRAP = 560
 GRAPH_NAMES = tuple(name for name, _ in gt.SERIES)
 GRAPH_COLUMNS = 4
 GRAPH_SAMPLES = 60  # one reading per redraw (about 1 Hz): the last minute
-GRAPH_SIZE = (150, 36)
-BANNER_COLORS = {"grey": "#555555", "orange": "#B35900",
-                 "green": "#1B7F3B", "red": "#B00020"}
+GRAPH_SIZE = (150, 40)
 GRAPH_TITLES = dict(gt.SERIES)
 NO_GUI_MESSAGE = ("The window could not open. This computer has no screen "
                   "for it (or Python has no 'tkinter').\n"
@@ -66,8 +63,12 @@ class StreamWindow:
         self.graph_data = gt.PerformanceBuffers(GRAPH_SAMPLES)
         self.graph_canvases = {}
         self.redraw_gate = gt.RedrawGate(1.0)
-        root.title("Lightstream" + (" (portable)" if is_portable() else ""))
-        root.minsize(720, 560)
+        root.title(APP_NAME + (" (portable)" if is_portable() else ""))
+        self._init_fonts()
+        (width, height), self.min_size = gt.fit_window(
+            root.winfo_screenwidth(), root.winfo_screenheight())
+        root.geometry(self._centered_geometry(width, height))
+        root.minsize(*self.min_size)
         self._init_variables(saved)
         self._pages = {}
         self._build_shell()
@@ -76,6 +77,25 @@ class StreamWindow:
         self._bind_shortcuts()
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.poll()
+
+    def _init_fonts(self):
+        """Pick installed font families (Segoe UI only exists on Windows)."""
+        try:
+            families = tkfont.families(self.root)
+        except tk.TclError:
+            families = ()
+        self.family = gt.pick_font_family(families)
+        self.mono_family = gt.pick_font_family(
+            families, gt.MONO_PREFERENCE, gt.FALLBACK_MONO_FONT)
+
+    def _centered_geometry(self, width, height):
+        x, y = gt.center_position(self.root.winfo_screenwidth(),
+                                  self.root.winfo_screenheight(), width, height)
+        return "%dx%d+%d+%d" % (width, height, x, y)
+
+    def font(self, role, weight="normal"):
+        """Tk font tuple for a size role in gt.FONT_SIZES at the current density."""
+        return (self.family, gt.font_sizes(self.compact)[role], weight)
 
     def _init_variables(self, saved):
         self.platform = tk.StringVar(value=gc.label_for(
@@ -117,32 +137,96 @@ class StreamWindow:
         outer = ttk.Frame(self.root)
         outer.pack(fill="both", expand=True)
         self.outer = outer
-        sidebar = ttk.Frame(outer, padding=6)
+        sidebar = ttk.Frame(outer, style="Sidebar.TFrame", padding=(10, 14))
         sidebar.pack(side="left", fill="y")
-        self.title_label = ttk.Label(sidebar, text="Lightstream", font=TITLE_FONT)
-        self.title_label.pack(pady=(0, 8))
+        self.title_label = ttk.Label(sidebar, text=APP_NAME, style="Brand.TLabel")
+        self.title_label.pack(anchor="w")
+        self.tagline_label = ttk.Label(sidebar, text=TAGLINE, style="SidebarHint.TLabel",
+                                       wraplength=170, justify="left")
+        self.tagline_label.pack(anchor="w", pady=(0, 14))
         self.page_var = tk.StringVar()
         for page_id, label in gp.PAGES:
             ttk.Radiobutton(sidebar, text=gt.with_accelerator(label, "page:" + page_id),
                             value=page_id, variable=self.page_var,
-                            style="Toolbutton", takefocus=True,
+                            style="Nav.Toolbutton", takefocus=True,
                             command=lambda p=page_id: self.show_page(p)
                             ).pack(fill="x", pady=1)
         self.sidebar = sidebar
         ttk.Button(sidebar, text=gt.with_accelerator("Dark / light", "theme"),
-                   command=self.on_toggle_theme).pack(side="bottom", fill="x", pady=1)
+                   command=self.on_toggle_theme).pack(side="bottom", fill="x", pady=(3, 0))
         ttk.Button(sidebar, text=gt.with_accelerator("Compact", "compact"),
-                   command=self.on_toggle_compact).pack(side="bottom", fill="x", pady=1)
-        right = ttk.Frame(outer, padding=8)
+                   command=self.on_toggle_compact).pack(side="bottom", fill="x", pady=(3, 0))
+        right = ttk.Frame(outer, padding=(14, 12))
         right.pack(side="left", fill="both", expand=True)
         self.right = right
-        self.banner = tk.Label(right, text="", font=STEP_FONT, fg="white",
-                               wraplength=WRAP, pady=8)
-        self.banner.pack(fill="x")
-        self.page_area = ttk.Frame(right)
-        self.page_area.pack(fill="both", expand=True, pady=6)
-        ttk.Label(right, textvariable=self.status, wraplength=WRAP,
-                  justify="left").pack(fill="x")
+        self.banner_row = tk.Frame(right, highlightthickness=0, borderwidth=0)
+        self.banner_row.pack(fill="x")
+        self.banner_bar = tk.Frame(self.banner_row, width=6, highlightthickness=0,
+                                   borderwidth=0)
+        self.banner_bar.pack(side="left", fill="y")
+        self.banner = tk.Label(self.banner_row, text="", wraplength=WRAP, pady=10,
+                               padx=12, anchor="w", justify="left")
+        self.banner.pack(side="left", fill="x", expand=True)
+        self.status_label = ttk.Label(right, textvariable=self.status, wraplength=WRAP,
+                                      justify="left", style="Hint.TLabel")
+        self.status.trace_add("write", self._on_status_changed)
+        self._build_page_area(right)
+
+    def _on_status_changed(self, *_args):
+        """Show the status line only while it has text (no blank strip)."""
+        if self.status.get():
+            if not self.status_label.winfo_manager():
+                self.status_label.pack(side="bottom", fill="x", pady=(6, 0),
+                                       before=self.page_holder)
+        else:
+            self.status_label.pack_forget()
+
+    def _build_page_area(self, parent):
+        """Scrollable area: every page stays reachable on a small screen."""
+        holder = ttk.Frame(parent)
+        holder.pack(fill="both", expand=True, pady=(10, 0))
+        self.page_holder = holder
+        holder.columnconfigure(0, weight=1)
+        holder.rowconfigure(0, weight=1)
+        self.page_canvas = tk.Canvas(holder, highlightthickness=0, borderwidth=0,
+                                     takefocus=False)
+        self.page_scroll = ttk.Scrollbar(holder, orient="vertical",
+                                         command=self.page_canvas.yview)
+        self.page_canvas.configure(yscrollcommand=self._on_page_scrolled)
+        self.page_canvas.grid(row=0, column=0, sticky="nsew")
+        self.page_area = ttk.Frame(self.page_canvas)
+        self._page_window = self.page_canvas.create_window(
+            (0, 0), window=self.page_area, anchor="nw")
+        self.page_canvas.bind("<Configure>", self._on_page_resized)
+        self.page_area.bind("<Configure>", self._on_page_content_resized)
+        for sequence in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            self.root.bind_all(sequence, self._on_wheel, add="+")
+
+    def _on_page_scrolled(self, first, last):
+        self.page_scroll.set(first, last)
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            self.page_scroll.grid_remove()
+        else:
+            self.page_scroll.grid(row=0, column=1, sticky="ns", padx=(10, 0))
+
+    def _on_page_resized(self, event):
+        self.page_canvas.itemconfigure(self._page_window, width=event.width)
+
+    def _on_page_content_resized(self, _event):
+        self.page_canvas.configure(scrollregion=self.page_canvas.bbox("all"))
+
+    def _on_wheel(self, event):
+        widget = event.widget
+        if not hasattr(widget, "winfo_toplevel") or widget.winfo_toplevel() is not self.root:
+            return  # a dialog or other window: not ours to scroll
+        if widget.winfo_class() in ("Text", "Listbox", "TCombobox", "TSpinbox", "Spinbox"):
+            return  # these scroll or change themselves
+        content = self.page_area.winfo_reqheight()
+        if not gt.needs_scrollbar(content, self.page_canvas.winfo_height()):
+            return
+        steps = gt.scroll_steps(getattr(event, "num", None), getattr(event, "delta", 0))
+        if steps:
+            self.page_canvas.yview_scroll(steps * 3, "units")
 
     def show_page(self, page_id):
         page_id = gp.resolve_page(page_id)
@@ -150,98 +234,163 @@ class StreamWindow:
         for frame in self._pages.values():
             frame.pack_forget()
         if page_id not in self._pages:
-            frame = ttk.Frame(self.page_area, padding=4)
+            frame = ttk.Frame(self.page_area, padding=(2, 4))
             getattr(self, "_build_" + page_id)(frame)
             self._pages[page_id] = frame
+            self._style_plain_widgets()
         self._pages[page_id].pack(fill="both", expand=True)
+        self.page_canvas.yview_moveto(0)
 
-    def _label(self, parent, text, font=TEXT_FONT):
-        label = ttk.Label(parent, text=text, font=font, wraplength=WRAP, justify="left")
-        label.pack(anchor="w", pady=(6, 0))
+    def _label(self, parent, text, style="TLabel", top=8):
+        label = ttk.Label(parent, text=text, style=style, wraplength=WRAP, justify="left")
+        label.pack(anchor="w", pady=(top, 0))
         return label
 
-    def _entry(self, parent, label, variable, show=None):
+    def _heading(self, parent, text):
+        return self._label(parent, text, "Heading.TLabel", top=0)
+
+    def _hint(self, parent, text):
+        return self._label(parent, text, "Hint.TLabel", top=2)
+
+    def _entry(self, parent, label, variable, show=None, hint=None):
         self._label(parent, label)
+        if hint:
+            self._hint(parent, hint)
         entry = ttk.Entry(parent, textvariable=variable, show=show or "")
-        entry.pack(fill="x")
+        entry.pack(fill="x", pady=(2, 0))
         return entry
 
-    def _combo(self, parent, label, variable, values):
+    def _combo(self, parent, label, variable, values, hint=None):
         self._label(parent, label)
+        if hint:
+            self._hint(parent, hint)
         ttk.Combobox(parent, textvariable=variable, state="readonly",
-                     values=values).pack(fill="x")
+                     values=values).pack(fill="x", pady=(2, 0))
+
+    def _card(self, parent, title, style="Card"):
+        """Bordered card with a heading. Returns the body frame to fill."""
+        outer = ttk.Frame(parent, style="Card.TFrame", padding=(12, 8))
+        outer.pack(fill="x", pady=(8, 0))
+        ttk.Label(outer, text=title, style="CardHeading.TLabel").pack(anchor="w")
+        body = ttk.Frame(outer, style="CardBody.TFrame")
+        body.pack(fill="x", pady=(4, 0))
+        return body
+
+    def _big_button(self, parent, text, command, kind, enabled, **pack):
+        button = tk.Button(parent, text=text, command=command, relief="flat",
+                           borderwidth=0, cursor="hand2", pady=8,
+                           takefocus=True, highlightthickness=2)
+        button.kind = kind
+        button.pack(**pack)
+        self._paint_big_button(button, enabled)
+        return button
+
+    def _paint_big_button(self, button, enabled):
+        background, foreground = gt.big_button_colors(self.theme, button.kind, enabled)
+        colors = gt.palette(self.theme)
+        button.config(bg=background, fg=foreground, disabledforeground=foreground,
+                      activebackground=background, activeforeground=foreground,
+                      highlightbackground=background, highlightcolor=colors["focus"],
+                      font=self.font("step" if button.kind == "emergency" else "button",
+                                     "bold"),
+                      state="normal" if enabled else "disabled")
+
+    def _set_big_button(self, button, enabled, text=None):
+        """Repaint only when the state changes (the poll runs twice a second)."""
+        wanted = "normal" if enabled else "disabled"
+        if text is not None:
+            button.config(text=text)
+        if str(button.cget("state")) != wanted:
+            self._paint_big_button(button, enabled)
 
     # -- pages ----------------------------------------------------------------
     def _build_dashboard(self, frame):
-        self._combo(frame, "Where do you want to stream?", self.platform,
-                    [l for l, _ in gc.PLATFORM_CHOICES])
-        self._entry(frame, "(Other site only) address starting with rtmp://", self.url)
-        self.key_entry = self._entry(
-            frame, "Paste your secret stream key (it is not saved)", self.key, show="*")
-        ttk.Checkbutton(frame, text="Show the key", variable=self.show_key,
-                        command=self.toggle_key).pack(anchor="w")
-        self._combo(frame, "How good is your PC?", self.strength,
-                    [l for l, _ in gc.STRENGTH_CHOICES])
+        go = self._card(frame, "Go live")
+        go.columnconfigure(0, weight=1, uniform="go")
+        go.columnconfigure(1, weight=1, uniform="go")
+        self._grid_field(go, 0, 0, "Where do you want to stream?",
+                         ttk.Combobox(go, textvariable=self.platform, state="readonly",
+                                      values=[l for l, _ in gc.PLATFORM_CHOICES]))
+        self._grid_field(go, 0, 1, "How good is your PC?",
+                         ttk.Combobox(go, textvariable=self.strength, state="readonly",
+                                      values=[l for l, _ in gc.STRENGTH_CHOICES]))
+        self._grid_field(go, 2, 0, "Other site only: address starting with rtmp://",
+                         ttk.Entry(go, textvariable=self.url))
+        self.key_entry = ttk.Entry(go, textvariable=self.key, show="*")
+        self._grid_field(go, 2, 1, "Secret stream key (never saved)", self.key_entry)
+        ttk.Checkbutton(go, text="Show the key", variable=self.show_key,
+                        style="Card.TCheckbutton", command=self.toggle_key
+                        ).grid(row=4, column=1, sticky="w", padx=(0, 0), pady=(4, 0))
         buttons = ttk.Frame(frame)
-        buttons.pack(fill="x", pady=8)
-        self.start_btn = tk.Button(buttons, text=gt.with_accelerator("START", "start"), font=BUTTON_FONT, bg="#1B7F3B",
-                                   fg="white", command=self.on_start)
-        self.start_btn.pack(side="left", expand=True, fill="x", padx=4)
-        self.stop_btn = tk.Button(buttons, text=gt.with_accelerator("STOP", "stop"), font=BUTTON_FONT, bg="#B00020",
-                                  fg="white", command=self.on_stop, state="disabled")
-        self.stop_btn.pack(side="left", expand=True, fill="x", padx=4)
-        self.emergency_btn = tk.Button(
-            frame, text="EMERGENCY: lowest quality now", font=BUTTON_FONT,
-            bg="#C65D00", fg="white", command=self.on_emergency, state="disabled")
-        self.emergency_btn.pack(fill="x", pady=4)
+        buttons.pack(fill="x", pady=(12, 0))
+        self.start_btn = self._big_button(
+            buttons, gt.with_accelerator("START", "start"), self.on_start,
+            "start", True, side="left", expand=True, fill="x", padx=(0, 6))
+        self.stop_btn = self._big_button(
+            buttons, gt.with_accelerator("STOP", "stop"), self.on_stop,
+            "stop", False, side="left", expand=True, fill="x", padx=(6, 0))
+        self.emergency_btn = self._big_button(
+            frame, gp.emergency_button_label(False), self.on_emergency,
+            "emergency", False, fill="x", pady=(8, 0))
         self.test_btn = ttk.Button(frame, text="Test first: record 10 seconds to a "
                                    "file (not live)", command=self.on_test)
-        self.test_btn.pack(anchor="w")
-        self.cards_frame = ttk.LabelFrame(frame, text="Stream health", padding=6)
-        self.cards_frame.pack(fill="x", pady=6)
+        self.test_btn.pack(anchor="w", pady=(8, 0))
+        body = self._card(frame, "Stream health")
         self.card_values = []
         for index, card in enumerate(gp.health_cards({})):
-            ttk.Label(self.cards_frame, text=card.title).grid(row=0, column=index, padx=6)
-            value = ttk.Label(self.cards_frame, text=card.value, font=STEP_FONT)
-            value.grid(row=1, column=index, padx=6)
+            body.columnconfigure(index, weight=1, uniform="health")
+            ttk.Label(body, text=card.title, style="CardCaption.TLabel", wraplength=110,
+                      justify="left").grid(row=0, column=index, padx=6, sticky="w")
+            value = ttk.Label(body, text=card.value, style="CardValue.TLabel")
+            value.grid(row=1, column=index, padx=6, sticky="w")
             self.card_values.append(value)
         self._build_graphs(frame)
-        self.telemetry_frame = ttk.LabelFrame(frame, text="This PC", padding=6)
-        self.telemetry_frame.pack(fill="x", pady=6)
+        body = self._card(frame, "This PC")
         self.telemetry_values = []
         for index, card in enumerate(gp.telemetry_cards(UNKNOWN_SAMPLE)):
-            ttk.Label(self.telemetry_frame, text=card.title).grid(row=0, column=index, padx=6)
-            value = ttk.Label(self.telemetry_frame, text=card.value)
-            value.grid(row=1, column=index, padx=6)
+            body.columnconfigure(index, weight=1, uniform="pc")
+            ttk.Label(body, text=card.title, style="CardCaption.TLabel", wraplength=90,
+                      justify="left").grid(row=0, column=index, padx=6, sticky="w")
+            value = ttk.Label(body, text=card.value, style="CardSmallValue.TLabel")
+            value.grid(row=1, column=index, padx=6, sticky="w")
             self.telemetry_values.append(value)
         self.telemetry = TelemetrySampler()
         self.health_label = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
-        self.health_label.pack(fill="x")
-        self.compare_label = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
+        self.health_label.pack(fill="x", pady=(8, 0))
         ttk.Button(frame, text="Compare last two saved sessions",
-                   command=self.on_compare).pack(anchor="w")
+                   command=self.on_compare).pack(anchor="w", pady=(8, 0))
+        self.compare_label = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
         self.compare_label.pack(fill="x")
         self.advice = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
         self.advice.pack(fill="x")
-        self.rec_frame = ttk.LabelFrame(
-            frame, text="Suggestions (nothing changes unless you press Apply)", padding=6)
-        self.rec_frame.pack(fill="x", pady=6)
+        self.rec_frame = self._card(
+            frame, "Suggestions (nothing changes unless you press Apply)")
         self._shown_recs = None
-        self.log = tk.Text(frame, height=5, font=LOG_FONT, state="disabled")
-        self.log.pack(fill="both", expand=True)
+        self.log = tk.Text(frame, height=5, state="disabled", relief="flat",
+                           borderwidth=1, highlightthickness=1, padx=6, pady=4)
+        self.log.pack(fill="both", expand=True, pady=(8, 0))
+
+    def _grid_field(self, parent, row, column, label, widget):
+        """Caption above a control, two fields per row, on a card."""
+        pad = (0, 8) if column == 0 else (8, 0)
+        ttk.Label(parent, text=label, style="Card.TLabel", wraplength=WRAP // 2 - 12,
+                  justify="left").grid(row=row, column=column, sticky="w", padx=pad,
+                                       pady=(6 if row else 0, 0))
+        widget.grid(row=row + 1, column=column, sticky="ew", padx=pad, pady=(2, 0))
 
     def _build_graphs(self, frame):
         """Small line graphs of the last minute. Failure here must not break the page."""
-        graphs = ttk.LabelFrame(frame, text="Last minute", padding=6)
-        graphs.pack(fill="x", pady=6)
+        graphs = self._card(frame, "Last minute")
         try:
             for index, name in enumerate(GRAPH_NAMES):
                 row, column = divmod(index, GRAPH_COLUMNS)
-                ttk.Label(graphs, text=GRAPH_TITLES[name]).grid(
-                    row=row * 2, column=column, padx=6)
+                graphs.columnconfigure(column, weight=1, uniform="graph")
+                ttk.Label(graphs, text=GRAPH_TITLES[name], style="CardCaption.TLabel"
+                          ).grid(row=row * 2, column=column, padx=6, sticky="w",
+                                 pady=(4 if row else 0, 0))
                 canvas = tk.Canvas(graphs, width=GRAPH_SIZE[0], height=GRAPH_SIZE[1],
                                    highlightthickness=1, takefocus=False)
-                canvas.grid(row=row * 2 + 1, column=column, padx=6)
+                canvas.grid(row=row * 2 + 1, column=column, padx=6, sticky="ew")
                 self.graph_canvases[name] = canvas
         except tk.TclError:
             self.graph_canvases = {}  # numbers on the cards still work
@@ -250,7 +399,8 @@ class StreamWindow:
     def _style_graphs(self):
         colors = gt.palette(self.theme)
         for canvas in self.graph_canvases.values():
-            canvas.config(bg=colors["graph_back"], highlightbackground=colors["muted"])
+            canvas.config(bg=colors["graph_back"], highlightbackground=colors["card_border"])
+        self._draw_graphs()
 
     def _record_graphs(self, summary, sample):
         """Add one reading per graph. Called at most once per second."""
@@ -258,45 +408,169 @@ class StreamWindow:
 
     def _draw_graphs(self):
         colors = gt.palette(self.theme)
-        width, height = GRAPH_SIZE
+        _width, height = GRAPH_SIZE
         for name, canvas in self.graph_canvases.items():
             canvas.delete("all")
-            values = gt.downsample(self.graph_data.values(name), width // 2)
+            width = max(canvas.winfo_width(), GRAPH_SIZE[0])
+            for y in gt.graph_grid_ys(height):
+                canvas.create_line(0, y, width, y, fill=colors["graph_grid"])
+            raw = self.graph_data.values(name)
+            if gt.graph_is_empty(raw):
+                canvas.create_text(width // 2, height // 2, text=gt.EMPTY_GRAPH_TEXT,
+                                   fill=colors["muted"], font=self.font("caption"))
+                continue
+            values = gt.downsample(raw, width // 2)
             coords = gt.sparkline_points(values, width, height)
             if coords:
                 canvas.create_line(*coords, fill=colors["graph_line"], width=2)
 
     # -- look: theme, compact mode, shortcuts -----------------------------------
     def apply_look(self):
-        """Apply theme colors and compact mode. Any Tk failure keeps the old look."""
+        """Apply theme colors, fonts and compact mode. A Tk failure keeps the old look."""
         colors = gt.palette(self.theme)
         sizes = gt.font_sizes(self.compact)
         try:
+            self._configure_named_fonts(sizes)
             style = ttk.Style(self.root)
-            style.configure(".", background=colors["background"],
-                            foreground=colors["foreground"])
-            card = gt.card_style(self.theme, 1)
-            # Only the border is themed: child labels keep the window background,
-            # so a filled card color would leave patches (UNVERIFIED on screen).
-            style.configure("TLabelframe", bordercolor=card["bordercolor"],
-                            borderwidth=card["borderwidth"], relief=card["relief"])
-            style.configure("TLabelframe.Label", foreground=colors["foreground"])
-            style.configure("TCheckbutton", background=colors["background"])
-            style.configure("TRadiobutton", background=colors["background"])
-            style.configure("Toolbutton", background=colors["background"],
-                            focuscolor=colors["focus"])
-            style.map("TButton", focuscolor=[("focus", colors["focus"])])
+            if "clam" in style.theme_names():
+                style.theme_use("clam")  # the only built-in theme that honors colors everywhere
+            self._configure_styles(style, colors)
             self.root.configure(background=colors["background"])
-            self.title_label.config(font=(gt.FONT_FAMILY, sizes["title"], "bold"))
+            self.page_canvas.configure(background=colors["background"])
+            self.banner.config(font=self.font("step", "bold"))
+            self._style_plain_widgets()
             self._style_graphs()
+            self._repaint_dynamic()
             if self.compact:
                 self.right.pack_forget()
                 self.root.minsize(160, 200)
+                self.root.geometry("")  # shrink to the sidebar
             elif not self.right.winfo_manager():
                 self.right.pack(side="left", fill="both", expand=True)
-                self.root.minsize(720, 560)
+                (width, height), self.min_size = gt.fit_window(
+                    self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+                self.root.minsize(*self.min_size)
+                self.root.geometry(self._centered_geometry(width, height))
         except tk.TclError as err:
             self.status.set("Could not change the look: %s" % err)
+
+    def _configure_named_fonts(self, sizes):
+        for name in ("TkDefaultFont", "TkTextFont", "TkMenuFont", "TkHeadingFont"):
+            tkfont.nametofont(name).configure(family=self.family, size=sizes["text"])
+        tkfont.nametofont("TkFixedFont").configure(family=self.mono_family,
+                                                   size=sizes["log"])
+
+    def _configure_styles(self, style, c):
+        text, bold = self.font("text"), self.font("text", "bold")
+        style.configure(".", background=c["background"], foreground=c["foreground"],
+                        bordercolor=c["card_border"], focuscolor=c["focus"],
+                        lightcolor=c["card_border"], darkcolor=c["card_border"],
+                        troughcolor=c["surface"], font=text)
+        style.configure("TLabel", background=c["background"], foreground=c["foreground"])
+        style.configure("Hint.TLabel", foreground=c["muted"], font=self.font("caption"))
+        style.configure("Heading.TLabel", font=self.font("step", "bold"))
+        style.configure("TCheckbutton", background=c["background"])
+        style.configure("TRadiobutton", background=c["background"])
+        style.map("TCheckbutton", background=[("active", c["background"])])
+        for name in ("TCheckbutton", "Card.TCheckbutton", "TRadiobutton"):
+            style.map(name,
+                      indicatorbackground=[("selected", c["accent"]),
+                                           ("!selected", c["surface"])],
+                      indicatorforeground=[("selected", c["accent_fg"]),
+                                           ("!selected", c["surface"])])
+            style.configure(name, indicatorbackground=c["surface"],
+                            indicatorforeground=c["accent_fg"],
+                            upperbordercolor=c["card_border"],
+                            lowerbordercolor=c["card_border"])
+        # Cards: filled with the card color, so labels inside use Card.* styles.
+        style.configure("Card.TFrame", background=c["card"], bordercolor=c["card_border"],
+                        borderwidth=1, relief="solid")
+        style.configure("CardBody.TFrame", background=c["card"], borderwidth=0,
+                        relief="flat")
+        style.configure("Card.TLabel", background=c["card"], foreground=c["foreground"])
+        style.configure("Card.TCheckbutton", background=c["card"],
+                        foreground=c["foreground"])
+        style.map("Card.TCheckbutton", background=[("active", c["card"])])
+        style.configure("CardHeading.TLabel", background=c["card"],
+                        foreground=c["foreground"], font=self.font("step", "bold"))
+        style.configure("CardCaption.TLabel", background=c["card"], foreground=c["muted"],
+                        font=self.font("caption"))
+        style.configure("CardValue.TLabel", background=c["card"],
+                        foreground=c["foreground"], font=self.font("value", "bold"))
+        style.configure("CardSmallValue.TLabel", background=c["card"],
+                        foreground=c["foreground"], font=bold)
+        # Buttons: calm secondary, blue accent for the main action.
+        style.configure("TButton", background=c["button_bg"], foreground=c["foreground"],
+                        bordercolor=c["card_border"], padding=(12, 6), relief="flat")
+        style.map("TButton", background=[("active", c["button_hover"])],
+                  foreground=[("disabled", c["muted"])])
+        style.configure("Accent.TButton", background=c["accent"],
+                        foreground=c["accent_fg"], bordercolor=c["accent"],
+                        padding=(14, 8), font=bold)
+        style.map("Accent.TButton", background=[("active", c["accent_hover"])],
+                  foreground=[("disabled", c["muted"])])
+        style.configure("TEntry", fieldbackground=c["surface"], foreground=c["foreground"],
+                        insertcolor=c["foreground"], padding=4)
+        style.configure("TCombobox", fieldbackground=c["surface"], background=c["button_bg"],
+                        foreground=c["foreground"], arrowcolor=c["foreground"], padding=4)
+        style.map("TCombobox", fieldbackground=[("readonly", c["surface"])],
+                  foreground=[("readonly", c["foreground"])])
+        style.configure("TScale", background=c["background"], troughcolor=c["surface"])
+        style.configure("TScrollbar", background=c["button_bg"], troughcolor=c["trough"],
+                        bordercolor=c["trough"], lightcolor=c["button_bg"],
+                        darkcolor=c["button_bg"], arrowcolor=c["foreground"],
+                        gripcount=0, arrowsize=14)
+        style.map("TScrollbar", background=[("active", c["button_hover"])])
+        self.root.option_add("*TCombobox*Listbox.background", c["surface"])
+        self.root.option_add("*TCombobox*Listbox.foreground", c["foreground"])
+        self.root.option_add("*TCombobox*Listbox.selectBackground", c["accent"])
+        self.root.option_add("*TCombobox*Listbox.selectForeground", c["accent_fg"])
+        # Sidebar
+        style.configure("Sidebar.TFrame", background=c["sidebar"], borderwidth=0)
+        style.configure("Brand.TLabel", background=c["sidebar"], foreground=c["foreground"],
+                        font=self.font("title", "bold"))
+        style.configure("SidebarHint.TLabel", background=c["sidebar"],
+                        foreground=c["muted"], font=self.font("caption"))
+        style.configure("Nav.Toolbutton", background=c["sidebar"],
+                        foreground=c["foreground"], padding=(12, 8), anchor="w",
+                        relief="flat", borderwidth=0, font=self.font("nav"))
+        style.map("Nav.Toolbutton",
+                  background=[("selected", c["accent"]), ("active", c["nav_hover"])],
+                  foreground=[("selected", c["accent_fg"])])
+        self.sidebar.configure(style="Sidebar.TFrame")
+        self.title_label.config(font=self.font("title", "bold"))
+
+    def _style_plain_widgets(self):
+        """Classic tk widgets ignore ttk styles, so color them directly."""
+        c = gt.palette(self.theme)
+        if hasattr(self, "log"):
+            self.log.config(bg=c["surface"], fg=c["foreground"], font="TkFixedFont",
+                            insertbackground=c["foreground"],
+                            highlightbackground=c["card_border"],
+                            highlightcolor=c["focus"])
+        if hasattr(self, "scene_list"):
+            self.scene_list.config(bg=c["surface"], fg=c["foreground"],
+                                   selectbackground=c["accent"],
+                                   selectforeground=c["accent_fg"],
+                                   highlightbackground=c["card_border"],
+                                   highlightcolor=c["focus"], relief="flat",
+                                   font=self.font("text"))
+
+    def _repaint_dynamic(self):
+        """Repaint widgets whose colors depend on the current state."""
+        text, color, _help, _log, running = self.controller.snapshot()
+        self._paint_banner(text, color)
+        if "dashboard" in self._pages:
+            self._paint_big_button(self.start_btn, not running)
+            self._paint_big_button(self.stop_btn, running)
+            self._paint_big_button(self.emergency_btn, running)
+            self._shown_recs = None
+
+    def _paint_banner(self, text, color):
+        background, foreground = gt.banner_colors(self.theme, color)
+        self.banner_row.config(bg=background)
+        self.banner_bar.config(bg=gt.banner_accent(self.theme, color))
+        self.banner.config(text=text, bg=background, fg=foreground)
 
     def _save_look(self):
         try:
@@ -337,36 +611,43 @@ class StreamWindow:
         return "break"
 
     def _build_setup(self, frame):
-        self._label(frame, "Setup wizard", STEP_FONT)
-        self._label(frame, "Looks at this PC and picks safe settings. You can still "
-                    "change everything afterwards.")
+        self._heading(frame, "Setup wizard")
+        self._hint(frame, "Looks at this PC and picks safe settings. You can still "
+                   "change everything afterwards.")
         ttk.Button(frame, text="One-click setup: pick safe settings for this PC",
-                   command=self.on_setup).pack(anchor="w", pady=6)
+                   style="Accent.TButton", command=self.on_setup
+                   ).pack(anchor="w", pady=(12, 0))
         ttk.Button(frame, text="Optimize: propose settings (asks first)",
-                   command=self.on_optimize).pack(anchor="w", pady=2)
-        ttk.Button(frame, text="Check my PC", command=self.on_doctor).pack(anchor="w")
+                   command=self.on_optimize).pack(anchor="w", pady=(8, 0))
+        ttk.Button(frame, text="Check my PC", command=self.on_doctor
+                   ).pack(anchor="w", pady=(8, 0))
         self._combo(frame, "PC type (hardware profile)", self.hardware,
-                    gp.hardware_choices())
+                    gp.hardware_choices(),
+                    hint="Leave on automatic unless the wizard guessed wrong.")
 
     def _build_scenes(self, frame):
-        self._label(frame, "Scenes", STEP_FONT)
-        self.scene_list = tk.Listbox(frame, height=8, exportselection=False)
-        self.scene_list.pack(fill="x", pady=4)
+        self._heading(frame, "Scenes")
+        self._hint(frame, "A scene is a saved look for your stream, such as overlays.")
+        self.scene_list = tk.Listbox(frame, height=8, exportselection=False,
+                                     borderwidth=0, highlightthickness=1)
+        self.scene_list.pack(fill="x", pady=(8, 0))
         self.scene_name = tk.StringVar()
         self._entry(frame, "Scene name (for Save Scene)", self.scene_name)
         row = ttk.Frame(frame)
-        row.pack(anchor="w", pady=6)
-        for text, command in (("Save Scene", self.on_scene_save),
-                              ("Duplicate Scene", self.on_scene_duplicate),
-                              ("Import Scene", self.on_scene_import),
-                              ("Export Scene", self.on_scene_export)):
-            ttk.Button(row, text=text, command=command).pack(side="left", padx=2)
+        row.pack(anchor="w", pady=(10, 0))
+        for text, command, style in (("Save Scene", self.on_scene_save, "Accent.TButton"),
+                                     ("Duplicate Scene", self.on_scene_duplicate, "TButton"),
+                                     ("Import Scene", self.on_scene_import, "TButton"),
+                                     ("Export Scene", self.on_scene_export, "TButton")):
+            ttk.Button(row, text=text, style=style, command=command
+                       ).pack(side="left", padx=(0, 6))
         self._combo(frame, "Scene used when you press START", self.scene,
                     gc.scene_choices(self.scenes_file))
         self._refresh_scene_list()
 
     def _build_overlays(self, frame):
-        self._label(frame, "Overlays (drawn by FFmpeg, saved with Save Scene)", STEP_FONT)
+        self._heading(frame, "Overlays")
+        self._hint(frame, "Drawn by FFmpeg and saved with Save Scene.")
         self.ov_kind = tk.StringVar(value="text")
         self.ov_text = tk.StringVar()
         self.ov_corner = tk.StringVar(value="top-left")
@@ -375,64 +656,67 @@ class StreamWindow:
         self._combo(frame, "Kind", self.ov_kind, gp.OVERLAY_KIND_CHOICES)
         self._entry(frame, "Text (text overlays) or PNG path (image overlays)", self.ov_text)
         self._combo(frame, "Position", self.ov_corner, gp.CORNER_CHOICES)
-        self._label(frame, "Scale (font size, or percent of width for images)")
+        self._label(frame, "Scale")
+        self._hint(frame, "Font size, or percent of width for images.")
         ttk.Scale(frame, from_=8, to=200, variable=self.ov_size, orient="horizontal",
                   command=lambda _v: self.update_overlay_preview()).pack(fill="x")
         for variable in (self.ov_kind, self.ov_text, self.ov_corner):
             variable.trace_add("write", lambda *_a: self.update_overlay_preview())
+        self._label(frame, "Preview")
+        self._hint(frame, "Filter text, not a picture.")
         self.ov_preview = ttk.Label(frame, text=gp.PREVIEW_PLACEHOLDER,
-                                    wraplength=WRAP, justify="left")
-        self._label(frame, "Preview (filter text, not a picture)")
-        self.ov_preview.pack(anchor="w")
-        ttk.Button(frame, text="Add to scene being built",
-                   command=self.on_overlay_add).pack(anchor="w", pady=6)
+                                    wraplength=WRAP, justify="left", style="Hint.TLabel")
+        self.ov_preview.pack(anchor="w", pady=(2, 0))
+        ttk.Button(frame, text="Add to scene being built", style="Accent.TButton",
+                   command=self.on_overlay_add).pack(anchor="w", pady=(12, 0))
         self.update_overlay_preview()
 
     def _build_recording(self, frame):
-        self._label(frame, "Recording", STEP_FONT)
+        self._heading(frame, "Recording")
         ttk.Checkbutton(frame, text="Record a copy to a file while streaming",
-                        variable=self.record).pack(anchor="w")
-        self._label(frame, "Files go to the recordings folder in the app data folder.")
+                        variable=self.record).pack(anchor="w", pady=(8, 0))
+        self._hint(frame, "Files go to the recordings folder in the app data folder.")
         self._combo(frame, "File type", self.record_format,
                     [l for l, _ in gc.RECORD_FORMAT_CHOICES])
         self._combo(frame, "Bitrate mode", self.rate_mode,
                     [l for l, _ in gc.RATE_MODE_CHOICES])
-        self._label(frame, "Potato Stream: very low CPU use for old PCs. Replaces "
-                    "size, frame rate and quality. Grayscale and skipping still "
-                    "frames are options; neither is guaranteed to save CPU.")
         self._combo(frame, "Potato Stream", self.potato,
-                    [l for l, _ in gc.POTATO_CHOICES])
+                    [l for l, _ in gc.POTATO_CHOICES],
+                    hint="Very low CPU use for old PCs. Replaces size, frame rate and "
+                    "quality. Grayscale and skipping still frames are options; neither "
+                    "is guaranteed to save CPU.")
         ttk.Checkbutton(frame, text="Grayscale picture", variable=self.potato_grayscale
-                        ).pack(anchor="w")
+                        ).pack(anchor="w", pady=(8, 0))
         ttk.Checkbutton(frame, text="Skip near-identical frames",
                         variable=self.potato_skip_static).pack(anchor="w")
-        self._label(frame, "Keeping one connection alive across encoder restarts "
-                    "(persistent ingest) is command line only: --persistent-ingest.")
+        self._hint(frame, "Keeping one connection alive across encoder restarts "
+                   "(persistent ingest) is command line only: --persistent-ingest.")
 
     def _build_advanced(self, frame):
+        self._heading(frame, "Advanced")
+        self._hint(frame, "Safe to leave empty. Empty means automatic.")
         for label, var in (("Frames per second (empty = automatic)", self.fps),
                            ("Video kbps (empty = automatic)", self.bitrate),
                            ("Window title (Windows only)", self.window_title),
                            ("Audio device (empty = automatic)", self.audio)):
             self._entry(frame, label, var)
-        self._entry(frame, "Backup server address (optional, rtmp://host/app, "
-                    "no key; used if the main one keeps failing)", self.backup_url)
+        self._entry(frame, "Backup server address (optional)", self.backup_url,
+                    hint="rtmp://host/app, no key. Used if the main one keeps failing.")
         self._combo(frame, "Hardware profile", self.hardware, gp.hardware_choices())
-        self._combo(frame, "Performance profile (replaces Strength when chosen)",
-                    self.profile, gp.profile_choices())
+        self._combo(frame, "Performance profile", self.profile, gp.profile_choices(),
+                    hint="Replaces Strength when chosen.")
         self._combo(frame, "Microphone profile", self.audio_profile,
                     gp.audio_profile_choices())
-        ttk.Checkbutton(frame, text="Auto-scale quality (off by default). When the "
-                        "stream struggles it steps quality down, and back up when "
-                        "healthy. Each step restarts the stream for a moment.",
-                        variable=self.auto_scale).pack(anchor="w")
-        ttk.Checkbutton(frame, text="Mute (send silence)", variable=self.mute
-                        ).pack(anchor="w")
-        ttk.Checkbutton(frame, text="Keep trying if the internet drops",
-                        variable=self.keep_trying).pack(anchor="w")
-        ttk.Checkbutton(frame, text="Save a session report after streaming (off by "
-                        "default, stays on this PC, never contains your key)",
-                        variable=self.analytics).pack(anchor="w")
+        for text, variable in (
+                ("Auto-scale quality (off by default). When the stream struggles it "
+                 "steps quality down, and back up when healthy. Each step restarts "
+                 "the stream for a moment.", self.auto_scale),
+                ("Mute (send silence)", self.mute),
+                ("Keep trying if the internet drops", self.keep_trying),
+                ("Save a session report after streaming (off by default, stays on "
+                 "this PC, never contains your key)", self.analytics)):
+            ttk.Checkbutton(frame, text=text, variable=variable).pack(
+                anchor="w", pady=(8, 0))
 
     # -- actions --------------------------------------------------------------
     def on_compare(self):
@@ -592,7 +876,7 @@ class StreamWindow:
     # -- timer ----------------------------------------------------------------
     def poll(self):
         text, color, help_text, log_text, running = self.controller.snapshot()
-        self.banner.config(text=text, bg=BANNER_COLORS[color])
+        self._paint_banner(text, color)
         if help_text:
             self.status.set(help_text)
         if "dashboard" in self._pages:
@@ -611,11 +895,11 @@ class StreamWindow:
         self.advice.config(text="\n".join(
             filter(None, [self.controller.health_advice()]
                    + self.controller.insight_lines())) if running else "")
-        self.start_btn.config(state="disabled" if running else "normal")
+        self._set_big_button(self.start_btn, not running)
         self.test_btn.config(state="disabled" if running else "normal")
-        self.stop_btn.config(state="normal" if running else "disabled")
-        self.emergency_btn.config(
-            state="normal" if running else "disabled",
+        self._set_big_button(self.stop_btn, running)
+        self._set_big_button(
+            self.emergency_btn, running,
             text=gt.with_accelerator(gp.emergency_button_label(
                 self.controller.emergency_active()), "emergency"))
         self._show_recommendations(self.inbox.visible(self.controller.recommendations()))
@@ -640,11 +924,12 @@ class StreamWindow:
         for child in self.rec_frame.winfo_children():
             child.destroy()
         if not recs:
-            ttk.Label(self.rec_frame, text="None right now.").pack(anchor="w")
+            ttk.Label(self.rec_frame, text="None right now.", style="Card.TLabel"
+                      ).pack(anchor="w")
         for rec in recs:
-            row = ttk.Frame(self.rec_frame)
+            row = ttk.Frame(self.rec_frame, style="CardBody.TFrame")
             row.pack(fill="x", pady=2)
-            ttk.Label(row, text=rec.message, wraplength=WRAP - 120,
+            ttk.Label(row, text=rec.message, wraplength=WRAP - 160, style="Card.TLabel",
                       justify="left").pack(side="left", fill="x", expand=True)
             if gp.can_apply(rec):
                 ttk.Button(row, text="Apply", command=lambda r=rec: self.on_recommendation(
@@ -656,7 +941,8 @@ class StreamWindow:
         """Friendly first-run dialog when FFmpeg is missing. Thin: logic is in portable.py."""
         dialog = tk.Toplevel(self.root)
         dialog.title("FFmpeg needed")
-        ttk.Label(dialog, text=ffmpeg_guidance(), font=TEXT_FONT, justify="left",
+        dialog.configure(background=gt.palette(self.theme)["background"])
+        ttk.Label(dialog, text=ffmpeg_guidance(), justify="left",
                   wraplength=WRAP).pack(padx=16, pady=12)
         status = ttk.Label(dialog, text="", wraplength=WRAP)
         status.pack(padx=16)
@@ -683,6 +969,17 @@ class StreamWindow:
         ttk.Button(row, text="Choose ffmpeg file...", command=choose).pack(side="left", padx=4)
         ttk.Button(row, text="Close", command=dialog.destroy).pack(side="left", padx=4)
 
+    def on_callback_error(self, exc_type, exc, tb):
+        """Tk calls this for an uncaught error in any callback: keep a local,
+        redacted crash report and tell the user, instead of printing a
+        traceback (which could quote the key) to a console nobody sees."""
+        if exc is not None and exc.__traceback__ is None:
+            exc = exc.with_traceback(tb)
+        try:
+            self.status.set(gc.report_gui_crash(exc, self.key.get().strip()))
+        except Exception:  # never let the handler itself raise into Tk
+            pass
+
     def on_close(self, waited=0):
         """Ask ffmpeg to stop, then close once it has (or after a few seconds)."""
         self.controller.stop(wait=False)
@@ -702,6 +999,7 @@ def main(argv=None):
         print(NO_GUI_MESSAGE)
         return 1
     window = StreamWindow(root)
+    root.report_callback_exception = window.on_callback_error
     if find_ffmpeg() is None:
         root.after(200, window.offer_ffmpeg_help)
     root.mainloop()

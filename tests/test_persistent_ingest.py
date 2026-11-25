@@ -42,6 +42,49 @@ class FakeProc:
 
 
 class RunWithPublisherTests(unittest.TestCase):
+    def test_reconnecting_after_stop_is_not_reported(self):
+        # Ctrl-C reaches the publisher's ffmpeg too: it can reach the
+        # "reconnecting" report just after the encoder returned and the stop
+        # event was set. That shutdown must not count as a reconnect.
+        at_window = threading.Event()
+        reported = []
+
+        def fake_reconnect(argv, key, os_name, stop=None, on_status=None, **kw):
+            at_window.set()
+            stop.wait(5)  # deterministic: continue only once stop is set
+            on_status("reconnecting", 1)
+            return 0
+
+        def encoder():
+            at_window.wait(5)
+            return 0
+
+        with mock.patch("lightstream.runner.run_with_reconnect", fake_reconnect):
+            code = run_with_publisher(
+                ["pub"], KEY, "linux", encoder, out=io.StringIO(),
+                on_publisher_status=lambda state, detail: reported.append(state))
+        self.assertEqual(0, code)
+        self.assertEqual([], reported)
+
+    def test_reconnecting_while_running_is_still_reported(self):
+        reported = []
+        proceed = threading.Event()
+
+        def fake_reconnect(argv, key, os_name, stop=None, on_status=None, **kw):
+            on_status("reconnecting", 1)
+            proceed.set()
+            return 0
+
+        def encoder():
+            proceed.wait(5)
+            return 0
+
+        with mock.patch("lightstream.runner.run_with_reconnect", fake_reconnect):
+            run_with_publisher(
+                ["pub"], KEY, "linux", encoder, out=io.StringIO(),
+                on_publisher_status=lambda state, detail: reported.append(state))
+        self.assertEqual(["reconnecting"], reported)
+
     def test_publisher_runs_during_encoder_and_stops_after(self):
         launched = []
         release = threading.Event()

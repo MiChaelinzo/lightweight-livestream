@@ -306,12 +306,15 @@ def run_with_publisher(publisher_argv, key, os_name, run_encoder,
     encoder's. A terminal Ctrl-C also reaches the publisher's ffmpeg, but its
     reconnect loop checks its stop event after the backoff wait, and this
     function sets that event as soon as the encoder returns, so it is not
-    relaunched.
+    relaunched. A "reconnecting" report that arrives after that event is set
+    is dropped, so the shutdown is never counted as a reconnect.
     """
     publisher_stop = threading.Event()
     failure = []
 
     def on_status(state, detail):
+        if state == STATUS_RECONNECTING and publisher_stop.is_set():
+            return  # shutting down: Ctrl-C also hits the publisher, not a real drop
         if on_publisher_status:
             on_publisher_status(state, detail)
         if state == STATUS_FAILED:

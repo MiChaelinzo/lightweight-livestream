@@ -3,7 +3,7 @@
 // Bump when any cached .js or .css file changes so old caches are dropped on
 // activate. The suffix is a content fingerprint; web/test/sw-logic.test.js
 // fails and prints the new value when it is out of date.
-export const CACHE_NAME = "lightstream-shell-v1-c48b9316";
+export const CACHE_NAME = "lightstream-shell-v1-b55f1d2d";
 
 // Same-origin files cached on install. presets.json is cached too (offline
 // fallback) but is always tried on the network first.
@@ -23,6 +23,8 @@ export const SHELL_FILES = [
   "/companion/companion-logic.js",
 ];
 
+// Images in /img are deliberately not precached (about 85 KB, below the fold, lazy
+// loaded). They are cache-first at runtime once seen, which keeps the install small.
 export const PRESETS_PATH = "/presets.json";
 
 // Returns "network-first", "cache-first" or "network-only" (do not touch).

@@ -33,6 +33,45 @@ def make_controller(runner, ffmpeg="/bin/ffmpeg"):
         probe=lambda _f: set(), pick_encoder=lambda *a, **k: "libx264")
 
 
+class GuiCrashReportTests(unittest.TestCase):
+    def raise_error(self, text):
+        try:
+            raise RuntimeError(text)
+        except RuntimeError as exc:
+            return exc
+
+    def test_report_is_local_and_redacts_key_and_address(self):
+        key = "live_GUIKEY_123456"
+        exc = self.raise_error("push rtmp://host/app/%s failed, key %s" % (key, key))
+        with tempfile.TemporaryDirectory() as d:
+            message = gc.report_gui_crash(exc, key, directory=d, os_name="linux")
+            files = os.listdir(d)
+            self.assertEqual(1, len(files))
+            with open(os.path.join(d, files[0]), encoding="utf-8") as fh:
+                text = fh.read()
+        self.assertNotIn(key, text)
+        self.assertNotIn("rtmp://host", text)
+        self.assertIn("RuntimeError", message)
+        self.assertIn("never sent anywhere", message)
+        self.assertNotIn(key, message)
+
+    def test_short_key_does_not_mask_ordinary_text(self):
+        exc = self.raise_error("test failed")
+        with tempfile.TemporaryDirectory() as d:
+            gc.report_gui_crash(exc, "test", directory=d, os_name="linux")
+            with open(os.path.join(d, os.listdir(d)[0]), encoding="utf-8") as fh:
+                self.assertIn("test failed", fh.read())
+
+    def test_unwritable_directory_returns_message_instead_of_raising(self):
+        exc = self.raise_error("boom")
+        with tempfile.TemporaryDirectory() as d:
+            blocker = os.path.join(d, "file")
+            open(blocker, "w").close()
+            message = gc.report_gui_crash(exc, "", directory=os.path.join(blocker, "x"),
+                                          os_name="linux")
+        self.assertIn("could not be saved", message)
+
+
 class ValidationTests(unittest.TestCase):
     def test_empty_key(self):
         self.assertEqual(gc.validate(PREFS, "  ", "/ffmpeg"), gc.HELP_TEXT["no_key"])
@@ -408,6 +447,42 @@ class GuiModuleTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertNotIn("Traceback", r.stderr)
         self.assertIn("could not open", r.stdout)
+
+
+class GuiWindowDisplayTests(unittest.TestCase):
+    """Need a display (set DISPLAY, e.g. Xvfb); skipped otherwise."""
+
+    def setUp(self):
+        if not os.environ.get("DISPLAY"):
+            self.skipTest("no DISPLAY")
+        import tkinter
+        from lightstream import gui
+        try:
+            self.root = tkinter.Tk()
+        except tkinter.TclError:
+            self.skipTest("Tk cannot open the display")
+        self.addCleanup(self.root.destroy)
+        home = tempfile.mkdtemp()
+        patcher = mock.patch.dict(os.environ, {"HOME": home, "XDG_CONFIG_HOME": home})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.window = gui.StreamWindow(self.root)
+        self.root.update_idletasks()
+
+    def test_callback_error_sets_status_without_raising(self):
+        with mock.patch.object(gc, "report_gui_crash", return_value="saved report") as rep:
+            self.window.on_callback_error(ValueError, ValueError("boom"), None)
+        self.assertEqual(self.window.status.get(), "saved report")
+        self.assertIsInstance(rep.call_args[0][0], ValueError)
+
+    def test_wheel_from_other_toplevel_is_ignored(self):
+        import tkinter
+        other = tkinter.Toplevel(self.root)
+        self.addCleanup(other.destroy)
+        event = mock.Mock(widget=other, num=4, delta=0)
+        with mock.patch.object(self.window.page_canvas, "yview_scroll") as scroll:
+            self.window._on_wheel(event)
+        scroll.assert_not_called()
 
 
 if __name__ == "__main__":

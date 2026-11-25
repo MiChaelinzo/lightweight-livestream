@@ -5,6 +5,12 @@
 ![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen)
 ![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)
 
+<p align="center">
+  <img src="web/img/gui-dashboard-light.webp" alt="lightstream Dashboard, light theme" width="46%">
+  <img src="web/img/gui-dashboard-dark.webp" alt="lightstream Dashboard, dark theme" width="46%">
+</p>
+<p align="center"><sub>Real screenshots, rendered on Linux under Xvfb; fonts differ on Windows.</sub></p>
+
 **Go live from an old PC without the lag.** lightstream is a tiny launcher for old laptops and PCs where OBS stutters while you play light games such as Arknights or Limbus Company. It needs only Python and FFmpeg.
 
 - **One window, 3 steps.** Pick a site, paste your key, pick your PC strength, press START.
@@ -13,6 +19,7 @@
 - **Hard to break.** Reconnects with backoff, falls back to software encoding if a GPU encoder fails, and never prints or saves your key.
 - **Safe to try.** `--test-local` records 10 seconds to a file instead of going live. `--mute` sends silence.
 - Streams to Twitch, YouTube, Facebook Live (RTMPS) or any custom RTMP or SRT server.
+- **New in 0.13:** a calmer, scrollable window with clear sidebar, cards, AA-checked colors and readable fonts, a reworked web showcase with real screenshots, and fixes to the crash report scrub list, the publisher reconnect count and GUI crash capture. See the [CHANGELOG](CHANGELOG.md).
 - **New in 0.12:** Potato Stream (2000 or 4000 kbps), recording while streaming that survives an ingest drop, opt-in persistent ingest, benchmark tiers, a 0 to 100 health score, `lightstream optimize` (asks before changing anything), opt-in secure key storage, a dashboard with sparklines, and a redacted support bundle. Real platforms, GUI rendering, Windows and macOS are UNVERIFIED; see [docs/ROADMAP.md](docs/ROADMAP.md) for the honest status of each area.
 
 ## Download (no Python, no Git)
@@ -21,9 +28,9 @@ Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-
 
 | Platform | Download | How to start |
 |---|---|---|
-| Windows | `LightStream-0.12.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
-| macOS | `LightStream-0.12.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
-| Linux | `LightStream-0.12.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
+| Windows | `LightStream-0.13.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
+| macOS | `LightStream-0.13.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
+| Linux | `LightStream-0.13.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
 
 - **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
 - **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.
@@ -252,7 +259,7 @@ The CLI prints a summary at the end of a session (speed, dropped frames, reconne
 | Noise filter text, missing model error | VERIFIED (as strings) | unit tests |
 | Bandwidth maths, health tracker, advice rules, wizard config | VERIFIED | unit tests (fake clock, fake probes) |
 | GUI controller additions (setup, record, scene list, advice) | VERIFIED | unit tests, no display |
-| GUI window layout of the new widgets | UNVERIFIED | no display |
+| GUI window layout of the new widgets | PARTIALLY VERIFIED (Linux only) | seen by eye in Xvfb screenshots in 0.13, no automated pixel check; Windows and macOS UNVERIFIED |
 | Real FFmpeg accepting the scene graphs, tee, `arnndn`, `afftdn` | UNVERIFIED | no FFmpeg in the dev sandbox |
 | Webcam capture (dshow, v4l2, avfoundation) | UNVERIFIED | no camera |
 | Quick Sync / NVENC tuning on Intel HD and MX250 | UNVERIFIED | no such hardware |
@@ -287,7 +294,7 @@ The window now has a sidebar (Dashboard, Setup wizard, Scenes, Overlays, Recordi
 
 ### Web showcase upgrade (0.7.0)
 
-The `web/` showcase has an animated hero title (respects reduced motion), SVG mockups labeled as illustrations rather than screenshots, a design-difference comparison with OBS (no measurements are claimed) and setup guides for Intel HD and MX250. Browser rendering is UNVERIFIED.
+The `web/` showcase has an animated hero title (respects reduced motion), real GUI screenshots (`web/img/*.webp`, rendered on Linux under Xvfb, fonts differ on Windows), a design-difference comparison with OBS (no measurements are claimed) and setup guides for Intel HD and MX250. Browser rendering was checked in headless Chromium at 1280 and 390 px wide, light and dark, with zero page errors (VERIFIED for that browser only).
 
 ### Status of the 0.7.0 features
 
@@ -300,7 +307,7 @@ The `web/` showcase has an animated hero title (respects reduced motion), SVG mo
 | `intel_hd_optimized` profile | VERIFIED (as strings) | `tests/test_hardware.py`; stability gain on real Intel HD UNVERIFIED |
 | `mx250_streamer` profile | VERIFIED (as strings) | `tests/test_hardware.py`; NVENC behavior and 1080p on an MX250 UNVERIFIED |
 | Windows portable builder | PARTIALLY VERIFIED | `tests/test_portable.py` covers the layout; PyInstaller exe UNVERIFIED |
-| UI refresh (sidebar) | PARTIALLY VERIFIED | page logic and display-free import tested in `tests/test_gui_pages.py`; window rendering UNVERIFIED |
+| UI refresh (sidebar) | PARTIALLY VERIFIED | page logic tested in `tests/test_gui_pages.py`; rendering seen on Linux under Xvfb only, Windows and macOS UNVERIFIED |
 | Analytics reports (content, no key, opt-in) | VERIFIED | `tests/test_analytics.py` |
 | Web showcase | UNVERIFIED | static page, no browser in the dev sandbox |
 
@@ -364,7 +371,8 @@ python3 tools/export_presets.py --check  # fails if it is stale
 |---|---|---|
 | Presets JSON matches Python presets | VERIFIED | unit test and `--check` |
 | Bandwidth maths, recommendation, geometry, mode selection | VERIFIED | `node --test "web/test/*.test.js"` |
-| WebGL rendering, shaders, layout, CSS | UNVERIFIED | no browser or GPU in the dev sandbox |
+| Web page layout and CSS in headless Chromium (1280 and 390 px, light and dark, zero page errors) | VERIFIED (Chromium only) | `tools/ui_snapshots.py web`; screenshots read by eye |
+| WebGL hero on a real GPU, Firefox and Safari | UNVERIFIED | headless Chromium software rendering only |
 | Screen capture and recording | UNVERIFIED | needs a real browser |
 | Vercel deployment and headers (CSP) | UNVERIFIED | not deployed yet |
 | Companion logic (timer, goal, URL parsing, chat parsing/sanitizing) | VERIFIED | node tests |
@@ -377,7 +385,9 @@ python3 tools/export_presets.py --check  # fails if it is stale
 | Item | Status | Evidence |
 |---|---|---|
 | GUI controller logic (validation, banner states, prefs, key never saved or logged) | VERIFIED | unit tests, no display needed |
-| GUI window rendering (layout, fonts, buttons, colors) | UNVERIFIED | no display in the dev sandbox; mockups above are drawn from the code, not screenshots |
+| GUI window rendering on Linux (layout, fonts, buttons, colors) | PARTIALLY VERIFIED (Linux only) | real screenshots captured under Xvfb with `tools/ui_snapshots.py` (see [docs/DEV-RENDERING.md](docs/DEV-RENDERING.md)); read by eye, no automated pixel assertions |
+| GUI look on Windows and macOS, real fonts and DPI scaling | UNVERIFIED | never run on those systems |
+| GUI callback crash capture in a live Tk window | UNVERIFIED | the report function is unit tested; the Tk hook was not exercised on a display |
 | Command building (all OSes, encoders) | VERIFIED (as strings) | unit tests |
 | Preset, config precedence, key handling | VERIFIED | unit tests |
 | Key redaction in printed output | VERIFIED | unit tests, dry run |
@@ -430,7 +440,7 @@ python tools/build_portable.py        # writes lightstream-portable.zip
 Unzip anywhere, put `ffmpeg.exe` (or `ffmpeg`) into the `ffmpeg/` folder, then run `launchers/start-gui.bat` (or `.sh`). Settings go to the `data/` folder next to the app, nothing is written to your user profile, and deleting the folder removes everything. The stream key is still never saved. A bundled ffmpeg is used before any ffmpeg on PATH. Python 3 still has to be installed on the PC (use the PyInstaller recipe below for a no-Python exe).
 
 - VERIFIED (Linux): the zip builds, unzips, and `init` from the unzipped copy wrote `data/config.json` and nothing in the home folder; unit tests cover flag, env var, config path and ffmpeg lookup.
-- UNVERIFIED: running from a Windows USB stick, and the GUI in portable mode (no display in the dev sandbox; the GUI has still never been rendered).
+- UNVERIFIED: running from a Windows USB stick, and the GUI in portable mode (not run on Windows; the main window itself was rendered on Linux under Xvfb, but not in portable mode).
 
 ## Browser companion and Windows portable folder
 

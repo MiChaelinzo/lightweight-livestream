@@ -53,6 +53,12 @@ test("form controls have a label and buttons have text", () => {
 test("images and svg have text alternatives, nav has a name", () => {
   const html = PAGES["index.html"];
   assert.equal((html.match(/<img\b(?![^>]*\balt=)/g) || []).length, 0);
+  for (const m of html.matchAll(/<img\b[^>]*>/g)) {
+    for (const attr of ["alt", "width", "height", 'loading="lazy"', 'decoding="async"']) {
+      assert.ok(m[0].includes(attr), "img missing " + attr + ": " + m[0]);
+    }
+  }
+  assert.match(html, /<canvas id="hero-canvas" aria-hidden="true">/);
   for (const m of html.matchAll(/<svg\b([^>]*)>/g)) assert.match(m[1], /role="img"[^>]*aria-label="[^"]+"|aria-label="[^"]+"[^>]*role="img"/);
   for (const m of html.matchAll(/<nav\b([^>]*)>/g)) assert.match(m[1], /aria-label=/);
 });

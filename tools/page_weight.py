@@ -2,6 +2,7 @@
 
 Usage: python3 tools/page_weight.py [--web DIR]
 
+The totals cover text assets only; images are reported as image_total_bytes.
 Only the files are measured. No network, no transfer overhead, no headers.
 Skips web/test and web/package.json (not served to visitors in a useful way).
 """
@@ -13,6 +14,7 @@ import sys
 
 SKIP_DIRS = {"test"}
 SKIP_FILES = {"package.json"}
+IMAGE_EXTENSIONS = (".webp", ".png", ".jpg", ".jpeg", ".gif", ".svg")
 
 
 def measure(web_dir):
@@ -27,10 +29,13 @@ def measure(web_dir):
                 data = handle.read()
             rel = os.path.relpath(path, web_dir).replace(os.sep, "/")
             files[rel] = {"bytes": len(data), "gzip_bytes": len(gzip.compress(data, 9, mtime=0))}
+    text = {n: f for n, f in files.items() if not n.lower().endswith(IMAGE_EXTENSIONS)}
+    images = {n: f for n, f in files.items() if n.lower().endswith(IMAGE_EXTENSIONS)}
     return {
         "files": files,
-        "total_bytes": sum(f["bytes"] for f in files.values()),
-        "total_gzip_bytes": sum(f["gzip_bytes"] for f in files.values()),
+        "total_bytes": sum(f["bytes"] for f in text.values()),
+        "total_gzip_bytes": sum(f["gzip_bytes"] for f in text.values()),
+        "image_total_bytes": sum(f["bytes"] for f in images.values()),
     }
 
 
