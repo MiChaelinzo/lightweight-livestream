@@ -454,7 +454,7 @@ def cmd_plugins(args, out, config_file=None):
     if args.action == "check":
         if not args.name:
             raise ValueError("plugins check needs a plugin name")
-        if not plugins.NAME_PATTERN.match(args.name):
+        if not plugins.NAME_PATTERN.fullmatch(args.name):
             raise ValueError("plugin names use only a-z, 0-9 and '-' (1 to 32 characters)")
         try:
             manifest = plugins.load_manifest(os.path.join(folder, args.name))

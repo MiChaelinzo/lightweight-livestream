@@ -35,7 +35,7 @@ MANIFEST_FILENAME = "plugin.json"
 ENV_MARKER = "LIGHTSTREAM_PLUGIN"
 REDACTED = "***"
 
-NAME_PATTERN = re.compile(r"^[a-z0-9-]{1,32}$")
+NAME_PATTERN = re.compile(r"[a-z0-9-]{1,32}")  # use fullmatch: "$" would accept a trailing newline
 
 # Events the host may send, with the only fields each may carry.
 STATE_VALUES = ("live", "reconnecting", "failover", "stopped")
@@ -107,7 +107,7 @@ def validate_manifest(manifest, folder):
     if manifest.get("v") != PROTOCOL_VERSION:
         problems.append("v must be %d" % PROTOCOL_VERSION)
     name = manifest.get("name")
-    if not isinstance(name, str) or not NAME_PATTERN.match(name):
+    if not isinstance(name, str) or not NAME_PATTERN.fullmatch(name):
         problems.append("name must match [a-z0-9-]{1,32}")
     elif name != os.path.basename(os.path.normpath(folder)):
         problems.append("name must equal the folder name")
@@ -499,7 +499,7 @@ class PluginHost:
     def start_all(self):
         """Start each enabled plugin; a bad one is reported and skipped."""
         for name in self.enabled:
-            if not isinstance(name, str) or not NAME_PATTERN.match(name):
+            if not isinstance(name, str) or not NAME_PATTERN.fullmatch(name):
                 self.log("plugin %r not started: name must match [a-z0-9-]{1,32}" % (name,))
                 continue
             folder = os.path.join(self.directory, name)

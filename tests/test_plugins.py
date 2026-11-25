@@ -433,6 +433,21 @@ class CliCase(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertNotIn("manifest valid", text)
 
+    def test_check_rejects_name_with_trailing_newline(self):
+        code, text = self.run_cli("check", "hello\n", "--plugins-dir", self.root)
+        self.assertNotEqual(code, 0)
+        self.assertNotIn("manifest valid", text)
+
+    def test_name_pattern_uses_whole_string_match(self):
+        self.assertIsNone(plugins.NAME_PATTERN.fullmatch("hello\n"))
+        self.assertIsNotNone(plugins.NAME_PATTERN.fullmatch("hello-1"))
+
+    def test_manifest_with_trailing_newline_name_is_invalid(self):
+        manifest = {"v": plugins.PROTOCOL_VERSION, "name": "hello\n", "version": "1",
+                    "command": ["python3"], "permissions": []}
+        problems = plugins.validate_manifest(manifest, "hello\n")
+        self.assertTrue(any("name must match" in p for p in problems), problems)
+
     def test_list_rejects_non_list_plugins_setting(self):
         config = os.path.join(self.root, "config.json")
         for bad in ("hello", [1], {"a": 1}):
