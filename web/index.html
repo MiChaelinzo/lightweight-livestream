@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>lightstream: lightweight streaming for old PCs</title>
+  <meta name="color-scheme" content="dark light">
   <meta name="description" content="A small FFmpeg-based streamer for old PCs. Pick a preset, see the bandwidth it needs, and get the install steps.">
   <link rel="stylesheet" href="style.css">
 </head>
@@ -14,9 +15,11 @@
     <div class="hero-text">
       <h1 class="animated-title">lightstream</h1>
       <p class="tagline">Stream from an old PC without the lag. A tiny Python tool that drives FFmpeg.</p>
-      <p><a class="button" href="#picker">Pick a preset</a>
-         <a class="button ghost" href="#install">Install</a>
-         <a class="button ghost" href="#compare">Compare with OBS</a></p>
+      <nav aria-label="Quick links" class="hero-links">
+        <a class="button" href="#picker">Pick a preset</a>
+        <a class="button ghost" href="#install">Install</a>
+        <a class="button ghost" href="#compare">Compare with OBS</a>
+      </nav>
     </div>
   </header>
 
@@ -112,6 +115,7 @@
     <section id="compare" aria-labelledby="compare-title">
       <h2 id="compare-title">lightstream and OBS: design differences</h2>
       <p>OBS Studio is a mature, full featured program and the right choice for many streamers. This table lists how the designs differ. It is not a speed test and shows no measurements.</p>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Comparison table, scrolls sideways on small screens">
       <table>
         <thead><tr><th scope="col">Design point</th><th scope="col">lightstream</th><th scope="col">OBS Studio</th></tr></thead>
         <tbody>
@@ -123,6 +127,7 @@
           <tr><th scope="row">Dependencies</th><td>Python standard library and FFmpeg.</td><td>Self contained application.</td></tr>
         </tbody>
       </table>
+      </div>
       <p>Want a chat or goal overlay? Open the <a href="/companion">companion page</a> in a browser and capture that window with a scene.</p>
     </section>
 
@@ -140,7 +145,7 @@
 
     <section id="mx250" aria-labelledby="mx-title">
       <h2 id="mx-title">MX250 success guide</h2>
-      <p>The <code>mx250_streamer</code> profile is chosen automatically for GeForce MX250 laptops. It tries NVENC first, then Quick Sync, allows a webcam overlay, records a local copy by default and caps the video bitrate at 4500 kbps unless you set one.</p>
+      <p>The <code>mx250_streamer</code> profile is chosen automatically for GeForce MX250 laptops. On laptops that also have Intel graphics (Optimus), the <code>optimus_mx250</code> profile is chosen instead: it tries Quick Sync first so the idle Intel GPU encodes while the MX250 runs the game, then NVENC (a design choice, UNVERIFIED on real hardware). <code>mx250_streamer</code> alone tries NVENC first, then Quick Sync. Both allow a webcam overlay, record a local copy by default and cap the video bitrate at 4500 kbps unless you set one.</p>
       <ol class="steps">
         <li>Use an FFmpeg build with NVENC and an up to date NVIDIA driver.</li>
         <li>Run <code>lightstream doctor</code> and confirm <code>h264_nvenc</code> is listed.</li>
@@ -197,7 +202,7 @@ lightstream gui</pre>
         <a id="capture-download" class="button ghost" hidden>Download recording</a>
       </p>
       <p id="capture-status" role="status" aria-live="polite"></p>
-      <video id="capture-preview" controls hidden></video>
+      <video id="capture-preview" controls hidden aria-label="Preview of your local recording"></video>
     </section>
   </main>
 

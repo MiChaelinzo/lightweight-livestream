@@ -1,6 +1,6 @@
 """Sidebar window for streaming. Thin: logic is in gui_controller and gui_pages.
 
-Native ttk widgets only, no canvas drawing and no embedded browser. Each page
+Native ttk widgets plus one small tk.Canvas per sparkline graph; no embedded browser. Each page
 is built the first time it is opened, so unused pages cost no memory.
 tkinter is imported guarded so this module imports (and the tests run) on
 machines without a display or without tkinter. Window rendering is UNVERIFIED:
@@ -10,6 +10,7 @@ it has not been run on a screen in this repository's test environment.
 import io
 import os
 import sys
+import time
 import webbrowser
 
 try:
@@ -22,6 +23,7 @@ except ImportError:  # some Linux Pythons ship without tkinter
 
 from . import gui_controller as gc
 from . import gui_pages as gp
+from . import gui_theme as gt
 from .telemetry import TelemetrySampler, UNKNOWN_SAMPLE
 from .cli import cmd_doctor
 from .config import scenes_path
@@ -36,8 +38,12 @@ TEXT_FONT = ("Segoe UI", 11)
 BUTTON_FONT = ("Segoe UI", 20, "bold")
 LOG_FONT = ("Consolas", 10)
 WRAP = 480
+GRAPH_NAMES = ("fps", "bitrate", "cpu")
+GRAPH_SAMPLES = 60  # one reading per redraw (about 1 Hz): the last minute
+GRAPH_SIZE = (150, 36)
 BANNER_COLORS = {"grey": "#555555", "orange": "#B35900",
                  "green": "#1B7F3B", "red": "#B00020"}
+GRAPH_TITLES = {"fps": "FPS", "bitrate": "Bitrate", "cpu": "CPU %"}
 NO_GUI_MESSAGE = ("The window could not open. This computer has no screen "
                   "for it (or Python has no 'tkinter').\n"
                   "You can still use the command line: lightstream start")
@@ -53,12 +59,20 @@ class StreamWindow:
         self.inbox = gp.RecommendationInbox()
         self.overlays = gp.OverlayList()
         saved = gc.load_prefs(self.prefs_file)
+        self.ui_file = gt.ui_prefs_path(self.prefs_file)
+        look = gt.load_ui_prefs(self.ui_file)
+        self.theme, self.compact = look["theme"], look["compact"]
+        self.graph_data = {name: gt.RingBuffer(GRAPH_SAMPLES) for name in GRAPH_NAMES}
+        self.graph_canvases = {}
+        self.redraw_gate = gt.RedrawGate(1.0)
         root.title("Lightstream" + (" (portable)" if is_portable() else ""))
         root.minsize(720, 560)
         self._init_variables(saved)
         self._pages = {}
         self._build_shell()
         self.show_page(gp.DEFAULT_PAGE)
+        self.apply_look()
+        self._bind_shortcuts()
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.poll()
 
@@ -85,6 +99,7 @@ class StreamWindow:
         self.audio_profile = tk.StringVar(
             value=gp.audio_profile_label(saved.get("audio_profile")))
         self.auto_scale = tk.BooleanVar(value=saved.get("auto_scale") is True)
+        self.backup_url = tk.StringVar(value=saved.get("backup_url") or "")
         self.noise = saved.get("noise")
         self.status = tk.StringVar(value="")
 
@@ -92,17 +107,26 @@ class StreamWindow:
     def _build_shell(self):
         outer = ttk.Frame(self.root)
         outer.pack(fill="both", expand=True)
+        self.outer = outer
         sidebar = ttk.Frame(outer, padding=6)
         sidebar.pack(side="left", fill="y")
-        ttk.Label(sidebar, text="Lightstream", font=TITLE_FONT).pack(pady=(0, 8))
+        self.title_label = ttk.Label(sidebar, text="Lightstream", font=TITLE_FONT)
+        self.title_label.pack(pady=(0, 8))
         self.page_var = tk.StringVar()
         for page_id, label in gp.PAGES:
-            ttk.Radiobutton(sidebar, text=label, value=page_id, variable=self.page_var,
-                            style="Toolbutton",
+            ttk.Radiobutton(sidebar, text=gt.with_accelerator(label, "page:" + page_id),
+                            value=page_id, variable=self.page_var,
+                            style="Toolbutton", takefocus=True,
                             command=lambda p=page_id: self.show_page(p)
                             ).pack(fill="x", pady=1)
+        self.sidebar = sidebar
+        ttk.Button(sidebar, text=gt.with_accelerator("Dark / light", "theme"),
+                   command=self.on_toggle_theme).pack(side="bottom", fill="x", pady=1)
+        ttk.Button(sidebar, text=gt.with_accelerator("Compact", "compact"),
+                   command=self.on_toggle_compact).pack(side="bottom", fill="x", pady=1)
         right = ttk.Frame(outer, padding=8)
         right.pack(side="left", fill="both", expand=True)
+        self.right = right
         self.banner = tk.Label(right, text="", font=STEP_FONT, fg="white",
                                wraplength=WRAP, pady=8)
         self.banner.pack(fill="x")
@@ -151,12 +175,16 @@ class StreamWindow:
                     [l for l, _ in gc.STRENGTH_CHOICES])
         buttons = ttk.Frame(frame)
         buttons.pack(fill="x", pady=8)
-        self.start_btn = tk.Button(buttons, text="START", font=BUTTON_FONT, bg="#1B7F3B",
+        self.start_btn = tk.Button(buttons, text=gt.with_accelerator("START", "start"), font=BUTTON_FONT, bg="#1B7F3B",
                                    fg="white", command=self.on_start)
         self.start_btn.pack(side="left", expand=True, fill="x", padx=4)
-        self.stop_btn = tk.Button(buttons, text="STOP", font=BUTTON_FONT, bg="#B00020",
+        self.stop_btn = tk.Button(buttons, text=gt.with_accelerator("STOP", "stop"), font=BUTTON_FONT, bg="#B00020",
                                   fg="white", command=self.on_stop, state="disabled")
         self.stop_btn.pack(side="left", expand=True, fill="x", padx=4)
+        self.emergency_btn = tk.Button(
+            frame, text="EMERGENCY: lowest quality now", font=BUTTON_FONT,
+            bg="#C65D00", fg="white", command=self.on_emergency, state="disabled")
+        self.emergency_btn.pack(fill="x", pady=4)
         self.test_btn = ttk.Button(frame, text="Test first: record 10 seconds to a "
                                    "file (not live)", command=self.on_test)
         self.test_btn.pack(anchor="w")
@@ -168,6 +196,7 @@ class StreamWindow:
             value = ttk.Label(self.cards_frame, text=card.value, font=STEP_FONT)
             value.grid(row=1, column=index, padx=6)
             self.card_values.append(value)
+        self._build_graphs(frame)
         self.telemetry_frame = ttk.LabelFrame(frame, text="This PC", padding=6)
         self.telemetry_frame.pack(fill="x", pady=6)
         self.telemetry_values = []
@@ -185,6 +214,107 @@ class StreamWindow:
         self._shown_recs = None
         self.log = tk.Text(frame, height=5, font=LOG_FONT, state="disabled")
         self.log.pack(fill="both", expand=True)
+
+    def _build_graphs(self, frame):
+        """Small line graphs of the last minute. Failure here must not break the page."""
+        graphs = ttk.LabelFrame(frame, text="Last minute", padding=6)
+        graphs.pack(fill="x", pady=6)
+        try:
+            for index, name in enumerate(GRAPH_NAMES):
+                ttk.Label(graphs, text=GRAPH_TITLES[name]).grid(row=0, column=index, padx=6)
+                canvas = tk.Canvas(graphs, width=GRAPH_SIZE[0], height=GRAPH_SIZE[1],
+                                   highlightthickness=1, takefocus=False)
+                canvas.grid(row=1, column=index, padx=6)
+                self.graph_canvases[name] = canvas
+        except tk.TclError:
+            self.graph_canvases = {}  # numbers on the cards still work
+        self._style_graphs()
+
+    def _style_graphs(self):
+        colors = gt.palette(self.theme)
+        for canvas in self.graph_canvases.values():
+            canvas.config(bg=colors["graph_back"], highlightbackground=colors["muted"])
+
+    def _record_graphs(self, summary, sample):
+        """Add one reading per graph. Called at most once per second."""
+        self.graph_data["fps"].append(summary.get("recent_fps"))
+        self.graph_data["bitrate"].append(summary.get("recent_bitrate_kbps"))
+        self.graph_data["cpu"].append(sample.cpu_percent if sample else None)
+
+    def _draw_graphs(self):
+        colors = gt.palette(self.theme)
+        width, height = GRAPH_SIZE
+        for name, canvas in self.graph_canvases.items():
+            canvas.delete("all")
+            values = gt.downsample(self.graph_data[name].values(), width // 2)
+            coords = gt.sparkline_points(values, width, height)
+            if coords:
+                canvas.create_line(*coords, fill=colors["graph_line"], width=2)
+
+    # -- look: theme, compact mode, shortcuts -----------------------------------
+    def apply_look(self):
+        """Apply theme colors and compact mode. Any Tk failure keeps the old look."""
+        colors = gt.palette(self.theme)
+        sizes = gt.font_sizes(self.compact)
+        try:
+            style = ttk.Style(self.root)
+            style.configure(".", background=colors["background"],
+                            foreground=colors["foreground"])
+            style.configure("TLabelframe.Label", foreground=colors["foreground"])
+            style.configure("TCheckbutton", background=colors["background"])
+            style.configure("TRadiobutton", background=colors["background"])
+            style.configure("Toolbutton", background=colors["background"],
+                            focuscolor=colors["focus"])
+            style.map("TButton", focuscolor=[("focus", colors["focus"])])
+            self.root.configure(background=colors["background"])
+            self.title_label.config(font=(gt.FONT_FAMILY, sizes["title"], "bold"))
+            self._style_graphs()
+            if self.compact:
+                self.right.pack_forget()
+                self.root.minsize(160, 200)
+            elif not self.right.winfo_manager():
+                self.right.pack(side="left", fill="both", expand=True)
+                self.root.minsize(720, 560)
+        except tk.TclError as err:
+            self.status.set("Could not change the look: %s" % err)
+
+    def _save_look(self):
+        try:
+            gt.save_ui_prefs(self.ui_file, self.theme, self.compact)
+        except OSError:
+            pass  # remembering the look is optional
+
+    def on_toggle_theme(self):
+        self.theme = gt.toggle_theme(self.theme)
+        self.apply_look()
+        self._save_look()
+
+    def on_toggle_compact(self):
+        self.compact = not self.compact
+        self.apply_look()
+        self._save_look()
+
+    def _bind_shortcuts(self):
+        for sequence, action, _text in gt.SHORTCUTS:
+            try:
+                self.root.bind(sequence, lambda _e, a=action: self.on_shortcut(a))
+            except tk.TclError:
+                pass  # a shortcut that cannot bind is skipped, buttons still work
+
+    def on_shortcut(self, action):
+        if action.startswith("page:"):
+            if not self.compact:
+                self.show_page(action.split(":", 1)[1])
+        elif action == "theme":
+            self.on_toggle_theme()
+        elif action == "compact":
+            self.on_toggle_compact()
+        elif "dashboard" in self._pages:
+            button = {"start": self.start_btn, "stop": self.stop_btn,
+                      "emergency": self.emergency_btn}[action]
+            if str(button.cget("state")) != "disabled":
+                button.invoke()
+        return "break"
 
     def _build_setup(self, frame):
         self._label(frame, "Setup wizard", STEP_FONT)
@@ -248,6 +378,8 @@ class StreamWindow:
                            ("Window title (Windows only)", self.window_title),
                            ("Audio device (empty = automatic)", self.audio)):
             self._entry(frame, label, var)
+        self._entry(frame, "Backup server address (optional, rtmp://host/app, "
+                    "no key; used if the main one keeps failing)", self.backup_url)
         self._combo(frame, "Hardware profile", self.hardware, gp.hardware_choices())
         self._combo(frame, "Performance profile (replaces Strength when chosen)",
                     self.profile, gp.profile_choices())
@@ -288,6 +420,7 @@ class StreamWindow:
             "profile": gp.profile_pref(self.profile.get()),
             "audio_profile": gp.audio_profile_pref(self.audio_profile.get()),
             "auto_scale": self.auto_scale.get(),
+            "backup_url": self.backup_url.get(),
         }
 
     def apply_prefs(self, prefs):
@@ -318,6 +451,13 @@ class StreamWindow:
         self.hardware.set(gp.hardware_label(fields["hardware"]))
         self.noise = fields["noise"]
         self.status.set(message)
+
+    def on_emergency(self):
+        """One click, no confirmation. A second click restores the settings."""
+        if self.controller.emergency_active():
+            self.status.set(self.controller.restore_after_emergency())
+        else:
+            self.status.set(self.controller.emergency())
 
     def on_stop(self):
         self.controller.stop(wait=False)
@@ -416,7 +556,15 @@ class StreamWindow:
         self.start_btn.config(state="disabled" if running else "normal")
         self.test_btn.config(state="disabled" if running else "normal")
         self.stop_btn.config(state="normal" if running else "disabled")
+        self.emergency_btn.config(
+            state="normal" if running else "disabled",
+            text=gt.with_accelerator(gp.emergency_button_label(
+                self.controller.emergency_active()), "emergency"))
         self._show_recommendations(self.inbox.visible(self.controller.recommendations()))
+        if self.graph_canvases and self.redraw_gate.ready(time.monotonic()):
+            self._record_graphs(self.controller.health_summary(),
+                                self.telemetry.latest)
+            self._draw_graphs()
         if log_text != self._shown_log:
             self._shown_log = log_text
             self.log.config(state="normal")

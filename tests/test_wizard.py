@@ -24,8 +24,13 @@ class BuildTests(unittest.TestCase):
 
     def test_mx250(self):
         cfg = wizard.build_recommended_config(MX, 4, 8192, None, "youtube")
-        self.assertEqual(cfg["hardware"], "mx250_streamer")
+        self.assertEqual(cfg["hardware"], "optimus_mx250")  # Intel iGPU + MX250
         self.assertEqual(cfg["preset"], "light")
+
+    def test_mx250_alone(self):
+        cfg = wizard.build_recommended_config(
+            "Name\nNVIDIA GeForce MX250\n", 4, 8192, None, "youtube")
+        self.assertEqual(cfg["hardware"], "mx250_streamer")
 
     def test_low_ram_caps_preset(self):
         cfg = wizard.build_recommended_config(MX, 8, 2048, None, "twitch")

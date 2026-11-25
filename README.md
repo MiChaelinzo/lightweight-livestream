@@ -20,9 +20,9 @@ Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-
 
 | Platform | Download | How to start |
 |---|---|---|
-| Windows | `LightStream-0.9.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
-| macOS | `LightStream-0.9.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
-| Linux | `LightStream-0.9.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
+| Windows | `LightStream-0.11.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
+| macOS | `LightStream-0.11.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
+| Linux | `LightStream-0.11.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
 
 - **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
 - **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.
@@ -255,7 +255,7 @@ The CLI prints a summary at the end of a session (speed, dropped frames, reconne
 | Real FFmpeg accepting the scene graphs, tee, `arnndn`, `afftdn` | UNVERIFIED | no FFmpeg in the dev sandbox |
 | Webcam capture (dshow, v4l2, avfoundation) | UNVERIFIED | no camera |
 | Quick Sync / NVENC tuning on Intel HD and MX250 | UNVERIFIED | no such hardware |
-| Windows RAM probe, `wmic` GPU detection | UNVERIFIED | not run on Windows |
+| Windows RAM probe, PowerShell and `wmic` GPU detection | UNVERIFIED | not run on Windows (parsing tested on fake output) |
 | Real upload measurement with `--measure-url` | PARTIALLY VERIFIED | fake HTTP in tests only |
 | Lower CPU/RAM use than before | UNVERIFIED | mechanisms only, not measured |
 | AI background removal, mid-stream scene switching | NOT DONE | see Not done |
@@ -266,14 +266,15 @@ All of this is optional and off or suggestion-only by default. Real FFmpeg, GPU 
 
 - **Adaptive advisor** (`adaptive.py`): watches speed, fps, dropped frames and reconnects. Speed under 0.90x for 30 seconds suggests the next lighter preset; more than 30 dropped frames in a minute suggests 20% less bitrate; 2 reconnects in 10 minutes suggests `lightstream bandwidth`. It only suggests: nothing is ever applied without you. The CLI prints suggestions at the end of a session; the window controller exposes `recommendations()` (the sidebar window shows them, see below). CPU pressure is a proxy (slow speed plus low fps), not a CPU reading.
 - **`intel_hd_optimized` profile** (auto for Intel HD 4000/520/620; other Intel graphics keep `intel_hd`): preset capped at `light` (an explicit `--preset` still wins), half-second rate-control buffer, webcam capped at 10 fps, chroma key and blur skipped, AI noise suppression off unless you pass `--noise ai`.
-- **`mx250_streamer` profile** (auto for GeForce MX250): NVENC first, then Quick Sync; webcam overlay allowed; a local copy is recorded by default (`--no-record` or `"record": false` turns it off); video bitrate capped at 4500 kbps unless you pass `--bitrate`. For 1080p use `--res 1920x1080`; there is no 1080p preset yet and 1080p on an MX250 is UNVERIFIED.
+- **`optimus_mx250` profile** (auto when an Intel iGPU and a GeForce MX250 are both present): Quick Sync first so the idle iGPU encodes while the MX250 runs the game, NVENC second; same recording and 4500 kbps defaults as `mx250_streamer`. A design choice, UNVERIFIED on real hardware.
+- **`mx250_streamer` profile** (auto for a GeForce MX250 without an Intel iGPU): NVENC first, then Quick Sync; webcam overlay allowed; a local copy is recorded by default (`--no-record` or `"record": false` turns it off); video bitrate capped at 4500 kbps unless you pass `--bitrate`. For 1080p use `--res 1920x1080`; there is no 1080p preset yet and 1080p on an MX250 is UNVERIFIED.
 - **Scene collections**: `lightstream scenes export [NAME] [--to PATH]` (one scene to a file, or every scene to `scenes/NAME.json`), `lightstream scenes import PATH` (a file or a folder of `.json` scenes), `lightstream scenes example --collection` (writes `scenes/gaming.json`, `just-chatting.json`, `work.json`, `retro.json`). Files are indented JSON, every scene is validated, and nothing is replaced without `--force`. `scene_collections.py` also has save and duplicate helpers for the window.
 - **Overlay widgets** (`overlays.py`): add an `"overlays"` list to a scene with kinds `text`, `clock`, `fps` (average since start), `recording` (blinking REC) and `image` (PNG). Each has `corner`, `margin_x`, `margin_y` and a size (`font_size` or `size_percent`). They compile to FFmpeg `drawtext` or `overlay` filters; no browser, no HTML. A missing PNG is skipped with a warning. At most 6 overlays per scene.
 - **Session reports** (opt-in): `lightstream start --analytics` (or `"analytics": true` in `config.json`, or `analytics` in the window prefs) writes `reports/session-YYYYMMDD.json` with average speed, average bitrate, reconnect count, encoder, preset, profile and recording seconds. It never contains the stream key, URL or file paths, and is never uploaded. Recording seconds equal the session length when recording (approximation).
 
 ### Sidebar window (0.7.0)
 
-The window now has a sidebar (Dashboard, Setup wizard, Scenes, Overlays, Recording, Advanced) built from native `ttk` widgets only, with each page created the first time you open it. The Dashboard shows health cards and suggestions from the adaptive advisor; a suggestion changes a setting only after you press Apply (and takes effect at the next START), or you can Dismiss it. The Scenes page has Save Scene, Duplicate Scene, Import Scene and Export Scene (indented JSON). The Overlays page has position and scale controls and shows the resulting FFmpeg filter text as the preview; it does not draw video. The session report checkbox (Advanced) is off by default. Logic lives in `gui_pages.py` and `gui_controller.py`; layout in `gui.py` is UNVERIFIED (never run on a screen here).
+The window now has a sidebar (Dashboard, Setup wizard, Scenes, Overlays, Recording, Advanced) built from native `ttk` widgets only, with each page created the first time you open it. The Dashboard shows health cards and suggestions from the adaptive advisor; a suggestion changes a setting only after you press Apply (and takes effect at the next START), or you can Dismiss it. The Scenes page has Save Scene, Duplicate Scene, Import Scene and Export Scene (indented JSON). The Overlays page has position and scale controls and shows the resulting FFmpeg filter text as the preview; it does not draw video. The session report checkbox (Advanced) is off by default. Logic lives in `gui_pages.py` and `gui_controller.py`; layout in `gui.py` is UNVERIFIED (never run on a screen here). Dark/light theme (Ctrl+Shift+D), a compact sidebar-only mode (Ctrl+Shift+C), shortcuts (Ctrl+Enter start, Ctrl+. stop, Ctrl+Shift+E emergency, Ctrl+1..6 pages) and small fps/bitrate/CPU graphs are in `gui_theme.py` (logic VERIFIED by tests; on-screen look UNVERIFIED).
 
 ### Browser companion overlay (0.7.0)
 
@@ -315,6 +316,12 @@ Status: option parsing, settings resolution, thread math and command building ar
 
 `lightstream readiness [--upload-mbps N] [--platform twitch]` scores how ready this PC is (0 to 100) with a fix per factor. `lightstream bench --ffmpeg PATH` measures startup, memory, CPU cost and a synthetic encode; see `docs/BENCHMARKS.md` for the method and the numbers from the dev sandbox (not representative of low-end laptops).
 
+### Emergency, weak connection and backup ingest (0.11.0)
+
+- `start --emergency` starts with the safest settings. In the window, the orange EMERGENCY button does it while live (ffmpeg restarts briefly); press it again (it then reads RESTORE) to go back. Never automatic.
+- `start --weak-connection [--upload-mbps 5]` lowers the bitrate, uses 1 second keyframes and a 2 second buffer for a poor uplink.
+- `start --backup-url rtmp://backup-host/app` (no key in it) switches to that server after 3 quick connection failures, using the same stream key. A recording continues in the next numbered file. Real ingest servers are UNVERIFIED; the logic is tested with fakes and the ffmpeg argv with real ffmpeg.
+
 ### Explained insights and opt-in auto-scale (0.9.0)
 
 - The end-of-session report now prints `insight:` lines. Each has plain words and a confidence percent, and says what the likely limit is: CPU, encoder, network, GPU, heat or unknown. The network stability score is an inference from ffmpeg readings, not a packet loss measurement.
@@ -332,7 +339,7 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|nvidia|generic] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|optimus_mx250|nvidia|generic] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 

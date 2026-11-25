@@ -56,9 +56,17 @@ class MeasureTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             bandwidth.measure_upload("ftp://x")
 
+    def test_rejects_plain_http(self):
+        sent = []
+        with self.assertRaises(ValueError) as caught:
+            bandwidth.measure_upload("http://example.test/up",
+                                     post=lambda u, d: sent.append(u))
+        self.assertIn("https://", str(caught.exception))
+        self.assertEqual([], sent)
+
     def test_zero_elapsed(self):
         with self.assertRaises(ValueError):
-            bandwidth.measure_upload("http://x", post=lambda u, d: None,
+            bandwidth.measure_upload("https://x", post=lambda u, d: None,
                                      clock=lambda: 1.0)
 
 

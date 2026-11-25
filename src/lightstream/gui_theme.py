@@ -1,0 +1,237 @@
+"""Pure UI logic for the window: design tokens, contrast math, keyboard
+shortcut table, sparkline ring buffer and the saved look preferences.
+
+Nothing here imports tkinter, so all of it is tested without a display.
+How the tokens look on a real screen is UNVERIFIED (see gui.py).
+"""
+
+import json
+import os
+from collections import deque
+
+from .fileio import write_private_text
+
+THEME_LIGHT = "light"
+THEME_DARK = "dark"
+THEMES = (THEME_LIGHT, THEME_DARK)
+UI_PREFS_FILENAME = "ui.json"
+AA_TEXT_RATIO = 4.5  # WCAG 2.1 AA for normal text
+
+# Colors. Each palette has the same keys. Text pairs are listed in TEXT_PAIRS.
+PALETTES = {
+    THEME_LIGHT: {
+        "background": "#F5F5F5", "foreground": "#1A1A1A",
+        "surface": "#FFFFFF", "muted": "#4A4A4A",
+        "focus": "#0B57D0", "graph_line": "#0B57D0", "graph_back": "#FFFFFF",
+        "start_bg": "#1B7F3B", "stop_bg": "#B00020", "emergency_bg": "#8F4600",
+        "button_fg": "#FFFFFF",
+    },
+    THEME_DARK: {
+        "background": "#1E1E1E", "foreground": "#EDEDED",
+        "surface": "#2B2B2B", "muted": "#C0C0C0",
+        "focus": "#8AB4F8", "graph_line": "#8AB4F8", "graph_back": "#2B2B2B",
+        "start_bg": "#1B7F3B", "stop_bg": "#B00020", "emergency_bg": "#8F4600",
+        "button_fg": "#FFFFFF",
+    },
+}
+
+# (foreground key, background key): every pair must reach AA_TEXT_RATIO.
+TEXT_PAIRS = (
+    ("foreground", "background"), ("foreground", "surface"),
+    ("muted", "background"), ("muted", "surface"),
+    ("button_fg", "start_bg"), ("button_fg", "stop_bg"),
+    ("button_fg", "emergency_bg"),
+    ("focus", "background"), ("graph_line", "graph_back"),
+)
+
+SPACING = {"small": 4, "medium": 8, "large": 16}
+FONT_FAMILY = "Segoe UI"
+FONT_SIZES = {"title": 18, "step": 12, "text": 11, "button": 20, "log": 10}
+COMPACT_FONT_SIZES = {"title": 14, "step": 10, "text": 9, "button": 14, "log": 9}
+
+
+def font_sizes(compact):
+    return COMPACT_FONT_SIZES if compact else FONT_SIZES
+
+
+def spacing(compact):
+    scale = 0.5 if compact else 1
+    return {name: max(1, int(value * scale)) for name, value in SPACING.items()}
+
+
+def palette(theme):
+    """Colors for a theme name; unknown names give the light palette."""
+    return PALETTES.get(theme, PALETTES[THEME_LIGHT])
+
+
+def toggle_theme(theme):
+    return THEME_LIGHT if theme == THEME_DARK else THEME_DARK
+
+
+def _channel(value):
+    value /= 255.0
+    return value / 12.92 if value <= 0.03928 else ((value + 0.055) / 1.055) ** 2.4
+
+
+def relative_luminance(color):
+    """WCAG relative luminance of '#RRGGBB'."""
+    if not (isinstance(color, str) and len(color) == 7 and color[0] == "#"):
+        raise ValueError("color must look like #RRGGBB: %r" % (color,))
+    red, green, blue = (int(color[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * _channel(red) + 0.7152 * _channel(green) + 0.0722 * _channel(blue)
+
+
+def contrast_ratio(first, second):
+    """WCAG contrast ratio between two colors, 1.0 to 21.0."""
+    a, b = relative_luminance(first), relative_luminance(second)
+    lighter, darker = max(a, b), min(a, b)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def failing_pairs(theme):
+    """Text pairs of a theme below AA, as (fg key, bg key, ratio). Empty is good."""
+    colors = palette(theme)
+    bad = []
+    for fg, bg in TEXT_PAIRS:
+        ratio = contrast_ratio(colors[fg], colors[bg])
+        if ratio < AA_TEXT_RATIO:
+            bad.append((fg, bg, round(ratio, 2)))
+    return bad
+
+
+# -- keyboard shortcuts --------------------------------------------------------
+# (tk key sequence, action id, accelerator text shown in labels)
+SHORTCUTS = (
+    ("<Control-Return>", "start", "Ctrl+Enter"),
+    ("<Control-period>", "stop", "Ctrl+."),
+    ("<Control-Shift-E>", "emergency", "Ctrl+Shift+E"),
+    ("<Control-Shift-D>", "theme", "Ctrl+Shift+D"),
+    ("<Control-Shift-C>", "compact", "Ctrl+Shift+C"),
+    ("<Control-Key-1>", "page:dashboard", "Ctrl+1"),
+    ("<Control-Key-2>", "page:setup", "Ctrl+2"),
+    ("<Control-Key-3>", "page:scenes", "Ctrl+3"),
+    ("<Control-Key-4>", "page:overlays", "Ctrl+4"),
+    ("<Control-Key-5>", "page:recording", "Ctrl+5"),
+    ("<Control-Key-6>", "page:advanced", "Ctrl+6"),
+)
+
+
+def shortcut_for(action):
+    """Accelerator text for an action id, or ''."""
+    for _sequence, name, text in SHORTCUTS:
+        if name == action:
+            return text
+    return ""
+
+
+def with_accelerator(label, action):
+    text = shortcut_for(action)
+    return "%s (%s)" % (label, text) if text else label
+
+
+# -- sparkline data ------------------------------------------------------------
+class RingBuffer:
+    """Fixed-size history of numbers. Memory never grows past `capacity`.
+
+    None means "no reading" and is kept so gaps show up in the graph.
+    """
+
+    def __init__(self, capacity=60):
+        if capacity < 2:
+            raise ValueError("capacity must be at least 2")
+        self.capacity = capacity
+        self._items = deque(maxlen=capacity)
+
+    def append(self, value):
+        self._items.append(None if value is None else float(value))
+
+    def values(self):
+        return list(self._items)
+
+    def __len__(self):
+        return len(self._items)
+
+
+def downsample(values, points):
+    """Reduce values to at most `points` by averaging equal buckets.
+
+    A bucket with no readings stays None. Short lists are returned unchanged.
+    """
+    if points < 1:
+        raise ValueError("points must be at least 1")
+    if len(values) <= points:
+        return list(values)
+    result = []
+    for index in range(points):
+        start = index * len(values) // points
+        end = (index + 1) * len(values) // points
+        bucket = [v for v in values[start:end] if v is not None]
+        result.append(sum(bucket) / len(bucket) if bucket else None)
+    return result
+
+
+def sparkline_points(values, width, height, pad=2):
+    """Canvas coordinates [x1, y1, x2, y2, ...] for the readings.
+
+    Readings of None are skipped. A flat line is drawn mid-height.
+    Returns [] when fewer than two readings exist.
+    """
+    pairs = [(i, v) for i, v in enumerate(values) if v is not None]
+    if len(pairs) < 2:
+        return []
+    low = min(v for _, v in pairs)
+    high = max(v for _, v in pairs)
+    span = high - low
+    steps = max(len(values) - 1, 1)
+    inner_w, inner_h = width - 2 * pad, height - 2 * pad
+    coords = []
+    for index, value in pairs:
+        x = pad + inner_w * index / steps
+        fraction = 0.5 if span == 0 else (value - low) / span
+        y = pad + inner_h * (1 - fraction)
+        coords.extend((round(x, 1), round(y, 1)))
+    return coords
+
+
+class RedrawGate:
+    """Allows a redraw at most once per `interval` seconds."""
+
+    def __init__(self, interval=1.0):
+        self.interval = interval
+        self._last = None
+
+    def ready(self, now):
+        if self._last is None or now - self._last >= self.interval:
+            self._last = now
+            return True
+        return False
+
+
+# -- saved look preferences ----------------------------------------------------
+def ui_prefs_path(prefs_file):
+    return os.path.join(os.path.dirname(prefs_file), UI_PREFS_FILENAME)
+
+
+def load_ui_prefs(path):
+    """{'theme': ..., 'compact': ...}, with defaults for anything bad or missing."""
+    prefs = {"theme": THEME_LIGHT, "compact": False}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return prefs
+    if isinstance(data, dict):
+        if data.get("theme") in THEMES:
+            prefs["theme"] = data["theme"]
+        if isinstance(data.get("compact"), bool):
+            prefs["compact"] = data["compact"]
+    return prefs
+
+
+def save_ui_prefs(path, theme, compact):
+    """Write only the theme name and the compact flag (no secrets), mode 0600."""
+    if theme not in THEMES:
+        raise ValueError("unknown theme: %r" % (theme,))
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    write_private_text(path, json.dumps(
+        {"theme": theme, "compact": bool(compact)}, indent=2) + "\n")

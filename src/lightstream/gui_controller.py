@@ -22,11 +22,12 @@ from .adaptive import AdaptiveAdvisor
 from .analytics import build_session_report, reports_dir, write_session_report
 from .health import HealthTracker
 from .optimizer import OptimizerContext, build_insights, insight_line
+from .emergency import emergency_settings, failover_settings
 from .perf_profiles import affinity_cpus
 from .telemetry import TelemetrySampler
 from .scenes import load_scenes
-from .presets import DEFAULT_PRESET, PRESETS
-from .runner import (STATUS_FALLBACK, STATUS_FAILED, STATUS_LIVE,
+from .presets import DEFAULT_PRESET
+from .runner import (STATUS_FAILOVER, STATUS_FALLBACK, STATUS_FAILED, STATUS_LIVE,
                      STATUS_RECONNECTING, STATUS_RESTARTING, STATUS_STARTING,
                      STATUS_STOPPED,
                      is_lagging, redact, run_with_reconnect)
@@ -42,7 +43,7 @@ PREFS_FILENAME = "gui.json"
 PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
                "audio_device", "keep_trying", "mute", "scene", "record",
                "hardware", "noise", "analytics", "profile", "audio_profile",
-               "auto_scale")
+               "auto_scale", "backup_url")
 
 # (label shown to the user, value used internally)
 PLATFORM_CHOICES = (("Twitch", "twitch"), ("YouTube", "youtube"),
@@ -62,6 +63,10 @@ BANNER_LIVE = ("YOU ARE LIVE!", "green")
 BANNER_LAGGING = ("LIVE, but your PC is struggling. Try a weaker setting.",
                   "orange")
 BANNER_RECONNECTING = ("Connection lost. Trying again...", "orange")
+BANNER_FAILOVER = ("Main server keeps failing. Switching to your backup server...",
+                   "orange")
+BANNER_EMERGENCY = ("LIVE in EMERGENCY mode (lowest quality). Press Restore to go "
+                    "back.", "orange")
 BANNER_PROBLEM = ("Problem. Could not stream. See 'What is wrong?'", "red")
 
 HELP_TEXT = {
@@ -110,6 +115,8 @@ def banner_for(state, detail=None):
         return BANNER_LAGGING if is_lagging(detail or {}) else BANNER_LIVE
     if state == STATUS_RECONNECTING:
         return BANNER_RECONNECTING
+    if state == STATUS_FAILOVER:
+        return BANNER_FAILOVER
     if state == STATUS_FAILED:
         return BANNER_PROBLEM
     return BANNER_OFFLINE
@@ -238,6 +245,7 @@ def cli_values_from_prefs(prefs, display=None):
         "scene": _blank_to_none(prefs.get("scene")),
         "record": recording_path() if prefs.get("record") else False,
         "hardware": _blank_to_none(prefs.get("hardware")),
+        "backup_url": _blank_to_none(prefs.get("backup_url")),
         "noise": _blank_to_none(prefs.get("noise")),
         "display": display,
     }
@@ -285,6 +293,7 @@ class StreamController:
         self._advisor = AdaptiveAdvisor()
         self._sampler = sampler or TelemetrySampler(self._os_name)
         self._scale = None
+        self._before_emergency = None
         self._context = OptimizerContext()
 
     # -- state for the GUI -------------------------------------------------
@@ -347,7 +356,9 @@ class StreamController:
             self._advisor.on_status(state, detail)
             if self._scale is not None:
                 self._scale.on_status(state, detail)
-            self._banner = banner_for(state, detail)
+            self._banner = (BANNER_EMERGENCY if self._before_emergency is not None
+                            and state == STATUS_LIVE and not is_lagging(detail or {})
+                            else banner_for(state, detail))
             if state == STATUS_FAILED:
                 self._help = HELP_TEXT["failed"]
             elif state == STATUS_LIVE:
@@ -397,6 +408,7 @@ class StreamController:
                                              settings.fps, None, settings.noise)
             self._analytics = prefs.get("analytics") is True  # opt-in only
             self._help = ""
+            self._before_emergency = None
             self._banner = BANNER_STARTING
             self._log.clear()
         keep_trying = bool(prefs.get("keep_trying"))
@@ -444,11 +456,15 @@ class StreamController:
                 restart=self._restart,
                 argv_factory=lambda enc: build_command(
                     scale.current_settings, key, self._os_name, enc, ffmpeg, record_path),
-                argv_for_attempt=(None if record_path or not (
-                    settings.record_to or auto_scale) else
+                argv_for_attempt=(None if record_path else
                                   lambda n, enc: build_command(
                                       attempt_settings(n), key, self._os_name, enc,
-                                      ffmpeg)))
+                                      ffmpeg)),
+                backup_argv_for_attempt=(
+                    lambda n, enc: build_command(
+                        failover_settings(attempt_settings(n)), key, self._os_name,
+                        enc, ffmpeg))
+                if settings.backup_url and not record_path else None)
         except (OSError, ValueError) as exc:
             self._write("Could not start: %s\n" % exc)
             self._on_status(STATUS_FAILED, None)
@@ -471,6 +487,51 @@ class StreamController:
             self._write("Session report saved to %s (no stream key inside)\n" % path)
         except OSError as exc:
             self._write("Could not save the session report: %s\n" % exc)
+
+    def emergency(self):
+        """Switch the running stream to the safest settings. Pressing the
+        button is the opt-in: ffmpeg restarts briefly through the runner's
+        restart event, auto-scale is paused so it cannot undo the step, and
+        the previous settings are kept for restore_after_emergency().
+        Returns a plain-words message."""
+        with self._lock:
+            if not self.is_running() or self._scale is None:
+                return "Emergency mode works while you are streaming."
+            if self._before_emergency is not None:
+                return "Emergency mode is already on."
+            scale = self._scale
+            self._before_emergency = (scale.current_settings, scale.scaler.enabled)
+            scale.current_settings = emergency_settings(scale.current_settings)
+            scale.scaler.enabled = False
+            self._retarget(scale.current_settings)
+            self._write_locked("Emergency mode: lowest quality settings. "
+                               "Restarting ffmpeg (a brief interruption).\n")
+            scale.restart.set()
+        return "Emergency mode is on. Press Restore to go back."
+
+    def restore_after_emergency(self):
+        """Undo emergency(): previous settings and auto-scale choice return."""
+        with self._lock:
+            if self._before_emergency is None or self._scale is None:
+                return "Emergency mode is not on."
+            scale = self._scale
+            settings, enabled = self._before_emergency
+            self._before_emergency = None
+            scale.current_settings = settings
+            scale.scaler.enabled = enabled
+            self._retarget(settings)
+            self._write_locked("Restored your previous settings. Restarting "
+                               "ffmpeg (a brief interruption).\n")
+            scale.restart.set()
+        return "Your previous settings are back."
+
+    def emergency_active(self):
+        with self._lock:
+            return self._before_emergency is not None
+
+    def _retarget(self, settings):
+        for monitor in self._scale.monitors:
+            monitor.retarget(settings.video_kbps, settings.fps)
 
     def stop(self, wait=True):
         """Stop the stream. wait=False returns at once (for the GUI thread);

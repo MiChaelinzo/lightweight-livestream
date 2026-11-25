@@ -39,3 +39,20 @@ Stress means encoding speed under `adaptive.SLOW_SPEED_BELOW` or dropped frames 
 Network stability (`HealthTracker.network_stability()`, 0 to 100) is inferred from bitrate against target, speed jitter and reconnects. ffmpeg's RTMP output does not report packet loss, so this is an inference and is labelled that way. `bandwidth.measure_connect_latency` times a TCP connect to the ingest host and port (the stream key is never part of it); it is a hint, not packet loss.
 
 Opt-in history: with `--analytics`, `reports/history.json` keeps the newest 30 rows (date, preset, bottleneck class, average speed, dropped frames, reconnect count). No key, URL, path or audience data. Matching earlier bottlenecks raise confidence by a capped bonus.
+
+## Stream key in the ffmpeg command line (0.11.0)
+
+The ingest URL, including the key, is the last argument of the ffmpeg process. Other local users can read it from `ps` or `/proc/<pid>/cmdline` on Linux and macOS; on Windows other processes of the same user can. LightStream's redaction covers its own logs and output only. For a single-user streaming PC this is a low risk; it is documented, not solved.
+
+| Alternative | Conclusion |
+| --- | --- |
+| Pass the URL on stdin or from a file | ffmpeg has no option that reads the output URL from stdin or a file. `-/option file` (ffmpeg 7) loads option values from a file, but the output URL is a positional argument, not an option. Not implemented. |
+| `-protocol_whitelist` with a file-based URL | The whitelist restricts which protocols may be opened. It does not hide the URL, and an rtmp URL stored in a file would need a demuxer that reads URLs (concat, playlist) on the output side, which does not exist. Not implemented. |
+| Environment variable expansion | ffmpeg does not expand environment variables in URLs, and a shell is not used (`shell=True` is avoided on purpose). Environment variables of a process are also readable by the same users on Linux through `/proc/<pid>/environ`. Not implemented. |
+| Local relay process that holds the key | The relay would still need the key, so the key would show in that process's argv or need its own config file, plus an extra process on a low-end PC. Not implemented. |
+
+These are conclusions from ffmpeg's documented behavior; none were tested with the real ffmpeg, so they are PARTIALLY VERIFIED at best. Nothing was implemented because no option was both safe and testable.
+
+## Dual-GPU laptops: `optimus_mx250` (0.11.0)
+
+When an NVIDIA GeForce MX250 and an Intel graphics adapter (Iris Plus, UHD, HD) are both detected, `classify_gpus` returns `optimus_mx250` instead of `mx250_streamer`. Its encoder order is Quick Sync first, NVENC second. Reasoning (a deliberate design choice, UNVERIFIED on real hardware): on an Optimus laptop the game renders on the MX250, so encoding on the idle Intel Quick Sync block keeps the MX250's video engine and power budget for the game. If Quick Sync fails to start, the existing fallback tries the next encoder and then libx264. `record_by_default` and the 4500 kbps cap match `mx250_streamer`. Single-GPU machines are unchanged. Windows detection now runs PowerShell `Get-CimInstance Win32_VideoController` first and `wmic` second, because wmic is removed from Windows 11 24H2; both paths are tested with fake command output only.

@@ -255,6 +255,15 @@ class RedactionTests(unittest.TestCase):
         self.assertNotIn("a%20b", text)
         self.assertEqual("x **** y **** z", text)
 
+    def test_redact_hides_quote_plus_form_and_spaces(self):
+        key = "a b+c/d"
+        text = redact("x a+b%2Bc%2Fd y a%20b%2Bc%2Fd z a b+c/d", key)
+        self.assertEqual("x **** y **** z ****", text)
+
+    def test_redact_hides_several_secrets(self):
+        self.assertEqual("**** and ****", redact("one and two", ("one", "two")))
+        self.assertEqual("same", redact("same", (None, "")))
+
     def test_format_command_hides_key(self):
         argv = build_command(settings(), KEY, "linux", "libx264")
         text = format_command(argv, KEY)

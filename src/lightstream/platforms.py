@@ -1,6 +1,7 @@
 """Ingest URLs and per-OS screen/audio capture inputs. Pure functions."""
 
 import re
+import urllib.parse
 
 INGEST_URLS = {
     "twitch": "rtmp://live.twitch.tv/app/",
@@ -22,6 +23,22 @@ def ingest_url(platform, key, custom_url=None):
             "Unknown platform %r. Choose one of: %s" % (platform, ", ".join(PLATFORMS))
         )
     return INGEST_URLS[platform] + key
+
+
+def validate_backup_url(url):
+    """Check a backup ingest address (rtmp://host/app, no key in it) and return
+    it. The stream key is added at launch, as for a custom primary URL.
+    Raises ValueError in plain words."""
+    url = (url or "").strip()
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme not in ("rtmp", "rtmps") or not parts.hostname:
+        raise ValueError("The backup address must look like rtmp://host/app")
+    if any(c.isspace() for c in url) or "|" in url:
+        raise ValueError("The backup address must not contain spaces or '|'")
+    if embedded_key_in_url(url):
+        raise ValueError("The backup address must not contain a stream key. "
+                         "Use rtmp://host/app; the key you entered is added for you")
+    return url
 
 
 DEFAULT_DISPLAY = ":0.0"
@@ -101,3 +118,25 @@ def parse_audio_devices(ffmpeg_output):
             if m:
                 names.append("%s = %s" % (m.group(1), m.group(2).strip()))
     return names
+
+
+_KEY_QUERY_NAMES = ("key", "streamkey", "stream_key", "token")
+
+
+def embedded_key_in_url(url):
+    """The secret part of a custom ingest URL that already contains a stream
+    key in plain text, else None.
+
+    A normal custom URL is rtmp://host/app: one path segment. A second path
+    segment (rtmp://host/app/KEY) or a key/token query value is treated as a
+    key. This is a heuristic: it can warn about a URL that is not a key but
+    never leaves a recognizable key unmentioned. The value is for redaction
+    and warnings only; callers must never save it."""
+    parts = urllib.parse.urlsplit(url or "")
+    for name, value in urllib.parse.parse_qsl(parts.query):
+        if name.lower() in _KEY_QUERY_NAMES and value:
+            return value
+    segments = [seg for seg in parts.path.split("/") if seg]
+    if len(segments) >= 2:
+        return segments[-1]
+    return None

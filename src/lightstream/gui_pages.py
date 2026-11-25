@@ -102,6 +102,15 @@ def audio_profile_label(pref):
     return pref if pref in AUDIO_PROFILES else NO_AUDIO_PROFILE_LABEL
 
 
+EMERGENCY_LABEL = "EMERGENCY: lowest quality now"
+RESTORE_LABEL = "RESTORE my previous settings"
+
+
+def emergency_button_label(active):
+    """One button: Emergency, then Restore (undo) while emergency mode is on."""
+    return RESTORE_LABEL if active else EMERGENCY_LABEL
+
+
 # -- dashboard ---------------------------------------------------------------
 def _number(value, template):
     return MISSING_VALUE if value is None else template % value
