@@ -10,6 +10,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
 from tools import ui_snapshots as snap  # noqa: E402
 
@@ -48,7 +49,34 @@ class NamingTests(unittest.TestCase):
                          "gui-dark-setup-1366x768.png")
         self.assertEqual(snap.gui_filename("light", "setup", 1366, 768, True),
                          "gui-light-compact-setup-1366x768.png")
+        self.assertEqual(snap.gui_filename("dark", "dashboard", 1280, 720, state="live"),
+                         "gui-dark-dashboard-live-1280x720.png")
         self.assertEqual(snap.web_filename(390), "web-390.png")
+
+
+class StateTests(unittest.TestCase):
+    def test_parser_accepts_each_state_and_rejects_others(self):
+        parser = snap.build_parser()
+        for state in ("offline", "live", "reconnecting", "error"):
+            args = parser.parse_args(["gui", "--out", "x", "--state", state])
+            self.assertEqual(state, args.state)
+        self.assertIsNone(parser.parse_args(["gui", "--out", "x"]).state)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["gui", "--out", "x", "--state", "burning"])
+
+    def test_every_state_maps_to_a_real_banner(self):
+        from lightstream import gui_controller as gc
+        from lightstream import gui_theme
+        for state in snap.BANNER_STATES:
+            text, color, help_text, log, running = snap.fake_snapshot(state, gc)()
+            self.assertTrue(text)
+            gui_theme.banner_colors("light", color)  # raises on an unknown color
+            self.assertEqual(state in ("live", "reconnecting"), running)
+            self.assertEqual("", log)
+        self.assertEqual(gc.HELP_TEXT["failed"],
+                         snap.fake_snapshot("error", gc)()[2])
+        with self.assertRaises(ValueError):
+            snap.fake_snapshot("burning", gc)
 
 
 class DisplayTests(unittest.TestCase):
@@ -117,6 +145,31 @@ class MissingDependencyTests(unittest.TestCase):
                 ["gui", "--out", tempfile.gettempdir(), "--size", "big"])
         self.assertEqual(code, 1)
         self.assertIn("size must look like", text)
+
+
+class StateRenderTests(unittest.TestCase):
+    """Need a display, Pillow and tkinter; skipped otherwise."""
+
+    def test_banner_state_is_painted(self):
+        if not os.environ.get("DISPLAY"):
+            self.skipTest("no DISPLAY")
+        import tkinter
+        try:
+            root = tkinter.Tk()
+        except tkinter.TclError:
+            self.skipTest("Tk cannot open the display")
+        self.addCleanup(root.destroy)
+        from lightstream import gui, gui_controller as gc, gui_theme
+        home = tempfile.mkdtemp()
+        with mock.patch.dict(os.environ, {"HOME": home, "XDG_CONFIG_HOME": home}):
+            window = gui.StreamWindow(root)
+        for state in snap.BANNER_STATES:
+            window.controller.snapshot = snap.fake_snapshot(state, gc)
+            window.poll()
+            text, color = getattr(gc, snap.BANNER_STATES[state])
+            self.assertEqual(text, window.banner.cget("text"))
+            self.assertEqual(gui_theme.banner_colors(window.theme, color)[0],
+                             window.banner.cget("bg"))
 
 
 class WebImageLoadingTests(unittest.TestCase):

@@ -3,7 +3,7 @@
 // Bump when any cached .js or .css file changes so old caches are dropped on
 // activate. The suffix is a content fingerprint; web/test/sw-logic.test.js
 // fails and prints the new value when it is out of date.
-export const CACHE_NAME = "lightstream-shell-v1-b55f1d2d";
+export const CACHE_NAME = "lightstream-shell-v1-78f0f7c2";
 
 // Same-origin files cached on install. presets.json is cached too (offline
 // fallback) but is always tried on the network first.

@@ -13,6 +13,7 @@ requests; it is not resized to fit.
 Screenshots are Linux renders: fonts differ from Windows (no Segoe UI).
 
   python3 tools/ui_snapshots.py gui --out DIR [--size 1366x768] [--theme dark]
+                                    [--state offline|live|reconnecting|error]
   python3 tools/ui_snapshots.py web --out DIR [--widths 1280,390]
 """
 
@@ -35,6 +36,10 @@ WEB_VIEWPORT_HEIGHT = 900
 FIRST_DISPLAY = 90
 LAST_DISPLAY = 199
 THEMES = ("light", "dark")
+# --state drives the banner through a fake controller snapshot, so no ffmpeg
+# runs. Maps the option to the gui_controller banner constant and a help line.
+BANNER_STATES = {"offline": "BANNER_OFFLINE", "live": "BANNER_LIVE",
+                 "reconnecting": "BANNER_RECONNECTING", "error": "BANNER_PROBLEM"}
 # Lazy <img> elements outside the viewport never load in a full-page capture
 # (they show as empty boxes). Make them eager, then wait until every image has
 # finished (or failed) so the screenshot shows the real pictures.
@@ -123,9 +128,21 @@ def taken_displays(socket_dir="/tmp/.X11-unix", lock_dir="/tmp"):
     return taken
 
 
-def gui_filename(theme, page, width, height, compact=False):
-    return "gui-%s%s-%s-%dx%d.png" % (theme, "-compact" if compact else "",
-                                      page, width, height)
+def gui_filename(theme, page, width, height, compact=False, state=None):
+    return "gui-%s%s-%s%s-%dx%d.png" % (
+        theme, "-compact" if compact else "", page,
+        "-" + state if state else "", width, height)
+
+
+def fake_snapshot(state, controller_module):
+    """A StreamController.snapshot() replacement showing `state` (a key of
+    BANNER_STATES). Returns (banner_text, color, help_text, log_text, running)."""
+    if state not in BANNER_STATES:
+        raise ValueError("unknown state %r; known: %s"
+                         % (state, ", ".join(BANNER_STATES)))
+    text, color = getattr(controller_module, BANNER_STATES[state])
+    help_text = controller_module.HELP_TEXT["failed"] if state == "error" else ""
+    return lambda: (text, color, help_text, "", state in ("live", "reconnecting"))
 
 
 def web_filename(width):
@@ -198,11 +215,14 @@ def run_gui(args):
             window = gui.StreamWindow(root)
             window.theme, window.compact = args.theme, args.compact
             window.apply_look()
+            if args.state:
+                from lightstream import gui_controller
+                window.controller.snapshot = fake_snapshot(args.state, gui_controller)
             for page in pages:
                 window.show_page(page)
                 _settle(root)
                 path = os.path.join(args.out, gui_filename(
-                    args.theme, page, size[0], size[1], args.compact))
+                    args.theme, page, size[0], size[1], args.compact, args.state))
                 image_grab.grab(
                     bbox=(0, 0, size[0], size[1]), xdisplay=display).save(path)
                 written.append(path)
@@ -279,6 +299,8 @@ def build_parser():
     gui.add_argument("--theme", choices=THEMES, default="light")
     gui.add_argument("--compact", action="store_true")
     gui.add_argument("--pages", default="all")
+    gui.add_argument("--state", choices=tuple(BANNER_STATES),
+                     help="show this banner state (fake controller, no ffmpeg)")
     web = sub.add_parser("web", help="screenshot the web/ site")
     web.add_argument("--out", required=True)
     web.add_argument("--widths", default=",".join(map(str, DEFAULT_WIDTHS)))

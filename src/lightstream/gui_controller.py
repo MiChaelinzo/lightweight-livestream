@@ -27,6 +27,7 @@ from .health import HealthTracker
 from .network import KIND_RTMP, detect_congestion, output_kind
 from .optimizer import (OptimizerContext, bottleneck_of, build_insights, health_line,
                         insight_line, session_health)
+from .command import publisher_command
 from .platforms import ingest_url
 from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_settings,
                         potato_stream_settings)
@@ -37,7 +38,8 @@ from .presets import DEFAULT_PRESET
 from .runner import (STATUS_FAILOVER, STATUS_FALLBACK, STATUS_FAILED, STATUS_LIVE,
                      STATUS_RECONNECTING, STATUS_RESTARTING, STATUS_STARTING,
                      STATUS_STOPPED,
-                     is_lagging, redact, run_with_reconnect)
+                     free_udp_port, is_lagging, redact, run_with_publisher,
+                     run_with_reconnect)
 
 MAX_QUICK_FAILURES = 5
 TEST_FILENAME = "lightstream-test.mkv"
@@ -51,7 +53,8 @@ PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
                "audio_device", "keep_trying", "mute", "scene", "record",
                "hardware", "noise", "analytics", "profile", "audio_profile",
                "auto_scale", "backup_url", "record_format", "rate_mode",
-               "potato", "potato_grayscale", "potato_skip_static")
+               "potato", "potato_grayscale", "potato_skip_static",
+               "persistent_ingest")
 
 # Recording and Potato Stream choices: (label shown, stored value).
 RECORD_FORMAT_CHOICES = (("MKV (safest if the PC crashes)", "mkv"),
@@ -213,6 +216,27 @@ def validate(prefs, key, ffmpeg, test_local=False):
         return HELP_TEXT["no_url"]
     if not ffmpeg:
         return HELP_TEXT["no_ffmpeg"]
+    return None
+
+
+PERSISTENT_BACKUP_CONFLICT = (
+    "Persistent ingest cannot be combined with a backup server address. "
+    "Turn one of them off.")
+PERSISTENT_EMERGENCY_NOTE = (
+    "Emergency mode changes the picture size, which persistent ingest keeps "
+    "fixed. Turn persistent ingest off to use it.")
+
+
+def persistent_requested(prefs, test_local=False):
+    """True when the opt-in persistent ingest checkbox applies to this run."""
+    return prefs.get("persistent_ingest") is True and not test_local
+
+
+def persistent_conflict(prefs, test_local=False):
+    """Plain message when persistent ingest is on together with a backup
+    address (same rule as the command line), else None."""
+    if persistent_requested(prefs, test_local) and _blank_to_none(prefs.get("backup_url")):
+        return PERSISTENT_BACKUP_CONFLICT
     return None
 
 
@@ -384,6 +408,7 @@ class StreamController:
         self._before_emergency = None
         self._context = OptimizerContext()
         self._ingest_kind = KIND_RTMP
+        self._persistent = False
 
     # -- state for the GUI -------------------------------------------------
     def is_running(self):
@@ -479,6 +504,11 @@ class StreamController:
             elif state == STATUS_LIVE:
                 self._help = ""
 
+    def _on_publisher_status(self, state, detail):
+        """Publisher thread: a drop counts as a reconnect, giving up fails."""
+        if state in (STATUS_RECONNECTING, STATUS_FAILED):
+            self._on_status(state, detail)
+
     class _LogSink:
         def __init__(self, write):
             self.write = write
@@ -502,6 +532,14 @@ class StreamController:
             with self._lock:
                 self._help = str(exc)
             return str(exc)
+        conflict = persistent_conflict(prefs, test_local)
+        if conflict:
+            with self._lock:
+                self._help = conflict
+            return conflict
+        persistent = persistent_requested(prefs, test_local)
+        if persistent:
+            settings = settings._replace(local_ingest_port=free_udp_port())
         key = key.strip() or "test"
         self._key = key
         with self._lock:
@@ -515,7 +553,8 @@ class StreamController:
             enabled = prefs.get("auto_scale") is True and not test_local  # opt-in only
             self._scale = AutoScaleSession(
                 settings, self._advisor,
-                AutoScaler(build_ladder(top_step(settings)), self._clock, enabled=enabled),
+                AutoScaler(build_ladder(top_step(settings), constant_size=persistent),
+                           self._clock, enabled=enabled),
                 self._restart, self._write_locked, self._sampler,
                 gaming_first=bool(settings.reserved_cores),
                 monitors=(self._health, self._advisor))
@@ -526,6 +565,7 @@ class StreamController:
             self._analytics = prefs.get("analytics") is True  # opt-in only
             self._help = ""
             self._before_emergency = None
+            self._persistent = persistent
             self._banner = BANNER_STARTING
             self._log.clear()
         keep_trying = bool(prefs.get("keep_trying"))
@@ -563,25 +603,40 @@ class StreamController:
                         record_to=numbered_recording_path(current.record_to, attempt))
                 return current
 
-            self._runner(
-                argv, key, self._os_name,
-                max_failures=(1 if record_path else
-                              None if keep_trying else MAX_QUICK_FAILURES),
-                stop=self._stop, on_status=self._on_status, encoder=encoder,
-                out=self._LogSink(self._write),
-                cpu_affinity=affinity_cpus(os.cpu_count() or 1, settings.reserved_cores),
-                restart=self._restart,
-                argv_factory=lambda enc: build_command(
-                    scale.current_settings, key, self._os_name, enc, ffmpeg, record_path),
-                argv_for_attempt=(None if record_path else
-                                  lambda n, enc: build_command(
-                                      attempt_settings(n), key, self._os_name, enc,
-                                      ffmpeg)),
-                backup_argv_for_attempt=(
-                    lambda n, enc: build_command(
-                        failover_settings(attempt_settings(n)), key, self._os_name,
-                        enc, ffmpeg))
-                if settings.backup_url and not record_path else None)
+            def run_encoder():
+                return self._runner(
+                    argv, key, self._os_name,
+                    max_failures=(1 if record_path else
+                                  None if keep_trying else MAX_QUICK_FAILURES),
+                    stop=self._stop, on_status=self._on_status, encoder=encoder,
+                    out=self._LogSink(self._write),
+                    cpu_affinity=affinity_cpus(os.cpu_count() or 1, settings.reserved_cores),
+                    restart=self._restart,
+                    argv_factory=lambda enc: build_command(
+                        scale.current_settings, key, self._os_name, enc, ffmpeg, record_path),
+                    argv_for_attempt=(None if record_path else
+                                      lambda n, enc: build_command(
+                                          attempt_settings(n), key, self._os_name, enc,
+                                          ffmpeg)),
+                    backup_argv_for_attempt=(
+                        lambda n, enc: build_command(
+                            failover_settings(attempt_settings(n)), key, self._os_name,
+                            enc, ffmpeg))
+                    if settings.backup_url and not record_path else None)
+
+            if self._persistent and not record_path:
+                self._write("Persistent ingest (opt in): the connection stays up "
+                            "while the encoder restarts. The picture size stays fixed.\n")
+                run_with_publisher(
+                    publisher_command(settings.local_ingest_port,
+                                      ingest_url(settings.platform, key,
+                                                 settings.custom_url), ffmpeg),
+                    key, self._os_name, run_encoder, out=self._LogSink(self._write),
+                    on_publisher_status=self._on_publisher_status,
+                    max_failures=None if keep_trying else MAX_QUICK_FAILURES,
+                    encoder_stop=self._stop)
+            else:
+                run_encoder()
         except (OSError, ValueError) as exc:
             self._write("Could not start: %s\n" % exc)
             self._on_status(STATUS_FAILED, None)
@@ -624,6 +679,8 @@ class StreamController:
         with self._lock:
             if not self.is_running() or self._scale is None:
                 return "Emergency mode works while you are streaming."
+            if self._persistent:
+                return PERSISTENT_EMERGENCY_NOTE
             if self._before_emergency is not None:
                 return "Emergency mode is already on."
             scale = self._scale
