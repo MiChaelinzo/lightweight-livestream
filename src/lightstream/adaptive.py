@@ -35,6 +35,13 @@ Recommendation = namedtuple("Recommendation", "kind value message")
 class AdaptiveAdvisor:
     """Tracks pressure signals and reports recommendations on demand."""
 
+    def retarget(self, video_kbps=None, fps=None):
+        """Judge later readings against a new target (after an auto-scale step)."""
+        if video_kbps:
+            self.video_kbps = video_kbps
+        if fps:
+            self.target_fps = fps
+
     def __init__(self, preset_name=None, video_kbps=None, target_fps=None,
                  clock=time.monotonic):
         self.preset_name = preset_name
@@ -48,6 +55,7 @@ class AdaptiveAdvisor:
         self._dropped = deque()      # (time, running dropped total)
         self._reconnects = deque()   # times
         self.reconnects_total = 0
+        self.observations = 0        # progress readings seen (confidence input)
 
     # -- inputs ------------------------------------------------------------
     def observe(self, health):
@@ -56,6 +64,7 @@ class AdaptiveAdvisor:
             return
         now = self._clock()
         self._last_seen = now
+        self.observations += 1
         if "fps" in health:
             self._last_fps = health["fps"]
         if "dropped" in health:
@@ -100,6 +109,23 @@ class AdaptiveAdvisor:
         if len(self._dropped) < 2:
             return 0
         return max(0, self._dropped[-1][1] - self._dropped[0][1])
+
+    def is_slow(self):
+        """True when the latest speed reading is under SLOW_SPEED_BELOW."""
+        return self._last_speed is not None and self._last_speed < SLOW_SPEED_BELOW
+
+    def last_speed(self):
+        return self._last_speed
+
+    def reconnects_in_window(self):
+        return len(self._reconnects)
+
+    def reconnect_pressure(self):
+        """True at RECONNECT_THRESHOLD reconnects inside the window."""
+        return len(self._reconnects) >= RECONNECT_THRESHOLD
+
+    def dropped_pressure(self):
+        return self.dropped_in_window() > DROPPED_FRAMES_THRESHOLD
 
     def cpu_pressure(self):
         """True when encoding is slow and fps is under target (when known).

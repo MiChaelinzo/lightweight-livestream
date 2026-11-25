@@ -20,9 +20,9 @@ Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-
 
 | Platform | Download | How to start |
 |---|---|---|
-| Windows | `LightStream-0.8.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
-| macOS | `LightStream-0.8.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
-| Linux | `LightStream-0.8.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
+| Windows | `LightStream-0.9.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
+| macOS | `LightStream-0.9.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
+| Linux | `LightStream-0.9.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
 
 - **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
 - **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.
@@ -302,13 +302,35 @@ The `web/` showcase has an animated hero title (respects reduced motion), SVG mo
 | Analytics reports (content, no key, opt-in) | VERIFIED | `tests/test_analytics.py` |
 | Web showcase | UNVERIFIED | static page, no browser in the dev sandbox |
 
+## Performance profiles (0.9.0)
+
+Run `lightstream profiles` for the full list.
+
+- Performance profiles (`--profile`): `potato`, `balanced`, `quality`, `competitive`, `low_latency`. Each picks an existing preset (the numbers stay in `presets.py`) plus knobs: x264 tune, thread cap, cores left free for the game ("Gaming First"), keyframe interval and rate-control buffer. `quality` is still capped by your hardware profile.
+- Stream presets (`--stream-preset`): `youtube_gaming`, `twitch_gaming`, `kick`, `podcast`, `just_chatting`, `tutorial`, `esports`. Each sets platform, profile and audio profile, and keeps the bitrate within the platform cap. `kick` needs `--url` (no Kick address is built in).
+- Audio profiles (`--audio-profile`): `gaming`, `podcast`, `music`, `commentary`, `asmr`, built from FFmpeg filters. The light chain is used with the `potato` profile and on hardware profiles that strip expensive filters. `--noise light|ai` takes priority over an audio profile.
+- Precedence: explicit flag, then a profile from the command line, then the config file, then a profile named in the config file.
+
+Status: option parsing, settings resolution, thread math and command building are VERIFIED by unit tests. All ten audio chains (five profiles, light and full) were run through ffmpeg 7.0.2 (static build) on a 1 second sine and were accepted; set `LIGHTSTREAM_TEST_FFMPEG` to repeat that. Effects on real games, Windows/macOS telemetry, `nvidia-smi` and CPU affinity on real hardware are UNVERIFIED.
+
+`lightstream readiness [--upload-mbps N] [--platform twitch]` scores how ready this PC is (0 to 100) with a fix per factor. `lightstream bench --ffmpeg PATH` measures startup, memory, CPU cost and a synthetic encode; see `docs/BENCHMARKS.md` for the method and the numbers from the dev sandbox (not representative of low-end laptops).
+
+### Explained insights and opt-in auto-scale (0.9.0)
+
+- The end-of-session report now prints `insight:` lines. Each has plain words and a confidence percent, and says what the likely limit is: CPU, encoder, network, GPU, heat or unknown. The network stability score is an inference from ffmpeg readings, not a packet loss measurement.
+- `start --auto-scale` (or the Advanced checkbox) steps quality down one notch at a time when the stream struggles and back up after it stays healthy. It is off by default. Each step restarts ffmpeg briefly; a recording continues as `name-2.mkv`. See [docs/ARCHITECTURE-NOTES.md](docs/ARCHITECTURE-NOTES.md).
+- The window now has Performance profile, Microphone profile and Auto-scale controls in Advanced. A chosen profile replaces the Strength dropdown.
+- Status: rules, ladder, hysteresis, runner restart and settings wiring are VERIFIED by unit tests with fake clocks, and the restart was run against a real subprocess. Behavior on real streams and games, the Tk widgets and the thresholds' fit to real hardware are UNVERIFIED.
+
+Planned work and why it is not in 0.9.0 is listed in [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Stream key safety
 
 The key is read from the `STREAM_KEY` environment variable or typed at a hidden prompt (asked by lightstream itself, also from the Windows launcher). It is never stored by lightstream, and it is hidden (`****`) in everything lightstream prints. Limitation: RTMP puts the key in the FFmpeg command line, so other local processes running as your user may be able to see it in the process list. Custom URLs that carry their own tokens are not redacted beyond the key. Never share your key or commit it.
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|nvidia|generic] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|nvidia|generic] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 
@@ -358,6 +380,13 @@ python3 tools/export_presets.py --check  # fails if it is stale
 | Hardware encoder flags (NVENC, QSV, AMF, VAAPI, VideoToolbox) | UNVERIFIED | never run on real hardware |
 | Windows window capture, dshow audio, low priority | UNVERIFIED | not run on Windows |
 | Actual lag/CPU improvement vs OBS | UNVERIFIED | not measured |
+| Performance profiles, stream presets, audio profile selection, thread math, optimizer rules, network stability score, auto-scale ladder and hysteresis, readiness scoring, bench report schema (0.9.0) | VERIFIED | unit tests with fake clocks and injected callables |
+| Ten audio filter chains accepted by FFmpeg (0.9.0) | VERIFIED | run through ffmpeg 7.0.2 static build on a sine input in the dev sandbox; a bad chain was rejected |
+| Real libx264 synthetic encode and bench numbers (0.9.0) | VERIFIED (this machine only) | `docs/BENCHMARKS.md`, Linux x86_64 sandbox; not representative of low-end laptops |
+| Restart through the reconnect path (auto-scale) | PARTIALLY VERIFIED | exercised against a real subprocess, not a real capture or RTMP stream |
+| Auto-scale on real games and streams, threshold fit to real hardware | UNVERIFIED | not run |
+| Game FPS gain from Gaming First (thread cap, CPU affinity) | UNVERIFIED | not measured |
+| Telemetry on Windows and macOS, `nvidia-smi` GPU readings, GUI telemetry row and new controls | UNVERIFIED | Linux parsing tested on sample text only; no display |
 | Linux PyInstaller build (`tools/build_release.py`), tar.gz plus SHA256SUMS, runs headless and prints the no-screen message | VERIFIED | built for 0.8.0 with PyInstaller, extracted and run locally (GUI itself not shown, no display) |
 | Windows `.exe` zip, macOS `.app` zip and `.dmg` | UNVERIFIED | only tested with a faked PyInstaller |
 | Release workflow `release.yml` | UNVERIFIED | YAML parses; Actions is billing-locked, never run |

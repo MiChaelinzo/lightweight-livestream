@@ -102,6 +102,130 @@ class PrefsTests(unittest.TestCase):
             self.assertEqual(gc.load_prefs(os.path.join(d, "none.json")), {})
 
 
+class ProfileWiringTests(unittest.TestCase):
+    def test_profile_and_audio_profile_reach_settings(self):
+        plain = gc.settings_from_prefs(PREFS, cpu_count=8)
+        self.assertIsNone(plain.audio_filter)
+        self.assertIsNone(plain.threads)
+        prefs = dict(PREFS, profile="competitive", audio_profile="podcast")
+        s = gc.settings_from_prefs(prefs, cpu_count=8)
+        self.assertEqual((1280, 720, 60), (s.width, s.height, s.fps))  # profile preset wins
+        self.assertEqual(6, s.threads)
+        self.assertEqual(2, s.reserved_cores)
+        self.assertTrue(s.audio_filter)
+
+    def test_explicit_boxes_beat_profile(self):
+        s = gc.settings_from_prefs(dict(PREFS, profile="competitive", fps="45",
+                                        bitrate="1500"), cpu_count=8)
+        self.assertEqual((45, 1500), (s.fps, s.video_kbps))
+
+    def test_blank_profile_values_change_nothing(self):
+        blank = gc.settings_from_prefs(dict(PREFS, profile="", audio_profile=""))
+        self.assertEqual(gc.settings_from_prefs(PREFS), blank)
+
+    def test_prefs_roundtrip_new_fields_without_key(self):
+        prefs = dict(PREFS, profile="potato", audio_profile="gaming", auto_scale=True)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "gui.json")
+            gc.save_prefs(path, prefs, SECRET)
+            self.assertEqual("potato", gc.load_prefs(path)["profile"])
+            self.assertTrue(gc.load_prefs(path)["auto_scale"])
+
+    def test_controller_passes_affinity_to_runner(self):
+        calls = []
+        c = make_controller(fake_runner_factory(calls))
+        with mock.patch.object(gc.os, "cpu_count", return_value=8):
+            c.start(dict(PREFS, profile="competitive"), SECRET)
+            c._thread.join(0.3)
+        c.stop()
+        self.assertEqual({2, 3, 4, 5, 6, 7}, calls[0][1]["cpu_affinity"])
+        self.assertIn("-threads", calls[0][0])
+
+    def test_auto_scale_off_unless_ticked(self):
+        calls = []
+        c = make_controller(fake_runner_factory(calls))
+        c.start(PREFS, SECRET)
+        c._thread.join(0.3)
+        c.stop()
+        self.assertFalse(c._scale.scaler.enabled)
+        calls2 = []
+        c = make_controller(fake_runner_factory(calls2))
+        c.start(dict(PREFS, auto_scale=True), SECRET)
+        c._thread.join(0.3)
+        c.stop()
+        self.assertTrue(c._scale.scaler.enabled)
+        self.assertIsNotNone(calls2[0][1]["argv_for_attempt"])
+        self.assertIsNone(calls[0][1]["argv_for_attempt"])
+
+    def test_controller_scales_down_and_relaunches_without_key(self):
+        clock = [0.0]
+        argvs = []
+
+        def runner(argv, key, os_name, **kw):
+            argvs.append(argv)
+            for _ in range(40):
+                clock[0] += 1
+                kw["on_status"](STATUS_LIVE, {"speed": 0.5, "fps": 10.0})
+            self.assertTrue(kw["restart"].is_set())
+            argvs.append(kw["argv_for_attempt"](1, "libx264"))
+            return 0
+        c = gc.StreamController(
+            runner=runner, which=lambda _n: "/bin/ffmpeg", os_name="linux",
+            probe=lambda _f: set(), pick_encoder=lambda *a, **k: "libx264",
+            clock=lambda: clock[0])
+        c.start(dict(PREFS, preset="balanced", auto_scale=True), SECRET)
+        c._thread.join(2)
+        first, second = argvs
+        self.assertNotEqual(first[first.index("-b:v") + 1], second[second.index("-b:v") + 1])
+        self.assertNotIn(SECRET, c.snapshot()[3])
+        self.assertIn("Auto-scale down", c.snapshot()[3])
+        self.assertTrue(c.insights())
+
+    def test_gaming_first_follows_reserved_cores(self):
+        for prefs, expected in ((dict(PREFS, profile="competitive"), True),
+                                (PREFS, False)):
+            c = make_controller(fake_runner_factory([]))
+            c.start(dict(prefs, auto_scale=True), SECRET)
+            c._thread.join(0.3)
+            c.stop()
+            self.assertIs(expected, c._scale.gaming_first)
+
+    def test_step_retargets_health_and_advisor(self):
+        clock = [0.0]
+
+        def runner(argv, key, os_name, **kw):
+            for _ in range(40):
+                clock[0] += 1
+                kw["on_status"](STATUS_LIVE, {"speed": 0.5, "fps": 10.0})
+            return 0
+        c = gc.StreamController(
+            runner=runner, which=lambda _n: "/bin/ffmpeg", os_name="linux",
+            probe=lambda _f: set(), pick_encoder=lambda *a, **k: "libx264",
+            clock=lambda: clock[0])
+        c.start(dict(PREFS, preset="balanced", auto_scale=True), SECRET)
+        c._thread.join(2)
+        step = c._scale.decisions[0].step
+        self.assertEqual(step.kbps, c._health.target_kbps)
+        self.assertEqual(step.kbps, c._advisor.video_kbps)
+        self.assertEqual(step.fps, c._advisor.target_fps)
+
+    def test_sampler_ticks_without_controller_lock(self):
+        held = []
+
+        class Sampler:
+            latest = None
+            history = ()
+
+            def tick_if_due(self_inner):
+                held.append(c._lock.locked())
+        c = make_controller(fake_runner_factory([]))
+        c._sampler = Sampler()
+        c.start(PREFS, SECRET)
+        c._thread.join(0.3)
+        c.stop()
+        self.assertEqual([False], held)
+
+
 class ControllerTests(unittest.TestCase):
     def test_start_stop_and_log_redaction(self):
         calls = []

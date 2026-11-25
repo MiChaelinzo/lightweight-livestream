@@ -4,7 +4,9 @@ The upload speed is either typed in (--upload-mbps) or measured by posting
 bytes to an endpoint the user supplies. No third-party endpoint is built in.
 """
 
+import socket
 import time
+import urllib.parse
 import urllib.request
 from collections import namedtuple
 
@@ -77,3 +79,35 @@ def measure_upload(endpoint, post=_urlopen_post, clock=time.monotonic,
     if elapsed <= 0:
         raise ValueError("Speed test finished too fast to measure. Use --upload-mbps.")
     return payload_bytes * 8 / 1000 / elapsed
+
+
+DEFAULT_PORTS = {"rtmp": 1935, "rtmps": 443}
+LATENCY_TIMEOUT_SECONDS = 3
+
+
+def rtmp_host_port(url):
+    """(host, port) of an rtmp:// or rtmps:// URL. The path (where the stream
+    key lives) is dropped here so callers never see or log it."""
+    parts = urllib.parse.urlsplit(url or "")
+    if parts.scheme not in DEFAULT_PORTS or not parts.hostname:
+        raise ValueError("Need an rtmp:// or rtmps:// address to test the connection")
+    return parts.hostname, parts.port or DEFAULT_PORTS[parts.scheme]
+
+
+def measure_connect_latency(host, port, connect=socket.create_connection,
+                            clock=time.monotonic, timeout=LATENCY_TIMEOUT_SECONDS):
+    """Milliseconds to open a TCP connection to host:port, or None on failure.
+
+    This is connection setup time, a rough hint about distance and congestion.
+    It is not packet loss and not stream latency."""
+    started = clock()
+    try:
+        sock = connect((host, port), timeout)
+    except OSError:
+        return None
+    elapsed = clock() - started
+    try:
+        sock.close()
+    except OSError:
+        pass
+    return elapsed * 1000.0

@@ -76,3 +76,35 @@ class CommandTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LatencyTests(unittest.TestCase):
+    def test_host_port_drops_the_key(self):
+        self.assertEqual(("live.example.com", 1935),
+                         bandwidth.rtmp_host_port("rtmp://live.example.com/app/SECRETKEY"))
+        self.assertEqual(("a.tv", 443), bandwidth.rtmp_host_port("rtmps://a.tv/x/KEY"))
+        self.assertEqual(("a.tv", 1936), bandwidth.rtmp_host_port("rtmp://a.tv:1936/x"))
+        with self.assertRaises(ValueError):
+            bandwidth.rtmp_host_port("http://a.tv/x")
+
+    def test_connect_time_uses_injected_socket_and_clock(self):
+        ticks = iter([10.0, 10.05])
+        closed = []
+
+        class Sock:
+            def close(self):
+                closed.append(True)
+        seen = []
+
+        def connect(addr, timeout):
+            seen.append((addr, timeout))
+            return Sock()
+        ms = bandwidth.measure_connect_latency("h", 1935, connect, lambda: next(ticks))
+        self.assertAlmostEqual(50.0, ms)
+        self.assertEqual([(("h", 1935), bandwidth.LATENCY_TIMEOUT_SECONDS)], seen)
+        self.assertEqual([True], closed)
+
+    def test_failure_is_none(self):
+        def connect(addr, timeout):
+            raise OSError("timed out")
+        self.assertIsNone(bandwidth.measure_connect_latency("h", 1, connect))

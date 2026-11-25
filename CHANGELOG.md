@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.9.0
+
+Performance core: telemetry, profiles, audio profiles, optimizer, opt-in auto-scale, bench harness and readiness score. Logic is VERIFIED by unit tests with fake clocks; behavior on real games, real streams, hardware encoders, Windows, macOS and the Tk window is UNVERIFIED. See `docs/ROADMAP.md` for what is not done.
+- Version bumped to 0.9.0.
+- Behavior change: starting from the window with a performance profile chosen replaces the Strength dropdown, and applying a preset suggestion clears the profile.
+- Behavior change: with `--analytics`, `reports/` also holds `history.json` (newest 30 sessions).
+- Fix: after an auto-scale step the health tracker and advisor are retargeted to the new bitrate and fps, so later readings are not scored as a network shortfall.
+- Fix: a step down caused by Gaming First CPU pressure is not undone for 10 minutes (`GAMING_STEP_UP_HOLDOFF_SECONDS`), which stops a down, up, down cycle. The 600 s value is a design choice, UNVERIFIED on real games.
+- Fix: telemetry sampling runs outside the GUI controller lock, so a slow `nvidia-smi` cannot freeze the window.
+- Known limitations: auto-scale restarts ffmpeg on each step (viewers see a short interruption); the network stability score is an inference, not packet loss; the bench numbers come from one Linux sandbox and are not representative of low-end laptops; the TCP latency helper is only wired into `readiness` when `--platform` or `--url` is given.
+
+- New: `lightstream profiles` lists performance profiles (`potato`, `balanced`, `quality`, `competitive`, `low_latency`), stream presets (`youtube_gaming`, `twitch_gaming`, `kick`, `podcast`, `just_chatting`, `tutorial`, `esports`) and audio profiles (`gaming`, `podcast`, `music`, `commentary`, `asmr`, each with a light and a full filter chain).
+- New: `start --profile`, `--stream-preset`, `--audio-profile` and the matching config keys `profile`, `stream_preset`, `audio_profile`. Explicit flags beat a profile; a profile from the command line beats the config file.
+- New: Gaming First. Profiles with it reserve cores for the game: ffmpeg gets `-threads` and `-filter_threads` of `cpu_count - reserved_cores`, and on Linux is confined to the other cores with `sched_setaffinity`. No game FPS gain is claimed (UNVERIFIED).
+- New: `telemetry.py` samples CPU, RAM, CPU/GPU temperature, GPU load and ffmpeg memory (unknown values are `n/a`) and the dashboard shows them every 2 seconds while visible. Linux parsing is tested on fake `/proc` text; Windows, macOS, `nvidia-smi` and the Tk row are UNVERIFIED on real machines.
+- New: `optimizer.py` explains what limits a stream as `Insight` rows (area, action, value, confidence, explanation, plain words). Printed as `insight:` lines at the end of a CLI session and available from `StreamController.insights()`.
+- New: network stability score (0 to 100) from ffmpeg bitrate, speed jitter and reconnects. It is an inference, not packet loss. `bandwidth.measure_connect_latency` times a TCP connect to the ingest host.
+- New: opt-in `--auto-scale` (config `auto_scale`, GUI checkbox). Steps a quality ladder down and up with hysteresis, one step at a time, by restarting ffmpeg through the runner's reconnect path (`run_with_reconnect(restart=...)`). Off by default. See `docs/ARCHITECTURE-NOTES.md` for the alternatives evaluated.
+- New: with `--analytics`, `reports/history.json` keeps the newest 30 sessions (no key, URL or paths) and lets the optimizer raise confidence.
+- Fix: starting from the window now passes the performance profile, microphone profile and CPU affinity (Gaming First) to ffmpeg. The window gains Performance profile, Microphone profile and Auto-scale controls.
+- New: `lightstream bench` writes a JSON report of startup time, memory, per-tick CPU cost, command build time and a synthetic encode per profile (each metric labelled measured or unavailable). Results from the dev sandbox are in `docs/BENCHMARKS.md`, including import time and memory against v0.8.0.
+- New: `lightstream readiness` gives a 0 to 100 stream readiness score with points and a plain fix per factor (optional `--upload-mbps`, `--platform`/`--url` connection test). It is also printed by `lightstream setup` and the window's one-click setup.
+
 ## 0.8.0
 
 Release builds for people who do not want to install Python or Git. Windows, macOS and workflow parts are UNVERIFIED; see the README status table.

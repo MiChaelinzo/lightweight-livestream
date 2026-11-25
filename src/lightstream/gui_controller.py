@@ -10,6 +10,7 @@ import os
 import threading
 import time
 
+from .autoscale import AutoScaleSession, AutoScaler, build_ladder, top_step
 from .command import (build_command, numbered_recording_path,
                       prepare_recording_path)
 from .portable import data_dir, find_ffmpeg
@@ -19,10 +20,14 @@ from .encoders import choose_working_encoder, probe_encoders
 from .adaptive import AdaptiveAdvisor
 from .analytics import build_session_report, reports_dir, write_session_report
 from .health import HealthTracker
+from .optimizer import OptimizerContext, build_insights, insight_line
+from .perf_profiles import affinity_cpus
+from .telemetry import TelemetrySampler
 from .scenes import load_scenes
 from .presets import DEFAULT_PRESET, PRESETS
 from .runner import (STATUS_FALLBACK, STATUS_FAILED, STATUS_LIVE,
-                     STATUS_RECONNECTING, STATUS_STARTING, STATUS_STOPPED,
+                     STATUS_RECONNECTING, STATUS_RESTARTING, STATUS_STARTING,
+                     STATUS_STOPPED,
                      is_lagging, redact, run_with_reconnect)
 
 MAX_QUICK_FAILURES = 5
@@ -35,7 +40,8 @@ MIN_SUBSTRING_KEY_LENGTH = 8
 PREFS_FILENAME = "gui.json"
 PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
                "audio_device", "keep_trying", "mute", "scene", "record",
-               "hardware", "noise", "analytics")
+               "hardware", "noise", "analytics", "profile", "audio_profile",
+               "auto_scale")
 
 # (label shown to the user, value used internally)
 PLATFORM_CHOICES = (("Twitch", "twitch"), ("YouTube", "youtube"),
@@ -96,7 +102,7 @@ def value_for(choices, label):
 
 def banner_for(state, detail=None):
     """(text, color) for a runner status."""
-    if state == STATUS_STARTING or state == STATUS_FALLBACK:
+    if state in (STATUS_STARTING, STATUS_FALLBACK, STATUS_RESTARTING):
         return BANNER_STARTING
     if state == STATUS_LIVE:
         return BANNER_LAGGING if is_lagging(detail or {}) else BANNER_LIVE
@@ -172,7 +178,7 @@ def scene_choices(path=None):
 
 
 def one_click_setup(os_name=None, platform="twitch", upload_mbps=None,
-                    cpu_count=None, ram_mb=None, gpu_text=None):
+                    cpu_count=None, ram_mb=None, gpu_text=None, facts=None):
     """Safe settings for this PC as (fields, plain-words message).
 
     fields uses the same names as the saved preferences. Nothing is written
@@ -193,6 +199,10 @@ def one_click_setup(os_name=None, platform="twitch", upload_mbps=None,
         config["hardware"].replace("_", " "), label_for(STRENGTH_CHOICES, config["preset"]))
     if config.get("bitrate"):
         message += " Video speed set to %d kbps for your internet." % config["bitrate"]
+    if facts is None:  # probes ffmpeg briefly, like the Check button
+        facts = wizard.gather_readiness_facts(os_name, cpu_count, ram_mb, upload_kbps)
+    message += " Stream readiness: %d/100 (run 'lightstream readiness' for details)." % (
+        wizard.readiness_report(facts).score)
     return fields, message
 
 
@@ -207,24 +217,36 @@ def recording_path(now=None):
     return os.path.join(data_dir(), RECORDINGS_DIRNAME, "lightstream-%s.mkv" % stamp)
 
 
-def settings_from_prefs(prefs, display=None):
+def cli_values_from_prefs(prefs, display=None):
+    """The resolve_settings 'command line' dict for GUI fields.
+
+    A chosen performance profile supplies the strength (preset) too, so the
+    Strength dropdown is not passed in that case. Explicit fps and bitrate
+    boxes still win over the profile."""
+    profile = _blank_to_none(prefs.get("profile"))
+    return {
+        "platform": prefs.get("platform"),
+        "url": _blank_to_none(prefs.get("url")),
+        "preset": None if profile else prefs.get("preset"),
+        "profile": profile,
+        "audio_profile": _blank_to_none(prefs.get("audio_profile")),
+        "fps": _blank_to_none(prefs.get("fps")),
+        "bitrate": _blank_to_none(prefs.get("bitrate")),
+        "window": _blank_to_none(prefs.get("window")),
+        "audio_device": _blank_to_none(prefs.get("audio_device")),
+        "mute": bool(prefs.get("mute")) or None,
+        "scene": _blank_to_none(prefs.get("scene")),
+        "record": recording_path() if prefs.get("record") else False,
+        "hardware": _blank_to_none(prefs.get("hardware")),
+        "noise": _blank_to_none(prefs.get("noise")),
+        "display": display,
+    }
+
+
+def settings_from_prefs(prefs, display=None, cpu_count=None):
     """StreamSettings from GUI fields. Raises ValueError with plain words."""
     try:
-        return resolve_settings({
-            "platform": prefs.get("platform"),
-            "url": _blank_to_none(prefs.get("url")),
-            "preset": prefs.get("preset"),
-            "fps": _blank_to_none(prefs.get("fps")),
-            "bitrate": _blank_to_none(prefs.get("bitrate")),
-            "window": _blank_to_none(prefs.get("window")),
-            "audio_device": _blank_to_none(prefs.get("audio_device")),
-            "mute": bool(prefs.get("mute")) or None,
-            "scene": _blank_to_none(prefs.get("scene")),
-            "record": recording_path() if prefs.get("record") else False,
-            "hardware": _blank_to_none(prefs.get("hardware")),
-            "noise": _blank_to_none(prefs.get("noise")),
-            "display": display,
-        }, {})
+        return resolve_settings(cli_values_from_prefs(prefs, display), {}, cpu_count)
     except ValueError as exc:
         raise ValueError("One of your settings looks wrong (%s). Leave "
                          "Advanced boxes empty if unsure." % exc)
@@ -240,7 +262,7 @@ class StreamController:
     def __init__(self, runner=run_with_reconnect, which=lambda _name: find_ffmpeg(),
                  os_name=None, display=None, probe=probe_encoders,
                  pick_encoder=choose_working_encoder, clock=time.monotonic,
-                 report_dir=None):
+                 report_dir=None, sampler=None):
         self._runner = runner
         self._which = which
         self._os_name = os_name or detect_os()
@@ -257,9 +279,13 @@ class StreamController:
         self._help = ""
         self._thread = None
         self._stop = None
+        self._restart = None
         self._key = ""
         self._health = HealthTracker()
         self._advisor = AdaptiveAdvisor()
+        self._sampler = sampler or TelemetrySampler(self._os_name)
+        self._scale = None
+        self._context = OptimizerContext()
 
     # -- state for the GUI -------------------------------------------------
     def is_running(self):
@@ -277,6 +303,11 @@ class StreamController:
         with self._lock:
             self._log.append(redact(text, self._key))
 
+    def _write_locked(self, text):
+        """Log write for callers that already hold self._lock (deque append is
+        atomic, and the lock is not re-entrant)."""
+        self._log.append(redact(text, self._key))
+
     def health_advice(self):
         """One plain-words line of advice, or '' when nothing looks wrong."""
         with self._lock:
@@ -293,10 +324,29 @@ class StreamController:
         with self._lock:
             return self._advisor.recommendations()
 
+    def insights(self):
+        """Explained suggestions (list of optimizer.Insight), most confident first."""
+        with self._lock:
+            context = self._context
+            if self._scale is not None:
+                current = self._scale.current_settings
+                context = context._replace(video_kbps=current.video_kbps, fps=current.fps)
+            return build_insights(self._advisor, self._health.summary(),
+                                  list(self._sampler.history),
+                                  self._health.network_stability(), context)
+
+    def insight_lines(self):
+        """Plain-words insight lines with confidence, for the dashboard."""
+        return [insight_line(i) for i in self.insights()]
+
     def _on_status(self, state, detail):
+        if state == STATUS_LIVE:
+            self._sampler.tick_if_due()  # outside the lock: nvidia-smi can block
         with self._lock:
             self._health.on_status(state, detail)
             self._advisor.on_status(state, detail)
+            if self._scale is not None:
+                self._scale.on_status(state, detail)
             self._banner = banner_for(state, detail)
             if state == STATUS_FAILED:
                 self._help = HELP_TEXT["failed"]
@@ -321,6 +371,7 @@ class StreamController:
             return problem
         try:
             settings = settings_from_prefs(prefs, self._display)
+            cli_values = cli_values_from_prefs(prefs, self._display)
         except ValueError as exc:
             with self._lock:
                 self._help = str(exc)
@@ -330,14 +381,24 @@ class StreamController:
         with self._lock:
             self._health = HealthTracker(target_kbps=settings.video_kbps)
             self._preset_name = effective_preset_name(
-                {"preset": prefs.get("preset")}, {}, _blank_to_none(prefs.get("hardware")))
+                cli_values, {}, _blank_to_none(prefs.get("hardware")))
             self._advisor = AdaptiveAdvisor(
                 self._preset_name, settings.video_kbps, settings.fps)
+            self._stop = threading.Event()
+            self._restart = threading.Event()
+            enabled = prefs.get("auto_scale") is True and not test_local  # opt-in only
+            self._scale = AutoScaleSession(
+                settings, self._advisor,
+                AutoScaler(build_ladder(top_step(settings)), self._clock, enabled=enabled),
+                self._restart, self._write_locked, self._sampler,
+                gaming_first=bool(settings.reserved_cores),
+                monitors=(self._health, self._advisor))
+            self._context = OptimizerContext(self._preset_name, settings.video_kbps,
+                                             settings.fps, None, settings.noise)
             self._analytics = prefs.get("analytics") is True  # opt-in only
             self._help = ""
             self._banner = BANNER_STARTING
             self._log.clear()
-        self._stop = threading.Event()
         keep_trying = bool(prefs.get("keep_trying"))
         self._thread = threading.Thread(
             target=self._work, args=(settings, key, ffmpeg, keep_trying,
@@ -360,21 +421,34 @@ class StreamController:
             if settings.record_to and not record_path:
                 prepare_recording_path(settings.record_to)
                 self._write("Recording a copy to %s\n" % settings.record_to)
+            self._context = self._context._replace(encoder=encoder)
             argv = build_command(settings, key, self._os_name, encoder, ffmpeg,
                                  record_path)
+            scale = self._scale
+            auto_scale = scale.scaler.enabled
+
+            def attempt_settings(attempt):
+                current = scale.current_settings
+                if current.record_to:  # a new file per attempt, footage never truncated
+                    current = current._replace(
+                        record_to=numbered_recording_path(current.record_to, attempt))
+                return current
+
             self._runner(
                 argv, key, self._os_name,
                 max_failures=(1 if record_path else
                               None if keep_trying else MAX_QUICK_FAILURES),
                 stop=self._stop, on_status=self._on_status, encoder=encoder,
                 out=self._LogSink(self._write),
+                cpu_affinity=affinity_cpus(os.cpu_count() or 1, settings.reserved_cores),
+                restart=self._restart,
                 argv_factory=lambda enc: build_command(
-                    settings, key, self._os_name, enc, ffmpeg, record_path),
-                argv_for_attempt=(None if not settings.record_to or record_path else
+                    scale.current_settings, key, self._os_name, enc, ffmpeg, record_path),
+                argv_for_attempt=(None if record_path or not (
+                    settings.record_to or auto_scale) else
                                   lambda n, enc: build_command(
-                                      settings._replace(record_to=numbered_recording_path(
-                                          settings.record_to, n)),
-                                      key, self._os_name, enc, ffmpeg)))
+                                      attempt_settings(n), key, self._os_name, enc,
+                                      ffmpeg)))
         except (OSError, ValueError) as exc:
             self._write("Could not start: %s\n" % exc)
             self._on_status(STATUS_FAILED, None)

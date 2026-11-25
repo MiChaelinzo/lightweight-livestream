@@ -159,9 +159,12 @@ def low_resource_output_args(profile_name, encoder, complex_graph):
     return args
 
 
-def rate_control_bufsize_kbps(profile_name, video_kbps):
-    """-bufsize in kbit: video_kbps times the profile's buffer seconds."""
-    seconds = get_profile(profile_name).bufsize_seconds if profile_name else DEFAULT_BUFSIZE_SECONDS
+def rate_control_bufsize_kbps(profile_name, video_kbps, seconds=None):
+    """-bufsize in kbit: video_kbps times the buffer seconds. An explicit
+    seconds value wins, else the hardware profile's, else the default."""
+    if seconds is None:
+        seconds = (get_profile(profile_name).bufsize_seconds if profile_name
+                   else DEFAULT_BUFSIZE_SECONDS)
     return max(1, int(video_kbps * seconds))
 
 
