@@ -34,10 +34,20 @@ test("bandwidth maths", () => {
 });
 
 test("recommendation respects upload and PC class", () => {
-  assert.equal(recommendPreset(data.presets, 50, "strong").name, "720p60");
+  assert.equal(recommendPreset(data.presets, 50, "strong").name, "budget_gaming");
+  assert.equal(recommendPreset(data.presets, 6, "strong").name, "office_laptop");
   assert.equal(recommendPreset(data.presets, 50, "average").name, "balanced");
   assert.equal(recommendPreset(data.presets, 50, "old").name, "light");
   assert.equal(recommendPreset(data.presets, 2, "strong").name, "light");
+});
+
+test("one-click profile presets use 30 or 60 fps and stay within the Twitch cap", () => {
+  for (const name of ["office_laptop", "budget_gaming"]) {
+    assert.ok([30, 60].includes(byName[name].fps), name + " fps");
+    assert.ok(byName[name].video_kbps <= 6000, name + " bitrate");
+  }
+  assert.equal(byName.office_laptop.height, 900);
+  assert.equal(byName.budget_gaming.height, 1080);
 });
 
 test("recommendation falls back to the lowest preset", () => {

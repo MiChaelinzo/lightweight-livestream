@@ -60,6 +60,26 @@
       "audio_kbps": 128,
       "x264_preset": "veryfast",
       "description": "Fast action games. Needs a hardware encoder or a good CPU."
+    },
+    {
+      "name": "office_laptop",
+      "width": 1600,
+      "height": 900,
+      "fps": 30,
+      "video_kbps": 3500,
+      "audio_kbps": 128,
+      "x264_preset": "veryfast",
+      "description": "Office laptop: 900p30 at 3500k. 30 fps, not 40, because 40 fps judders on 60 Hz screens."
+    },
+    {
+      "name": "budget_gaming",
+      "width": 1920,
+      "height": 1080,
+      "fps": 60,
+      "video_kbps": 6000,
+      "audio_kbps": 128,
+      "x264_preset": "veryfast",
+      "description": "Budget gaming PC: 1080p60 at 6000k (the Twitch cap). Needs a hardware encoder such as NVENC."
     }
   ]
 }

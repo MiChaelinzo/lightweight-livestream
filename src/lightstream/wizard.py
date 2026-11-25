@@ -16,11 +16,11 @@ from .fileio import write_private_text
 from .gui_controller import suggest_strength
 from .hardware import (cap_preset_name, classify_gpus, detect_gpu_names,
                        parse_gpu_names)
+from .perf_profiles import LOW_RAM_MB, POTATO_RAM_MB, recommend_profile
 from .platforms import INGEST_URLS, PLATFORMS
 from .portable import find_ffmpeg
 from .presets import PRESETS
 
-LOW_RAM_MB = 4096  # at or below this, never start above the 'light' preset
 
 
 def detect_ram_mb(os_name, opener=open, windows_probe=None):
@@ -266,7 +266,6 @@ def run_setup(os_name, out, input_fn=input, yes=False, platform=None,
 # -- one-click optimize ------------------------------------------------------
 # Reuses build_recommended_config, readiness and the bench tier. It only PROPOSES
 # a config and a diff. Nothing is written until the person confirms.
-POTATO_RAM_MB = 2048          # at or below this the 360p15 potato_2000 profile
 OptimizeProposal = namedtuple("OptimizeProposal", "config diff notes readiness tier")
 
 
@@ -292,6 +291,8 @@ def propose_optimization(current, gpu_text, cpu_count, ram_mb, upload_kbps,
         config["profile"] = "potato_2000" if (ram_mb is not None
                                               and ram_mb <= POTATO_RAM_MB) else "potato"
         notes.append("Potato fallback: lowest CPU use profile (%s)." % config["profile"])
+    suggested = recommend_profile(cpu_count, ram_mb, hardware_profile=config["hardware"])
+    notes.append("One-click profile for this PC: %s (use --profile %s)." % (suggested, suggested))
     report = readiness_report(facts)
     return OptimizeProposal(config, config_diff(current, config), notes,
                             report.score, tier)
