@@ -87,6 +87,13 @@ class SurvivalTests(unittest.TestCase):
         clock, monitor = self.make(enabled=False)
         self.assertEqual([], self.feed(clock, monitor, sample(cpu=100), 500))
 
+    def test_works_when_the_clock_starts_at_zero(self):
+        clock, monitor = self.make()
+        clock.now = 0.0
+        self.assertEqual([], self.feed(clock, monitor, sample(cpu=96), 9))
+        events = self.feed(clock, monitor, sample(cpu=96), 2)
+        self.assertEqual([gd.ENTER], [e.kind for e in events])
+
     def test_enters_only_after_the_hold_time(self):
         clock, monitor = self.make()
         self.assertEqual([], self.feed(clock, monitor, sample(cpu=96), 9))

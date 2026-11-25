@@ -455,10 +455,10 @@ Findings:
 
 `tests/test_predictor.py` feeds generated one-per-second ffmpeg speed and bitrate readings (deterministic noise) to `predictor.TrendPredictor` (EWMA plus least-squares slope over 40 s, slope must be 5 standard errors below zero, 5 degrading readings in a row, 30 s extrapolation horizon). These are synthetic traces, not real streams. They say nothing about accuracy on a real connection, which is UNVERIFIED.
 
-| Synthetic trace | Result (measured by running the tests) |
+| Synthetic trace | Result (observed in an ad hoc run; the tests assert only the bounds in brackets) |
 |---|---|
 | steady speed 1.0, noise of 2 percent and 5 percent, 40 seeds each | 0 false positives in 80 traces |
-| ramp down, 1.10 falling 0.003 per second, crossing 0.95 at 50 s, noise 2 percent, 20 seeds | flagged 14 to 27 s before the crossing (the test requires at least 10 s) |
+| ramp down, 1.10 falling 0.003 per second, crossing 0.95 at 50 s, noise 2 percent, 20 seeds | flagged 14 to 27 s before the crossing (bound asserted: at least 10 s) |
 | step from 1.0 to 0.6 at 90 s | flagged 9 to 10 s after the step: a step is not predicted ahead |
 
 The output queue length is not available from ffmpeg progress lines or `network.py`, so it is not used.

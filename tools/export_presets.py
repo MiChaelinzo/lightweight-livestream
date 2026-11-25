@@ -14,7 +14,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "src"))
 
-from lightstream.presets import DEFAULT_PRESET, PRESETS  # noqa: E402
+from lightstream.presets import DEFAULT_PRESET, PRESETS, PROFILE_ONLY_PRESETS  # noqa: E402
 
 OUTPUT = os.path.join(ROOT, "web", "presets.json")
 
@@ -22,7 +22,8 @@ OUTPUT = os.path.join(ROOT, "web", "presets.json")
 def build_text():
     data = {
         "default": DEFAULT_PRESET,
-        "presets": [dict(p._asdict()) for p in PRESETS.values()],
+        "presets": [dict(p._asdict(), profile_only=p.name in PROFILE_ONLY_PRESETS)
+                    for p in PRESETS.values()],
     }
     return json.dumps(data, indent=2) + "\n"
 

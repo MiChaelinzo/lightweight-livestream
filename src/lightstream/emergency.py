@@ -42,7 +42,7 @@ def emergency_settings(settings, constant_size=False):
     constant_size keeps the picture size and the whole audio chain (audio
     bitrate, noise suppression, audio filter: audio has priority over
     video) and cuts only frame rate, video bitrate, x264 preset, encoder
-    threads, the lean buffer and scene overlays, chromakey and blur filters.
+    threads, the lean buffer and the scene (overlays, webcam with chromakey and blur).
     Persistent ingest and auto-survival use it because the output size must
     not change inside a session.
     """

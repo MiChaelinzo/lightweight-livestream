@@ -67,6 +67,11 @@ class LadderTests(unittest.TestCase):
         fps = [s.fps for s in steps]
         self.assertLess(fps.index(45), fps.index(30))
 
+    def test_profile_only_presets_do_not_change_ladder_bitrates(self):
+        steps = au.build_ladder(au.LadderStep(2560, 1440, 30, 9000))
+        rung = [s for s in steps if s.height == 1080]
+        self.assertEqual([4500], [s.kbps for s in rung])
+
     def test_user_bitrate_kept_and_floor_respected(self):
         steps = au.build_ladder(au.LadderStep(854, 480, 30, 900), "light")
         self.assertEqual(480, steps[-1].height)

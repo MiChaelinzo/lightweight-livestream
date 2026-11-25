@@ -148,8 +148,8 @@ class SurvivalMonitor:
         known = cpu is not None or ram is not None
         calm = known and not high and all(
             v is None or v < SURVIVAL_EXIT_PERCENT for v in (cpu, ram))
-        self._high_since = (self._high_since or now) if high else None
-        self._calm_since = (self._calm_since or now) if calm else None
+        self._high_since = (now if self._high_since is None else self._high_since) if high else None
+        self._calm_since = (now if self._calm_since is None else self._calm_since) if calm else None
         if (self._last_change is not None
                 and now - self._last_change < SURVIVAL_COOLDOWN_SECONDS):
             return None

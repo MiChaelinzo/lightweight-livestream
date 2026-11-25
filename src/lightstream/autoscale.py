@@ -36,7 +36,7 @@ Hysteresis
 import time
 from collections import namedtuple
 
-from .presets import PRESETS, Preset
+from .presets import PRESETS, PROFILE_ONLY_PRESETS, Preset
 
 LadderStep = namedtuple("LadderStep", "width height fps kbps")
 ScaleSignal = namedtuple("ScaleSignal", "state reason cpu_bound", defaults=(False,))
@@ -76,7 +76,11 @@ LADDER_TIERS = {
     TIER_900P: Preset(TIER_900P, 1600, 900, 30, 3500, 128, "veryfast",
                       "Ladder step between 1080p and 720p."),
 }
-LADDER_SOURCES = dict(PRESETS, **LADDER_TIERS)
+# Profile-only presets stay out so a 6000k 1080p profile cannot raise the
+# bitrate of an existing 1080p rung.
+LADDER_SOURCES = dict(
+    {n: p for n, p in PRESETS.items() if n not in PROFILE_ONLY_PRESETS},
+    **LADDER_TIERS)
 
 assert UPSCALE_AFTER_SECONDS > DOWNSCALE_AFTER_SECONDS
 
