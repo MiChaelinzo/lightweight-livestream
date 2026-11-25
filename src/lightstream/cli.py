@@ -36,6 +36,8 @@ from .health import HealthTracker
 from .network import detect_congestion, detect_link, link_advice, output_kind
 from .platforms import PLATFORMS, embedded_key_in_url, ingest_url, parse_audio_devices
 from .command import RATE_MODES, ignored_setting_notes, publisher_command
+from .guardian import Guardian, SurvivalMonitor
+from .timeline import Timeline
 from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_settings,
                         potato_stream_settings,
                         weak_connection_settings)
@@ -191,6 +193,15 @@ def build_parser():
     s.add_argument("--auto-scale", action="store_true",
                    help="opt in: step quality down (and back up) automatically when the "
                         "stream struggles. Each step restarts ffmpeg briefly. Off by default")
+    s.add_argument("--guardian", action="store_true",
+                   help="opt in: Performance Guardian. Turns on auto-scale and also reads "
+                        "CPU, RAM, temperature and a bandwidth trend prediction. Every step "
+                        "restarts the encoder briefly; --persistent-ingest keeps the "
+                        "connection alive meanwhile. Off by default")
+    s.add_argument("--auto-survival", action="store_true",
+                   help="opt in: when CPU stays at 95%% or RAM at 90%% for 10 seconds, keep "
+                        "the picture size and audio but cut fps, bitrate and overlays "
+                        "(restarts the encoder briefly); back after 60 s calm. Off by default")
     s.add_argument("--emergency", action="store_true",
                    help="start with the safest settings (potato size, two threads, no "
                         "overlays, no AI audio, small buffer). Never automatic")
@@ -698,19 +709,37 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
     preset_name = effective_preset_name(cli_values, file_cfg, hardware)
     advisor = AdaptiveAdvisor(preset_name, settings.video_kbps, settings.fps)
     sampler = TelemetrySampler(os_name)
-    auto_scale = bool(args.auto_scale) or file_cfg.get("auto_scale") is True
-    if auto_scale and record_path:
-        auto_scale = False
-        out.write("Note: --auto-scale is ignored with --test-local.\n")
+    guardian_on = bool(args.guardian) or file_cfg.get("guardian") is True
+    survival_on = bool(args.auto_survival) or file_cfg.get("auto_survival") is True
+    auto_scale = (bool(args.auto_scale) or file_cfg.get("auto_scale") is True
+                  or guardian_on)
+    if record_path and (auto_scale or survival_on):
+        auto_scale = guardian_on = survival_on = False
+        out.write("Note: --auto-scale, --guardian and --auto-survival are ignored "
+                  "with --test-local.\n")
+    guardian = (Guardian(settings.video_kbps, clock) if guardian_on else None)
+    survival = SurvivalMonitor(clock, enabled=survival_on)
+    timeline = Timeline(clock) if (auto_scale or survival_on) else None
     scale = AutoScaleSession(
         settings, advisor, AutoScaler(build_ladder(top_step(settings), constant_size=persistent), clock,
                                       enabled=auto_scale),
         threading.Event(), out.write, sampler,
         gaming_first=bool(settings.reserved_cores),
-        monitors=(tracker, advisor))
+        monitors=(tracker, advisor) + ((guardian,) if guardian else ()),
+        guardian=guardian, survival=survival if survival_on else None,
+        timeline=timeline)
     if auto_scale:
-        out.write("Auto-scale is ON: quality steps down when the stream struggles "
-                  "and back up when it is healthy. Each step restarts ffmpeg briefly.\n")
+        out.write("%s is ON: quality steps down when the stream struggles "
+                  "and back up when it is healthy. Each step restarts ffmpeg briefly%s.\n"
+                  % ("Guardian (telemetry pressure and a bandwidth trend prediction)"
+                     if guardian_on else "Auto-scale",
+                     "" if persistent else ". --persistent-ingest keeps the connection "
+                     "alive during that restart (about 10% of frames were lost near a "
+                     "restart on loopback)"))
+    if survival_on:
+        out.write("Auto-survival is ON: sustained high CPU or RAM keeps the picture size "
+                  "and audio but cuts fps, bitrate and overlays. Entering and leaving "
+                  "restart ffmpeg briefly.\n")
 
     def on_status(state, detail):
         tracker.on_status(state, detail)
@@ -741,7 +770,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
             argv_factory=lambda enc: build_command(
                 scale.current_settings, key, os_name, enc, ffmpeg, record_path),
             argv_for_attempt=(None if record_path or not (
-                settings.record_to or auto_scale or backup)
+                settings.record_to or auto_scale or survival_on or backup)
                               else lambda n, enc: build_command(
                                   settings_for_attempt(n), key, os_name, enc, ffmpeg)),
             backup_argv_for_attempt=(
@@ -759,6 +788,8 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                 encoder_stop=encoder_stop)
         else:
             code = run_encoder()
+        if timeline is not None and timeline.report_lines():
+            out.write("\n" + "\n".join(timeline.report_lines()) + "\n")
         if tracker.samples or tracker.reconnects:
             out.write("\n" + "\n".join(tracker.report_lines()) + "\n")
             stability = tracker.network_stability()

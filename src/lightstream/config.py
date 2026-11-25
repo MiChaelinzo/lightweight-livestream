@@ -39,6 +39,8 @@ EXAMPLE_CONFIG = {
     "stream_preset": None,
     "audio_profile": None,
     "auto_scale": False,
+    "guardian": False,
+    "auto_survival": False,
     "backup_url": None,
     "rate_mode": "vbr",
 }

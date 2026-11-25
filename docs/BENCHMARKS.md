@@ -450,3 +450,15 @@ Findings:
 - `drawtext` per frame is UNMEASURED: this static ffmpeg build reports `Unknown filter 'drawtext'` although it lists libfreetype in its configuration. A text clock rendered by drawtext on every frame therefore has no number here. The 30 fps changing overlay is only a stand-in for the compositing part, not for text rendering.
 - Adding any overlay cost about 0.12 to 0.15 CPU seconds per 10 stream seconds (about 1.2 to 1.5 percent of one core at real time) on this machine. The pre-rendered PNG input (1.282) against the 30 fps changing overlay (1.313) differs by 0.03 s per 10 s (about 0.3 percent of a core), and the min to max ranges overlap (1.237 to 1.323 against 1.294 to 1.348). This is NOT a reliable win; with five runs it is within noise.
 - `mpdecimate` is neutral on a moving picture (1.161 against 1.160) and cuts CPU on a static picture by about 75 percent (0.597 to 0.147 s) because most frames are dropped (bitrate 114 to 4.4 kbit/s). Dropping frames changes the output frame rate, which a live platform may treat as a stalled feed; the effect on a real stream is UNVERIFIED.
+
+## v0.16 bandwidth trend predictor (SYNTHETIC traces only)
+
+`tests/test_predictor.py` feeds generated one-per-second ffmpeg speed and bitrate readings (deterministic noise) to `predictor.TrendPredictor` (EWMA plus least-squares slope over 40 s, slope must be 5 standard errors below zero, 5 degrading readings in a row, 30 s extrapolation horizon). These are synthetic traces, not real streams. They say nothing about accuracy on a real connection, which is UNVERIFIED.
+
+| Synthetic trace | Result (measured by running the tests) |
+|---|---|
+| steady speed 1.0, noise of 2 percent and 5 percent, 40 seeds each | 0 false positives in 80 traces |
+| ramp down, 1.10 falling 0.003 per second, crossing 0.95 at 50 s, noise 2 percent, 20 seeds | flagged 14 to 27 s before the crossing (the test requires at least 10 s) |
+| step from 1.0 to 0.6 at 90 s | flagged 9 to 10 s after the step: a step is not predicted ahead |
+
+The output queue length is not available from ffmpeg progress lines or `network.py`, so it is not used.

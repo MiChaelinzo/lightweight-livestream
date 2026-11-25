@@ -155,3 +155,12 @@ Ordered by value. None were done in 0.12 because each needs its own tested chang
 4. `gui.py` and `gui_pages.py` are the only large untested-by-execution files. Keep drawing code thin and add a headless render check when a display is available.
 5. Health score weights and tier thresholds are constants in `optimizer.py` and `bench.py`. Collect real opted-in history before changing them.
 6. There is no log file, so `support-bundle` carries history rows only. A rotating, redacted log would help diagnosis; it must reuse the existing redaction.
+
+## v0.16 Guardian, auto-survival and persistent ingest (decisions)
+
+- One engine: `guardian.Guardian` only supplies extra `ScaleSignal`s to `autoscale.assess(extra=...)`; the AutoScaler hysteresis, cooldown and hourly cap still decide. `--guardian` implies auto-scale.
+- Every step restarts the encoder (ffmpeg ignores runtime bitrate changes for libx264, x265, vpx and aom; see BENCHMARKS v0.16 evidence). Persistent ingest keeps the RTMP connection alive; about 10 percent of frames were lost near a restart on loopback.
+- Auto-survival (`guardian.SurvivalMonitor`, applied in `AutoScaleSession`) pauses the ladder while active and restores the earlier settings on exit. Audio has priority: audio bitrate and the audio chain are never reduced.
+- Decision: with persistent ingest the GUI Emergency button now uses the constant-size variant instead of being declined. The earlier decline message was removed.
+- Chat priority is a companion-app concern only. LightStream does not read chat and has no code for it.
+- The timeline (`timeline.py`) is in memory and printed at the end of a session. It uses "happened around" wording because a matching time is not a cause. No session data is persisted, so no `lightstream timeline` command exists.

@@ -2,6 +2,11 @@
 
 ## Unreleased (0.16 work)
 
+- New (opt in, off by default): `--guardian` (config `guardian`, GUI checkbox) turns on auto-scale and adds telemetry pressure (CPU, RAM, CPU temperature, GPU) and a bandwidth trend prediction as extra STRESSED reasons for the existing AutoScaler (`guardian.py`, `predictor.py`). Every step still restarts the encoder; `--persistent-ingest` keeps the connection alive meanwhile (about 10 percent of frames were lost near a restart on loopback). The ladder gained a 900p step (1920x1080 to 1600x900) and a 45 fps step (60, 45, 30, 24). Predictor results are on SYNTHETIC traces only (see `docs/BENCHMARKS.md`); real streams UNVERIFIED.
+- New (opt in, off by default): `--auto-survival` (config `auto_survival`, GUI checkbox). CPU at or above 95 percent or RAM at or above 90 percent for 10 seconds switches to constant-size emergency settings (same picture size, audio untouched, lower fps and bitrate, x264 ultrafast, no overlays, chromakey or blur). It leaves after CPU and RAM stay under 80 percent for 60 seconds, with a 60 second cooldown and at most 4 entries per hour. State machines VERIFIED with a fake clock; real machines UNVERIFIED.
+- Changed: with persistent ingest the GUI Emergency button is no longer declined. It uses the constant-size variant because persistent ingest keeps the picture size fixed (`emergency_settings(constant_size=True)`).
+- New: `timeline.py`, a bounded in-memory event log (guardian steps, survival, reconnects, Emergency and Restore). The end-of-session output lists load spikes with the events that "happened around" them (a time correlation, never a cause). Nothing is persisted, so there is no `lightstream timeline` command yet.
+
 - Dev: `tools/idle_budget.py` measures GUI startup, idle RSS and idle CPU on a DISPLAY; `tests/test_idle_budget.py` enforces startup under 2 s, RSS under 150 MB and idle CPU under 5 percent (real-window test skipped without DISPLAY).
 - Dev: `tools/spikes.py --spike f` (runtime bitrate change) and `--spike g` (overlay cost). Findings and numbers in `docs/BENCHMARKS.md` ("v0.16 evidence"): `sendcmd` reaches filters but not encoders in this ffmpeg build, `zmq` and `drawtext` are absent here, and a pre-rendered PNG overlay showed no reliable CPU win.
 

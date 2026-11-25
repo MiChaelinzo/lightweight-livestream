@@ -29,6 +29,8 @@ from .optimizer import (OptimizerContext, bottleneck_of, build_insights, health_
                         insight_line, session_health)
 from .command import publisher_command
 from .platforms import ingest_url
+from .guardian import Guardian, SurvivalMonitor
+from .timeline import Timeline
 from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_settings,
                         potato_stream_settings)
 from .perf_profiles import affinity_cpus
@@ -54,7 +56,7 @@ PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
                "hardware", "noise", "analytics", "profile", "audio_profile",
                "auto_scale", "backup_url", "record_format", "rate_mode",
                "potato", "potato_grayscale", "potato_skip_static",
-               "persistent_ingest")
+               "persistent_ingest", "guardian", "auto_survival")
 
 # Recording and Potato Stream choices: (label shown, stored value).
 RECORD_FORMAT_CHOICES = (("MKV (safest if the PC crashes)", "mkv"),
@@ -222,11 +224,6 @@ def validate(prefs, key, ffmpeg, test_local=False):
 PERSISTENT_BACKUP_CONFLICT = (
     "Persistent ingest cannot be combined with a backup server address. "
     "Turn one of them off.")
-PERSISTENT_EMERGENCY_NOTE = (
-    "Emergency mode changes the picture size, which persistent ingest keeps "
-    "fixed. Turn persistent ingest off to use it.")
-
-
 def persistent_requested(prefs, test_local=False):
     """True when the opt-in persistent ingest checkbox applies to this run."""
     return prefs.get("persistent_ingest") is True and not test_local
@@ -409,6 +406,7 @@ class StreamController:
         self._context = OptimizerContext()
         self._ingest_kind = KIND_RTMP
         self._persistent = False
+        self._timeline = None
 
     # -- state for the GUI -------------------------------------------------
     def is_running(self):
@@ -550,14 +548,25 @@ class StreamController:
                 self._preset_name, settings.video_kbps, settings.fps)
             self._stop = threading.Event()
             self._restart = threading.Event()
-            enabled = prefs.get("auto_scale") is True and not test_local  # opt-in only
+            guardian_on = prefs.get("guardian") is True and not test_local  # opt-in only
+            survival_on = prefs.get("auto_survival") is True and not test_local
+            enabled = ((prefs.get("auto_scale") is True or guardian_on)
+                       and not test_local)  # opt-in only
+            guardian = (Guardian(settings.video_kbps, self._clock)
+                        if guardian_on else None)
+            self._timeline = (Timeline(self._clock) if (enabled or survival_on)
+                              else None)
             self._scale = AutoScaleSession(
                 settings, self._advisor,
                 AutoScaler(build_ladder(top_step(settings), constant_size=persistent),
                            self._clock, enabled=enabled),
                 self._restart, self._write_locked, self._sampler,
                 gaming_first=bool(settings.reserved_cores),
-                monitors=(self._health, self._advisor))
+                monitors=(self._health, self._advisor) + ((guardian,) if guardian else ()),
+                guardian=guardian,
+                survival=(SurvivalMonitor(self._clock, enabled=True)
+                          if survival_on else None),
+                timeline=self._timeline)
             self._context = OptimizerContext(self._preset_name, settings.video_kbps,
                                              settings.fps, None, settings.noise)
             self._ingest_kind = output_kind(
@@ -642,6 +651,9 @@ class StreamController:
             self._on_status(STATUS_FAILED, None)
         finally:
             self._key = ""
+            if self._timeline is not None:
+                for line in self._timeline.report_lines():
+                    self._write(line + "\n")
             self._save_report(settings, encoder, self._clock() - started, record_path)
 
     def _save_report(self, settings, encoder, seconds, test_file):
@@ -679,14 +691,19 @@ class StreamController:
         with self._lock:
             if not self.is_running() or self._scale is None:
                 return "Emergency mode works while you are streaming."
-            if self._persistent:
-                return PERSISTENT_EMERGENCY_NOTE
+            if self._scale.in_survival:
+                return "Auto-survival is already on."
             if self._before_emergency is not None:
                 return "Emergency mode is already on."
             scale = self._scale
             self._before_emergency = (scale.current_settings, scale.scaler.enabled)
-            scale.current_settings = emergency_settings(scale.current_settings)
+            # Persistent ingest keeps the picture size, so it gets the constant-size variant.
+            scale.current_settings = emergency_settings(
+                scale.current_settings, constant_size=self._persistent)
             scale.scaler.enabled = False
+            scale.manual_hold = True
+            if self._timeline is not None:
+                self._timeline.record("emergency", "Emergency button pressed")
             self._retarget(scale.current_settings)
             self._write_locked("Emergency mode: lowest quality settings. "
                                "Restarting ffmpeg (a brief interruption).\n")
@@ -703,6 +720,9 @@ class StreamController:
             self._before_emergency = None
             scale.current_settings = settings
             scale.scaler.enabled = enabled
+            scale.manual_hold = False
+            if self._timeline is not None:
+                self._timeline.record("config change", "Restore button pressed")
             self._retarget(settings)
             self._write_locked("Restored your previous settings. Restarting "
                                "ffmpeg (a brief interruption).\n")
