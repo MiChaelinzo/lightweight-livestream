@@ -1,6 +1,16 @@
-# Plugin protocol (version 1, specification only)
+# Plugin protocol (version 1, implemented as a library and CLI)
 
-Status: **Roadmap, spec only.** No host code, SDK or sample plugin exists. Nothing here is implemented, tested or run. It turns the sketch in [BLUEPRINT.md](BLUEPRINT.md#9-plugin-ecosystem-and-sdk) into a contract so an implementation can be reviewed first. Roadmap rank 31 in [TOP-100.md](../audit/TOP-100.md); the manifest and kill switch (rank 77) are included below as design.
+Status: **implemented v1 as a library and a CLI; not wired into the stream runner.** `src/lightstream/plugins.py` implements the manifest rules, process model, transport, limits and permissions below, and `lightstream plugins list|check|run-demo` exposes them. The example plugin is `examples/plugins/hello`. Roadmap rank 31 in [TOP-100.md](../audit/TOP-100.md).
+
+| Part | Status |
+|---|---|
+| Manifest validation, minimal env, no shell, working directory | VERIFIED by tests with real `python3` subprocess plugins |
+| Handshake (5 s), 16 KiB lines, `v` check, permissions, rate limit (20 msg/s, extra dropped and counted), 10 violations disable, one restart after 5 s, `shutdown` then terminate then kill, bounded write queue (64), stderr tail 4 KiB with key redaction | VERIFIED by the same tests |
+| Event whitelist: only the fields in the Events table, wrong types refused, any value containing a known key or URL refused | VERIFIED (unit tests; a seeded `LIGHTSTREAM_KEY` is absent from the plugin environment) |
+| Wiring into `start` (sending `stream_started`, `stream_stopped`, `insight`, `health`), `overlay_text` and `notify` effects, GUI "Disable plugins" button, `--no-plugins` flag, saved kill switch | Roadmap, not implemented |
+| Windows, macOS | UNVERIFIED (only Linux was run) |
+
+Implementation notes: plugins are enabled only by name in the `plugins` list of `config.json` (default none). `hello` and `shutdown` are always sent; other events only if listed in the manifest. A plugin that misses the handshake is disabled for the session, with no restart. Accepted actions are returned to the caller (`PluginProcess.drain_actions`); the host decides what to do with them. Subprocess isolation is not an OS sandbox: the plugin runs with the user's privileges, and in-process Python cannot be sandboxed at all. Limits are design choices, not measured.
 
 ## Goals and non-goals
 
@@ -96,6 +106,6 @@ A plugin that does not read stdin must not block the host: writes to the child u
 - Plugin text shown in the GUI is plain text, never evaluated.
 - A malicious plugin can still use the user's privileges. State this plainly in the enable dialog.
 
-## Test plan (to write with the implementation)
+## Test plan (written; see `tests/test_plugins.py`)
 
 Round trip with fake pipes, malformed line, oversized line, unknown `v`, action without permission, flood above the rate limit, a plugin that hangs during handshake, a plugin that exits, manifest traversal attempts, and a check that no event payload contains a fake key set in the test environment.

@@ -3,7 +3,7 @@
 `tools/ui_snapshots.py` renders the Tk GUI and the web page to PNG files so visual work can be looked at, not guessed. It is never imported by the runtime, and its dependencies are optional dev tools. Without them it prints a one-line install hint and exits non-zero.
 
 ```
-python3 tools/ui_snapshots.py gui --out DIR [--size 1366x768] [--theme light|dark] [--compact] [--pages all|dashboard,setup] [--state offline|live|reconnecting|error]
+python3 tools/ui_snapshots.py gui --out DIR [--size 1366x768] [--theme light|dark|midnight|cyberpunk|aurora|synthwave|minimal_dark|oled] [--compact] [--pages all|dashboard,setup] [--state offline|live|reconnecting|error]
 python3 tools/ui_snapshots.py web --out DIR [--widths 1280,390]
 ```
 

@@ -9,7 +9,8 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 | [FEATURES.md](FEATURES.md) | detailed feature guides, window layouts, web demo, known limitations, portable mode, standalone builds (moved out of the top README in 0.14) |
 | [ROADMAP.md](ROADMAP.md) | status table per area |
 | [ARCHITECTURE-NOTES.md](ARCHITECTURE-NOTES.md) | auto-scale design and alternatives, optimizer notes, 0.12 platform v2 decisions from measured spikes |
-| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, v0.11 before and after, web page weight, v0.12 spikes (`tools/spikes.py`), v0.13 import cost and page weight before and after, v0.14 page weight and demo decision |
+| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, v0.11 before and after, web page weight, v0.12 spikes (`tools/spikes.py`), v0.13 import cost and page weight before and after, v0.14 page weight and demo decision, v0.15 audio chain cost, highlights analysis cost and Benchmark Lab harness check |
+| [architecture/V015-MAP.md](architecture/V015-MAP.md) | v0.15 upgrade paths mapped to existing code (existing, extended, new, roadmap) with decisions and the 0.14 test baseline |
 | [architecture/MULTI-DEVICE.md](architecture/MULTI-DEVICE.md) | dashboard panel map, viewer and relay design, OBS-style layers, Moonlight/Parsec class feasibility (covers remote play and P2P) |
 | [ARCHITECTURE-NOTES.md#diagrams-012](ARCHITECTURE-NOTES.md#diagrams-012) | Mermaid diagrams (process topology, recovery state machine, data flow) and refactoring recommendations |
 | [ROADMAP.md](ROADMAP.md) | v0.12 scorecards: 15 areas and 6 headline features with status and reason |
@@ -24,7 +25,7 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 | [audit/AUDIT.md](audit/AUDIT.md) | debt, scalability, maintainability, performance, security, five scores with rubric |
 | [architecture/BLUEPRINT.md](architecture/BLUEPRINT.md) | target design, section per subsystem |
 | [architecture/DELIVERY.md](architecture/DELIVERY.md) | testing, DevOps, release roadmap, benchmark method, advantages |
-| [architecture/PLUGIN-PROTOCOL.md](architecture/PLUGIN-PROTOCOL.md) | plugin protocol v1 spec (subprocess, JSON lines, permissions, kill switch), spec only |
+| [architecture/PLUGIN-PROTOCOL.md](architecture/PLUGIN-PROTOCOL.md) | plugin protocol v1 (subprocess, JSON lines, permissions, kill switch); implemented as library and CLI, not wired into streaming; folder layout decision and Benchmark Lab method are in DELIVERY.md |
 | [audit/TOP-100.md](audit/TOP-100.md) | 100 ranked improvements, three Top 10 lists, hackathon mode |
 
 ## Phase 18 deliverables
@@ -42,7 +43,7 @@ The 14 deliverables, in order. Statuses follow [ROADMAP.md](ROADMAP.md).
 | 7 | Audio subsystem design | [BLUEPRINT.md](architecture/BLUEPRINT.md#6-audio-subsystem) | Partial (profiles and chains Done; meter and mixing Roadmap) |
 | 8 | Smart optimization engine | [BLUEPRINT.md](architecture/BLUEPRINT.md#7-smart-optimization-engine) | Partial |
 | 9 | AI assistant architecture | [BLUEPRINT.md](architecture/BLUEPRINT.md#8-ai-assistant-local-and-cloud) | Partial (rule based); Roadmap (language model) |
-| 10 | Plugin ecosystem design | [BLUEPRINT.md](architecture/BLUEPRINT.md#9-plugin-ecosystem-and-sdk), [PLUGIN-PROTOCOL.md](architecture/PLUGIN-PROTOCOL.md) | Partial (protocol spec only); Roadmap (code) |
+| 10 | Plugin ecosystem design | [BLUEPRINT.md](architecture/BLUEPRINT.md#9-plugin-ecosystem-and-sdk), [PLUGIN-PROTOCOL.md](architecture/PLUGIN-PROTOCOL.md) | Partial (runtime library and CLI in 0.15; stream wiring is Roadmap) |
 | 11 | UI modernization strategy | [BLUEPRINT.md](architecture/BLUEPRINT.md#10-ui-modernization-and-design-system) | Partial (window); Roadmap (dark mode, compact mode, shortcuts) |
 | 12 | Testing strategy | [DELIVERY.md](architecture/DELIVERY.md#1-testing-strategy) | Partial |
 | 13 | DevOps strategy | [DELIVERY.md](architecture/DELIVERY.md#2-devops-strategy) | Partial (CI workflows never ran) |

@@ -163,5 +163,16 @@ class MainTest(unittest.TestCase):
         self.assertEqual(spikes.main(["--spike", "q"], stdout=io.StringIO()), 2)
 
 
+class AudioSpikeTests(unittest.TestCase):
+    def test_baseline_has_no_filter_and_chain_is_passed(self):
+        base = spikes.audio_chain_argv("ff", None)
+        self.assertNotIn("-af", base)
+        self.assertEqual(["-af", "x"], spikes.audio_chain_argv("ff", "x")[-5:-3])
+
+    def test_spike_e_is_registered(self):
+        self.assertIn("e", spikes.SPIKE_NAMES)
+        self.assertIn("e", spikes.SPIKE_FUNCS)
+
+
 if __name__ == "__main__":
     unittest.main()

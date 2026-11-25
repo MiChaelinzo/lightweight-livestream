@@ -38,13 +38,24 @@ from .adaptive import (BITRATE_REDUCTION_FACTOR, DROPPED_FRAMES_THRESHOLD,
                        KIND_PRESET_DOWNGRADE, MIN_SUGGESTED_KBPS,
                        RECONNECT_THRESHOLD, SLOW_SPEED_BELOW,
                        SLOW_SUSTAINED_SECONDS)
+from .audio_check import is_clipping
+from .bandwidth import HEADROOM as UPLOAD_HEADROOM
 from .encoders import SOFTWARE_ENCODER
 from .health import LOW_BITRATE_RATIO
 
 # area: what to change. action: short machine-readable name. value: the
 # suggested preset, kbps, fps or encoder (None when there is no number).
 # explanation: why, with the observed numbers. plain_text: for non-technical users.
-Insight = namedtuple("Insight", "area action value confidence explanation plain_text")
+# expected_gain is an ExpectedGain measured from this PC's own history rows, or
+# None. It is never estimated or taken from a table (see expected_gain_from_history).
+Insight = namedtuple(
+    "Insight", "area action value confidence explanation plain_text expected_gain",
+    defaults=(None,))
+
+# A measured difference of one metric between two presets in local history.
+# delta is mean(to) - mean(from); n_from and n_to are the session counts behind
+# each mean, so a reader can see how little or how much data supports it.
+ExpectedGain = namedtuple("ExpectedGain", "metric delta n_from n_to preset_from preset_to")
 
 # What is currently configured; any field may be None when unknown.
 OptimizerContext = namedtuple(
@@ -82,6 +93,14 @@ RECENT_SAMPLES = 15              # about 30 seconds of telemetry at the 2 s inte
 LOWER_FPS_TARGET = 30
 LIGHT_NOISE = "light"
 AI_NOISE = "ai"
+
+# Audio, latency and upload rules. Heuristics for this project, not standards.
+CLIPPING_CONFIDENCE_PEAK = 0.6      # peak near full scale, no sample count
+CLIPPING_CONFIDENCE_SAMPLES = 0.9   # samples measured at full scale
+HIGH_LATENCY_MS = 150.0             # connect time to the ingest server
+MIN_GAIN_SAMPLES = 3                # history sessions needed on each side
+GAIN_METRIC = "avg_speed"           # history column compared between presets
+GAIN_METRIC_LABEL = "encode speed (x real time)"
 
 _BOTTLENECK_TEXT = {
     BOTTLENECK_THERMAL: "Your computer is very hot and is slowing itself down.",
@@ -163,17 +182,92 @@ def classify_bottleneck(advisor, summary, samples, stability, context):
     return None
 
 
+def expected_gain_from_history(history, preset_from, preset_to, metric=GAIN_METRIC):
+    """ExpectedGain from saved history rows, or None.
+
+    Compares the mean of `metric` over rows run at preset_to against rows run
+    at preset_from. Needs MIN_GAIN_SAMPLES numeric rows on each side; with
+    fewer there is no number at all (the caller shows direction only).
+    """
+    def values(preset):
+        return [row[metric] for row in history or ()
+                if isinstance(row, dict) and row.get("preset") == preset
+                and isinstance(row.get(metric), (int, float))]
+    if not preset_from or not preset_to or preset_from == preset_to:
+        return None
+    before, after = values(preset_from), values(preset_to)
+    if min(len(before), len(after)) < MIN_GAIN_SAMPLES:
+        return None
+    delta = sum(after) / len(after) - sum(before) / len(before)
+    return ExpectedGain(metric, round(delta, 3), len(before), len(after),
+                        preset_from, preset_to)
+
+
+def gain_text(insight):
+    """Measured-gain sentence, or None. A number is only ever printed together
+    with the session counts it came from."""
+    gain = insight.expected_gain
+    if gain is None:
+        return None
+    return ("Measured on this PC: sessions at '%s' (n=%d) averaged %s %+.2f "
+            "compared with sessions at '%s' (n=%d). Not a controlled comparison: "
+            "the sessions may have had different content."
+            % (gain.preset_to, gain.n_to, GAIN_METRIC_LABEL, gain.delta,
+               gain.preset_from, gain.n_from))
+
+
+def _audio_insights(audio, latency_ms, upload_kbps, context, seen, have_areas):
+    """Rule-based insights from an AudioCheck, a connect latency in ms and a
+    measured upload speed in kbps. Any input may be None (rule skipped)."""
+    out = []
+    if audio is not None and is_clipping(audio):
+        sampled = bool(audio.clipped_samples)
+        out.append(Insight(
+            AREA_AUDIO, "reduce_input_gain", None,
+            CLIPPING_CONFIDENCE_SAMPLES if sampled else CLIPPING_CONFIDENCE_PEAK,
+            "Audio peak %s dBFS, %s samples at full scale."
+            % ("unknown" if audio.peak_dbfs is None else "%.1f" % audio.peak_dbfs,
+               audio.clipped_samples if sampled else "no"),
+            "Your microphone is too loud and the sound is distorting. Lower the "
+            "input volume."))
+    if latency_ms is not None and latency_ms >= HIGH_LATENCY_MS:
+        out.append(Insight(
+            AREA_NETWORK, "high_latency", None,
+            confidence(seen, latency_ms, HIGH_LATENCY_MS),
+            "Connecting to the server took %.0f ms (rule: %.0f ms or more)."
+            % (latency_ms, HIGH_LATENCY_MS),
+            "The server is far away or the connection is slow to respond. A "
+            "closer ingest server or a wired connection may help."))
+    if (upload_kbps and context.video_kbps and AREA_BITRATE not in have_areas
+            and context.video_kbps > upload_kbps * UPLOAD_HEADROOM):
+        limit = int(upload_kbps * UPLOAD_HEADROOM)
+        out.append(Insight(
+            AREA_BITRATE, "lower_bitrate", limit,
+            confidence(seen, context.video_kbps, limit),
+            "Video %d kbps is above %d%% of the measured upload (%d kbps)."
+            % (context.video_kbps, int(UPLOAD_HEADROOM * 100), upload_kbps),
+            "Your upload speed is lower than the video speed you chose. Lower "
+            "it to about %d kbps." % limit))
+    return out
+
+
 def _explain(found):
     return "Signal %.2f against threshold %.2f." % (found.value, found.threshold)
 
 
 def build_insights(advisor, summary, samples=(), stability=None, context=None,
-                   history=(), congestion=()):
+                   history=(), congestion=(), audio=None, latency_ms=None,
+                   upload_kbps=None):
     """Insights, most confident first. Pure read; empty when nothing is wrong.
 
     congestion is a list of network.Congestion findings. Each becomes a
     network Insight with a fixed confidence (CONGESTION_CONFIDENCE) because a
     congestion finding is an inference, not a measurement. Never auto-applied.
+
+    audio (an audio_check.AudioCheck), latency_ms and upload_kbps are optional
+    measurements that enable the clipping, high-latency and upload-vs-bitrate
+    rules. A preset downgrade carries expected_gain only when history holds
+    enough sessions at both presets (expected_gain_from_history).
     """
     context = context or OptimizerContext()
     found = classify_bottleneck(advisor, summary, samples, stability, context)
@@ -189,7 +283,9 @@ def build_insights(advisor, summary, samples=(), stability=None, context=None,
             _BOTTLENECK_TEXT[found.kind]))
         insights.extend(_followups(found, context, advisor, seen, score))
     insights.extend(_advisor_insights(advisor, seen, context, bonus,
-                                      {i.area for i in insights}))
+                                      {i.area for i in insights}, history))
+    insights.extend(_audio_insights(audio, latency_ms, upload_kbps, context, seen,
+                                    {i.area for i in insights}))
     for finding in congestion:
         insights.append(Insight(AREA_NETWORK, "congestion_" + finding.kind, None,
                                 CONGESTION_CONFIDENCE, finding.message,
@@ -240,14 +336,16 @@ def _followups(found, context, advisor, seen, score):
     return out
 
 
-def _advisor_insights(advisor, seen, context, bonus, have_areas):
+def _advisor_insights(advisor, seen, context, bonus, have_areas, history=()):
     """The advisor's own Recommendations as Insights (same rules, same numbers)."""
     out = []
     for rec in advisor.recommendations():
         if rec.kind == KIND_PRESET_DOWNGRADE:
             score = confidence(seen, advisor.slow_seconds(), SLOW_SUSTAINED_SECONDS, bonus)
             out.append(Insight(AREA_RESOLUTION, "lower_preset", rec.value, score,
-                               rec.message, _plain_preset(rec)))
+                               rec.message, _plain_preset(rec),
+                               expected_gain_from_history(
+                                   history, context.preset_name, rec.value)))
         elif rec.kind == KIND_BITRATE_REDUCTION and AREA_BITRATE not in have_areas:
             score = confidence(seen, advisor.dropped_in_window(),
                                DROPPED_FRAMES_THRESHOLD, bonus)
@@ -271,8 +369,36 @@ def _plain_preset(rec):
 
 
 def insight_line(insight):
-    """One line for the CLI report: plain text plus confidence as a percent."""
-    return "%s (confidence %d%%)" % (insight.plain_text, round(insight.confidence * 100))
+    """One line for the CLI report: plain text plus confidence as a percent,
+    and the measured gain (with its session counts) when there is one."""
+    line = "%s (confidence %d%%)" % (insight.plain_text, round(insight.confidence * 100))
+    gain = gain_text(insight)
+    return line if gain is None else "%s %s" % (line, gain)
+
+
+class AIStreamingAssistant:
+    """Thin facade over build_insights for callers that want one object.
+
+    Not a separate system and not a model: advise() calls build_insights with
+    the same rules, thresholds and confidence, and lines() formats with
+    insight_line. The name describes the role (advice for the streamer), not
+    the method. It holds a context and history so repeated calls stay short.
+    """
+
+    def __init__(self, advisor, context=None, history=()):
+        self.advisor = advisor
+        self.context = context or OptimizerContext()
+        self.history = history
+
+    def advise(self, summary, samples=(), stability=None, congestion=(),
+               audio=None, latency_ms=None, upload_kbps=None):
+        return build_insights(self.advisor, summary, samples, stability,
+                              self.context, self.history, congestion, audio,
+                              latency_ms, upload_kbps)
+
+    @staticmethod
+    def lines(insights):
+        return [insight_line(i) for i in insights]
 
 
 def bottleneck_of(insights):
@@ -301,6 +427,10 @@ HEALTH_LINES = {
     "dropped_frames": (0.0, 5.0),    # dropped frames as percent of frames
 }
 # (minimum score, band), checked in order
+# Audio is added only when a clipping check ran: its weight joins the mean for
+# that call, and it is never listed as skipped when absent.
+HEALTH_AUDIO_WEIGHT = 10
+HEALTH_AUDIO_LINE = (-6.0, 0.0)   # peak dBFS: 100 at -6 or lower, 0 at full scale
 HEALTH_BANDS = ((90, "Excellent"), (75, "Good"), (55, "Fair"), (35, "Poor"),
                 (0, "Critical"))
 HealthScore = namedtuple("HealthScore", "score band parts skipped")
@@ -313,11 +443,12 @@ def _line_score(name, value):
 
 
 def performance_health(cpu=None, gpu=None, ram=None, network=None,
-                       encode_speed=None, dropped_percent=None):
+                       encode_speed=None, dropped_percent=None, audio_peak_dbfs=None):
     """HealthScore from the six signals (None = unknown). Pure, deterministic.
 
     score is None and band is None when every signal is unknown.
-    parts maps each known signal to its 0..100 sub-score.
+    parts maps each known signal to its 0..100 sub-score. audio_peak_dbfs
+    (from an audio check) adds an "audio" part only when given.
     """
     values = {"cpu": cpu, "gpu": gpu, "ram": ram, "network": network,
               "encode_speed": encode_speed, "dropped_frames": dropped_percent}
@@ -330,6 +461,11 @@ def performance_health(cpu=None, gpu=None, ram=None, network=None,
         parts[name] = _line_score(name, values[name])
         weighted += weight * parts[name]
         total += weight
+    if audio_peak_dbfs is not None:
+        full, zero = HEALTH_AUDIO_LINE
+        parts["audio"] = 100.0 * min(1.0, max(0.0, (audio_peak_dbfs - zero) / (full - zero)))
+        weighted += HEALTH_AUDIO_WEIGHT * parts["audio"]
+        total += HEALTH_AUDIO_WEIGHT
     skipped = [name for name, _ in HEALTH_WEIGHTS if values[name] is None]
     if not total:
         return HealthScore(None, None, parts, skipped)
@@ -338,7 +474,7 @@ def performance_health(cpu=None, gpu=None, ram=None, network=None,
     return HealthScore(score, band, parts, skipped)
 
 
-def session_health(summary, sample=None, stability=None):
+def session_health(summary, sample=None, stability=None, audio_peak_dbfs=None):
     """HealthScore from live objects: HealthTracker.summary(), a telemetry
     Sample (or None) and NetworkStability (or None). Dropped-frame percent is
     dropped / frames when the summary has a frame total above zero, and
@@ -352,7 +488,8 @@ def session_health(summary, sample=None, stability=None):
         ram=getattr(sample, "ram_percent", None),
         network=None if stability is None else stability.score,
         encode_speed=speed,
-        dropped_percent=dropped_percent(summary))
+        dropped_percent=dropped_percent(summary),
+        audio_peak_dbfs=audio_peak_dbfs)
 
 
 def dropped_percent(summary):

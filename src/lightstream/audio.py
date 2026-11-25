@@ -47,6 +47,9 @@ AUDIO_CHAINS = (CHAIN_LIGHT, CHAIN_FULL)
 
 _COMPRESSOR = "acompressor=threshold=-18dB:ratio=3:attack=10:release=200"
 _VOICE_COMPRESSOR = "acompressor=threshold=-20dB:ratio=3:attack=20:release=250"
+# Auto-gain: dynaudnorm raises quiet speech and lowers loud speech over a
+# sliding window. It is a levelling filter, not a loudness meter.
+AUTOGAIN_FILTER = "dynaudnorm=f=250:g=15:p=0.9"
 
 AUDIO_PROFILES = {
     p.name: p
@@ -79,6 +82,19 @@ AUDIO_PROFILES = {
             "alimiter=limit=0.97",
             "Quiet detail: gentle denoise, no compressor so soft sounds stay soft.",
             "light: highpass and afftdn. full: adds one equalizer band and a limiter."),
+        AudioProfile(
+            "teaching", "highpass=f=80,%s" % AUTOGAIN_FILTER,
+            "highpass=f=80,%s,%s,%s,alimiter=limit=0.95"
+            % (_VOICE_COMPRESSOR, AUTOGAIN_FILTER, "afftdn=nr=8:nf=-45"),
+            "Lessons and talks: steady voice level as you move around, light cleanup.",
+            "light: highpass and dynaudnorm. full: adds a compressor, afftdn and a limiter."),
+        AudioProfile(
+            "meeting", "highpass=f=100,afftdn=nr=14:nf=-40,%s" % AUTOGAIN_FILTER,
+            "highpass=f=100,afftdn=nr=16:nf=-40,%s,%s,alimiter=limit=0.95"
+            % (_VOICE_COMPRESSOR, AUTOGAIN_FILTER),
+            "Calls and meetings: stronger background denoise, steady voice level. "
+            "Echo is not removed (FFmpeg has no echo canceller).",
+            "light: highpass, stronger afftdn and dynaudnorm. full: adds a compressor and a limiter."),
     )
 }
 
@@ -91,10 +107,15 @@ def get_audio_profile(name):
                          % (name, ", ".join(AUDIO_PROFILES)))
 
 
-def audio_profile_chain(name, chain=CHAIN_FULL):
-    """The -af filter chain string for an audio profile at the given cost level."""
+def audio_profile_chain(name, chain=CHAIN_FULL, autogain=False):
+    """The -af filter chain string for an audio profile at the given cost level.
+
+    autogain=True appends dynaudnorm unless the chain already contains it."""
     if chain not in AUDIO_CHAINS:
         raise ValueError("Unknown audio chain %r. Choose one of: %s"
                          % (chain, ", ".join(AUDIO_CHAINS)))
     profile = get_audio_profile(name)
-    return profile.light if chain == CHAIN_LIGHT else profile.full
+    text = profile.light if chain == CHAIN_LIGHT else profile.full
+    if autogain and "dynaudnorm" not in text:
+        text += "," + AUTOGAIN_FILTER
+    return text

@@ -98,7 +98,18 @@ The bench report labels each metric `measured` or `unavailable`. It does not inc
 | Startup time | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
 | Dropped frames | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN |
 
-Only the sandbox figures in [EVIDENCE.md](../audit/EVIDENCE.md) exist for LightStream (Python process 22.7 MB RSS, about 52 ms import). They are not comparable to a full streaming app's memory because FFmpeg is a separate process and the sandbox is not a low-end PC. A Roadmap item adds a runner script under `tools/` that automates the LightStream side and prints UNKNOWN for tools it cannot find.
+Only the sandbox figures in [EVIDENCE.md](../audit/EVIDENCE.md) exist for LightStream (Python process 22.7 MB RSS, about 52 ms import). They are not comparable to a full streaming app's memory because FFmpeg is a separate process and the sandbox is not a low-end PC. `tools/benchlab.py` (0.15) automates the sampling; see below. Its figures for this repository's own tools are in [BENCHMARKS.md](../BENCHMARKS.md#v015-benchmark-lab-harness-check).
+
+### Benchmark Lab harness (`tools/benchlab.py`)
+
+Run the same script against every program on the same PC, one at a time, with the same scene, resolution, frame rate, bitrate and duration, and a warm start:
+
+```
+python3 tools/benchlab.py --pid "OBS Studio:<pid>" --duration 60 --out obs.json --markdown obs.md
+python3 tools/benchlab.py --command "LightStream:python3 -m lightstream start ..." --ready-text "frame=" --duration 60
+```
+
+It samples CPU (ticks per wall second, 100 is one core, target process only) and RSS from `/proc` (Linux only; other systems are reported as not measured, UNVERIFIED) and, for a `--command`, startup until a chosen output text appears. Every OBS Studio and Streamlabs Desktop cell stays UNKNOWN until a run uses that label. Game FPS and dropped frames are not sampled. Children of the process are not summed, so multi-process apps need care. The tool ships no competitor numbers.
 
 ## Competitive advantages derived from design facts
 
@@ -116,3 +127,7 @@ These follow from how LightStream is built. They are design properties, not meas
 | Open hardware profiles for Intel HD and MX250 | defaults aimed at weak PCs | flags never run on real hardware |
 
 What competitors do that LightStream does not (today): RTMP only; no mid-stream scene switching; no browser source engine; no plugin ecosystem; no alerts, no moderation, no game capture source; window not run on real Windows in this environment. These gaps are listed in [ROADMAP.md](../ROADMAP.md) and [TOP-100.md](../audit/TOP-100.md).
+
+## Decision: no folder restructure (v0.15)
+
+A proposal to split the code into `/core`, `/plugins`, `/themes`, `/ai`, `/benchmarks` was considered and rejected. The modules are flat under `src/lightstream/` and already separated by file (`gui_theme.py`, `optimizer.py`, `plugins.py`, `highlights.py`); tests, golden files, the PyInstaller spec and import paths depend on the layout; and moving files adds churn and breaks history without changing behavior. Revisit if a package grows past what one file can hold. Plugin examples live in `examples/plugins/`, the harness in `tools/benchlab.py`.
