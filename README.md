@@ -12,7 +12,7 @@
 - **Plays nice.** Runs at low priority so your game wins.
 - **Hard to break.** Reconnects with backoff, falls back to software encoding if a GPU encoder fails, and never prints or saves your key.
 - **Safe to try.** `--test-local` records 10 seconds to a file instead of going live. `--mute` sends silence.
-- Streams to Twitch, YouTube or any custom RTMP server.
+- Streams to Twitch, YouTube, Facebook Live (RTMPS) or any custom RTMP server.
 
 ## Download (no Python, no Git)
 
@@ -58,7 +58,7 @@ On Linux or macOS, run `./launchers/start-gui.sh` (or `lightstream gui` after `p
 
 ### Every time you stream
 
-1. Pick **where to stream** (Twitch, YouTube or Other site).
+1. Pick **where to stream** (Twitch, YouTube, Facebook Live or Other site).
 2. Paste your **secret stream key** (see "Where do I find my stream key?" below).
 3. Pick **how good your PC is**. Not sure? Choose **Old PC (light)**.
 4. Press the big green **START** (or press Enter).
@@ -139,7 +139,7 @@ Still stuck? Press **Check my PC** and read the answer, or ask a parent to try t
 
 ### Windows
 
-1. Open `launchers\start-stream.bat` in Notepad, set `PLATFORM` (`twitch` or `youtube`) and `PRESET`, save.
+1. Open `launchers\start-stream.bat` in Notepad, set `PLATFORM` (`twitch`, `youtube` or `facebook`) and `PRESET`, save.
 2. Double-click it, paste your stream key when asked, and play. Press Ctrl+C to stop.
 
 Check your setup any time: `python -m lightstream doctor` (with `set PYTHONPATH=src`), or `pip install .` once, then use `lightstream doctor`.
@@ -307,7 +307,7 @@ The `web/` showcase has an animated hero title (respects reduced motion), SVG mo
 Run `lightstream profiles` for the full list.
 
 - Performance profiles (`--profile`): `potato`, `balanced`, `quality`, `competitive`, `low_latency`. Each picks an existing preset (the numbers stay in `presets.py`) plus knobs: x264 tune, thread cap, cores left free for the game ("Gaming First"), keyframe interval and rate-control buffer. `quality` is still capped by your hardware profile.
-- Stream presets (`--stream-preset`): `youtube_gaming`, `twitch_gaming`, `kick`, `podcast`, `just_chatting`, `tutorial`, `esports`. Each sets platform, profile and audio profile, and keeps the bitrate within the platform cap. `kick` needs `--url` (no Kick address is built in).
+- Stream presets (`--stream-preset`): `youtube_gaming`, `twitch_gaming`, `facebook_live`, `kick`, `podcast`, `just_chatting`, `tutorial`, `esports`. Each sets platform, profile and audio profile, and keeps the bitrate within the platform cap. `kick` needs `--url` (no Kick address is built in).
 - Audio profiles (`--audio-profile`): `gaming`, `podcast`, `music`, `commentary`, `asmr`, built from FFmpeg filters. The light chain is used with the `potato` profile and on hardware profiles that strip expensive filters. `--noise light|ai` takes priority over an audio profile.
 - Precedence: explicit flag, then a profile from the command line, then the config file, then a profile named in the config file.
 
@@ -324,13 +324,15 @@ Status: option parsing, settings resolution, thread math and command building ar
 
 Planned work and why it is not in 0.9.0 is listed in [docs/ROADMAP.md](docs/ROADMAP.md).
 
+The v0.10 audit, blueprint, benchmark method (competitor numbers UNKNOWN) and Top 100 list are indexed in [docs/README.md](docs/README.md).
+
 ## Stream key safety
 
 The key is read from the `STREAM_KEY` environment variable or typed at a hidden prompt (asked by lightstream itself, also from the Windows launcher). It is never stored by lightstream, and it is hidden (`****`) in everything lightstream prints. Limitation: RTMP puts the key in the FFmpeg command line, so other local processes running as your user may be able to see it in the process list. Custom URLs that carry their own tokens are not redacted beyond the key. Never share your key or commit it.
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|nvidia|generic] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|nvidia|generic] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 

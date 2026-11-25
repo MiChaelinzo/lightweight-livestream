@@ -15,7 +15,8 @@ from .presets import PRESETS
 
 HEADROOM = 0.7  # use at most 70% of upload so bursts and Wi-Fi dips fit
 MIN_VIDEO_KBPS = 300
-PLATFORM_VIDEO_CAP_KBPS = {"twitch": 6000, "youtube": 9000, "custom": 6000}
+PLATFORM_VIDEO_CAP_KBPS = {"twitch": 6000, "youtube": 9000, "facebook": 4000,
+                           "custom": 6000}
 MEASURE_BYTES = 1024 * 1024
 MEASURE_TIMEOUT_SECONDS = 20
 

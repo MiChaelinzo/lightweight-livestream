@@ -13,6 +13,7 @@ import os
 import time
 
 from .config import config_path
+from .fileio import create_private_text, write_private_text
 
 REPORTS_DIRNAME = "reports"
 REPORT_VERSION = 1
@@ -73,9 +74,8 @@ def write_session_report(directory, report, now=None):
     """Write the report as indented JSON and return its path."""
     os.makedirs(directory, exist_ok=True)
     path = report_path(directory, now)
-    with open(path, "x", encoding="utf-8") as fh:  # never overwrite an earlier report
-        json.dump(report, fh, indent=2, sort_keys=True)
-        fh.write("\n")
+    # never overwrite an earlier report
+    create_private_text(path, json.dumps(report, indent=2, sort_keys=True) + "\n")
     return path
 
 
@@ -112,7 +112,5 @@ def append_history(directory, entry, limit=HISTORY_LIMIT):
     rows = (load_history(directory) + [entry])[-limit:]
     os.makedirs(directory, exist_ok=True)
     path = os.path.join(directory, HISTORY_FILENAME)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(rows, fh, indent=2, sort_keys=True)
-        fh.write("\n")
+    write_private_text(path, json.dumps(rows, indent=2, sort_keys=True) + "\n")
     return path

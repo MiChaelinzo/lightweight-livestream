@@ -5,9 +5,10 @@ import re
 INGEST_URLS = {
     "twitch": "rtmp://live.twitch.tv/app/",
     "youtube": "rtmp://a.rtmp.youtube.com/live2/",
+    "facebook": "rtmps://live-api-s.facebook.com:443/rtmp/",
 }
 
-PLATFORMS = ("twitch", "youtube", "custom")
+PLATFORMS = ("twitch", "youtube", "facebook", "custom")
 
 
 def ingest_url(platform, key, custom_url=None):
