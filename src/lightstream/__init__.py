@@ -1,3 +1,3 @@
 """lightstream: a tiny, dependency-free launcher that drives FFmpeg for low-end PCs."""
 
-__version__ = "0.15.0"
+__version__ = "0.16.0"
