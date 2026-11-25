@@ -25,3 +25,20 @@ Status: argv VERIFIED by golden files and a unit test, behavior on real PCs UNVE
 - **`budget_gaming` needs a hardware encoder.** 1080p60 with x264 on the CPU will not keep up on the PCs this targets, so the profile says so in its description and `recommend_profile` only returns it for NVIDIA. 6000 kbps equals the Twitch cap in `bandwidth.PLATFORM_VIDEO_CAP_KBPS`. On Facebook (4000 kbps cap) the bitrate is lowered to the cap.
 - `office_laptop` at 3500 kbps fits under every platform cap (the smallest is Facebook at 4000).
 - The automatic upload recommendation (`bandwidth.recommend`) never picks `office_laptop` or `budget_gaming` (`presets.PROFILE_ONLY_PRESETS`), so a fast connection alone does not select 1080p60.
+
+# Portable mode audit
+
+`portable.flag` next to the app (or `LIGHTSTREAM_PORTABLE=1`) moves state out of the per-user config folder. `tests/test_portable.py` (`PortableStatePathTests`) writes one file of every kind through the real functions, with HOME, XDG_CONFIG_HOME and APPDATA pointed at an empty folder, and checks that folder stays empty. VERIFIED on Linux. No path escaped, so no code changed. Windows paths use the same `os.path` code but were not run.
+
+| State | Portable location |
+|---|---|
+| config.json, ffmpeg choice, gui.json (profiles and saved settings), ui.json, scenes.json | `data/` |
+| session history, performance snapshot (`reports/`), crash reports (`crashes/`), support bundle, plugins folder | `data/` |
+| shareable one-scene collections | `scenes/` (next to `data/`, by design) |
+| recordings (CLI default) and highlight clips (next to the recording) | `recordings/` |
+| recordings from the GUI | `data/recordings/` (the GUI and CLI defaults differ; both stay in the app folder) |
+
+Stream key: LightStream never writes it in plain text, portable or not.
+- Windows: the DPAPI blob `stream-key.dpapi` is saved in `data/`. It is encrypted for the current Windows user, so copying the stick to another PC or account leaves a file that cannot be decrypted there (the key must be typed again). It does not protect against malware running as the same user.
+- macOS and Linux: the key goes to the system keychain or `secret-tool`, which live outside the app folder, so they do not travel with the stick and are not removed when the folder is deleted. If the tool is missing, saving is refused and nothing is written.
+- Saving needs an explicit opt-in. Backends are UNVERIFIED on real systems; the control flow is covered by tests with fakes.
