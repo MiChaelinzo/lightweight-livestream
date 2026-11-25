@@ -129,7 +129,10 @@ class WiringTests(unittest.TestCase):
                 self.assertIsNone(controller.start(prefs, SECRET))
                 controller._thread.join(5)
                 files = os.listdir(tmp)
-                self.assertEqual(1 if opted_in else 0, len(files))
+                reports = [n for n in files if n.startswith("session-")]
+                self.assertEqual(1 if opted_in else 0, len(reports))
+                # session report, history row and last performance snapshot
+                self.assertEqual(3 if opted_in else 0, len(files))
                 for name in files:
                     with open(os.path.join(tmp, name), encoding="utf-8") as fh:
                         self.assertNotIn(SECRET, fh.read())
@@ -159,7 +162,8 @@ class HistoryTests(unittest.TestCase):
             self.assertEqual(analytics.HISTORY_LIMIT, len(rows))
             self.assertEqual(analytics.HISTORY_LIMIT + 4, rows[-1]["dropped_frames"])
             self.assertEqual({"date", "preset", "bottleneck", "avg_speed",
-                              "dropped_frames", "reconnect_count"}, set(rows[0]))
+                              "dropped_frames", "reconnect_count", "avg_bitrate_kbps",
+                              "health_score"}, set(rows[0]))
 
     def test_unreadable_history_is_empty(self):
         with tempfile.TemporaryDirectory() as folder:

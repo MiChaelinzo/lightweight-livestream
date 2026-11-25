@@ -15,6 +15,11 @@ PRESETS = {
                "Old laptops. Good default for Arknights / Limbus Company."),
         Preset("balanced", 1280, 720, 30, 2500, 128, "veryfast",
                "Decent PCs or any PC with a hardware encoder."),
+        Preset("potato_2000", 640, 360, 15, 2000, 64, "ultrafast",
+               "Potato Stream 2000k: 15 fps, 360p, ultrafast. Built from the "
+               "measured CPU levers (frame rate and size)."),
+        Preset("potato_4000", 854, 480, 15, 4000, 96, "ultrafast",
+               "Potato Stream 4000k: 15 fps, 480p, ultrafast."),
         Preset("720p60", 1280, 720, 60, 4000, 128, "veryfast",
                "Fast action games. Needs a hardware encoder or a good CPU."),
     )

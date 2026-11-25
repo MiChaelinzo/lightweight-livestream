@@ -6,12 +6,12 @@ import sys
 
 from .audio import (CHAIN_FULL, CHAIN_LIGHT, NOISE_LEVELS, audio_profile_chain,
                     get_audio_profile, require_model_file)
-from .command import StreamSettings
+from .command import RATE_MODES, StreamSettings, recording_format
 from .fileio import write_private_text
 from .hardware import cap_preset_name, cap_video_kbps, get_profile
 from .portable import data_dir, is_portable, recordings_dir
 from .presets import DEFAULT_PRESET, get_preset, parse_resolution
-from .platforms import validate_backup_url
+from .platforms import is_srt_url, validate_backup_url, validate_srt_url
 from .perf_profiles import (get_perf_profile, get_stream_preset, resolve_tuning,
                             stream_preset_bitrate_cap)
 from .scenes import load_scenes, select_scene
@@ -40,6 +40,7 @@ EXAMPLE_CONFIG = {
     "audio_profile": None,
     "auto_scale": False,
     "backup_url": None,
+    "rate_mode": "vbr",
 }
 
 
@@ -231,13 +232,23 @@ def resolve_settings(cli, file_cfg, cpu_count=None):
                   "keyint_seconds": profile.keyint_seconds,
                   "x264_tune": profile.x264_tune,
                   "bufsize_seconds": profile.bufsize_seconds}
+    custom_url = _pick("url", cli, file_cfg)
+    if custom_url and is_srt_url(custom_url):
+        validate_srt_url(custom_url)
+    rate_mode = _pick("rate_mode", cli, file_cfg, "vbr")
+    if rate_mode not in RATE_MODES:
+        raise ValueError("Unknown rate mode %r. Choose one of: %s"
+                         % (rate_mode, ", ".join(RATE_MODES)))
+    if record:
+        recording_format(record)  # refuses .webm with the reason
     backup_url = _pick("backup_url", cli, file_cfg)
     if backup_url:
         backup_url = validate_backup_url(backup_url)
     return StreamSettings(
         backup_url=backup_url or None,
         platform=_layered("platform", cli, file_cfg, derived, from_cli, DEFAULT_PLATFORM),
-        custom_url=_pick("url", cli, file_cfg),
+        custom_url=custom_url,
+        rate_mode=rate_mode,
         width=width,
         height=height,
         fps=_positive_int("fps", _pick("fps", cli, file_cfg, preset.fps)),
@@ -260,11 +271,17 @@ def resolve_settings(cli, file_cfg, cpu_count=None):
     )
 
 
-def resolve_key(environ, prompt):
-    """Stream key from STREAM_KEY, else prompt (hidden input). Never from files."""
+def resolve_key(environ, prompt, saved=None):
+    """Stream key from STREAM_KEY, then the opt-in credential store value
+    (saved), else prompt (hidden input). Never from config files. saved may be
+    a function, so the store is only asked when STREAM_KEY is not set."""
     key = environ.get("STREAM_KEY")
     if key:
         return key.strip()
+    if callable(saved):
+        saved = saved()
+    if saved:
+        return saved.strip()
     key = prompt("Stream key (hidden): ").strip()
     if not key:
         raise ValueError("No stream key. Set STREAM_KEY or type it when asked.")

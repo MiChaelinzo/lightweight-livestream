@@ -12,11 +12,55 @@ INGEST_URLS = {
 PLATFORMS = ("twitch", "youtube", "facebook", "custom")
 
 
+SRT_PASSPHRASE_MIN = 10   # libsrt requires 10..79 characters
+SRT_PASSPHRASE_MAX = 79
+SRT_KEY_LENGTHS = ("16", "24", "32")
+
+
+def is_srt_url(url):
+    return (url or "").lower().startswith("srt://")
+
+
+def validate_srt_url(url):
+    """Check an SRT address (srt://host:port, optional ?options) and return it.
+    SRT is for custom servers and relays: Twitch and YouTube take RTMP(S).
+    Raises ValueError in plain words."""
+    parts = urllib.parse.urlsplit((url or "").strip())
+    if parts.scheme != "srt" or not parts.hostname:
+        raise ValueError("An SRT address must look like srt://host:port")
+    try:
+        port = parts.port
+    except ValueError:
+        port = None
+    if not port:
+        raise ValueError("An SRT address needs a port: srt://host:port")
+    if any(c.isspace() for c in url) or "|" in url:
+        raise ValueError("The SRT address must not contain spaces or '|'")
+    if "streamid" in parts.query.lower():
+        raise ValueError("Leave streamid out of the SRT address; the stream key "
+                         "you enter is sent as the streamid")
+    options = urllib.parse.parse_qs(parts.query, keep_blank_values=True)
+    if "passphrase" in options:
+        length = len(options["passphrase"][0])
+        if not SRT_PASSPHRASE_MIN <= length <= SRT_PASSPHRASE_MAX:
+            raise ValueError("An SRT passphrase must be %d to %d characters long"
+                             % (SRT_PASSPHRASE_MIN, SRT_PASSPHRASE_MAX))
+    if "pbkeylen" in options and options["pbkeylen"][0] not in SRT_KEY_LENGTHS:
+        raise ValueError("SRT pbkeylen must be one of: %s" % ", ".join(SRT_KEY_LENGTHS))
+    return url.strip()
+
+
 def ingest_url(platform, key, custom_url=None):
-    """Full RTMP URL including the stream key. Never print this unredacted."""
+    """Full ingest URL including the stream key. Never print this unredacted.
+    An srt:// custom URL gets the key as its streamid (a convention some
+    relays use; UNVERIFIED against any real server)."""
     if platform == "custom":
         if not custom_url:
             raise ValueError("Platform 'custom' needs --url rtmp://host/app")
+        if is_srt_url(custom_url):
+            url = validate_srt_url(custom_url)
+            return url + ("&" if "?" in url else "?") + "streamid=" + \
+                urllib.parse.quote(key, safe="")
         return custom_url.rstrip("/") + "/" + key
     if platform not in INGEST_URLS:
         raise ValueError(

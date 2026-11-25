@@ -141,3 +141,146 @@ Run the command above on your own machine without `--compare-src`. The report is
 ## Readiness score
 
 `lightstream readiness` is not a benchmark. It adds points for ffmpeg present (25), a working encoder (20 hardware, 12 software), memory (15), CPU cores (15), upload speed (15, optional) and TCP connect time to the ingest host (10, optional, only with `--platform` or `--url`). Factors that were not measured are left out of the score. The tiers are design choices, UNVERIFIED against real streaming outcomes. The same score is printed at the end of `lightstream setup` and shown after the window's one-click setup.
+
+## v0.12 spikes: split publisher, tee recording, potato filters, SRT
+
+Status: VERIFIED for the numbers below on this one sandbox (8 cores, Python 3.11.15, static ffmpeg 7.0.2, no GPU, sandbox clock 2026-11-24). Every connection went to an ffmpeg listener on 127.0.0.1. No real platform (Twitch, YouTube, Kick) was contacted, so platform behavior is UNVERIFIED throughout.
+
+```
+LIGHTSTREAM_TEST_FFMPEG=<static ffmpeg 7.0.2> python3 tools/spikes.py --all --repeats 3 --out spikes.json
+python3 tools/spikes.py --spike b      # one spike at a time: a, b, c or d
+```
+
+Method common to all spikes: `tools/spikes.py` starts ffmpeg children, reads CPU (user plus system) and peak RSS from `os.wait4` (psutil is not used), and checks received or recorded streams by re-reading them with ffmpeg `-f framecrc` (ffprobe is not in this build). Timestamp continuity means: every video dts is greater than the one before (`non_monotonic` = 0), and forward jumps of 500 ms or more are listed. The JSON is printed to stdout; raw JSON files are not committed. Sample counts are given per table. Spike B was run a second time after the `onfail=abort` row was added; all other tables come from the `--all` run.
+
+### A: split publisher (encoder -> MPEG-TS over UDP -> `-c copy` publisher -> RTMP)
+
+Setup: encoder `testsrc2` with `-re` (real time), libx264 ultrafast zerolatency, 1 s GOP, MPEG-TS to `udp://127.0.0.1` (pkt_size 1316). Publisher: `-f mpegts -i udp://...?fifo_size=1000000&overrun_nonfatal=1 -c copy -f flv rtmp://127.0.0.1/...`, `-analyzeduration 1000000 -probesize 200000`. Receiver: `ffmpeg -listen 1 -i rtmp://...` writing framecrc and an MPEG-TS copy. The first encoder ran 5 s, was killed with SIGKILL, the gap followed, a second encoder ran 5 s. One run per scenario.
+
+| Scenario | RTMP session alive after kill / at end | Frames received (about 300 sent) | dts non-monotonic | Forward gaps >= 500 ms | Received span | Decoded resolutions |
+|---|---|---|---|---|---|---|
+| same 640x360 1000k, gap 1 s | yes / yes | 268 | 0 | none | 8.9 s | 268 at 640x360 |
+| same 640x360 1000k, gap 5 s | yes / yes | 268 | 0 | none | 8.9 s | 268 at 640x360 |
+| 640x360 1000k then 960x540 1500k, gap 1 s | yes / yes | 268 | 0 | none | 8.9 s | 105 at 640x360, 163 at 960x540, 0 decode errors |
+
+Readings:
+
+- The publisher and the RTMP connection survived the encoder being killed and a 5 s silence. The publisher logged `DTS ... out of order` and `timestamp discontinuity ... new offset`, i.e. ffmpeg's MPEG-TS demuxer shifted the second encoder's timestamps to follow the first. The received timeline has **no gap**: the 1 s and 5 s silences were both collapsed. A platform would see data stop and resume with continuous timestamps; whether Twitch or YouTube accept this, or a 5 s silence, is UNVERIFIED.
+- About 30 of 300 frames were not received in each run. The per-resolution count of scenario 3 shows the first segment lost most of them (105 of about 150), which fits the publisher's probe at start plus frames in flight at the kill. This was not broken down further.
+- A resolution change inside one FLV stream decoded without errors in ffmpeg. Platform transcoders and players were not tested (UNVERIFIED).
+
+Extra cost of the second process (1280x720@30, 2000k, 10 s paced with `-re`, n = 3, medians with min to max):
+
+| Layout | Encoder CPU (s) | Encoder peak RSS (MiB) | Publisher CPU (s) | Publisher peak RSS (MiB) |
+|---|---|---|---|---|
+| direct, encoder -> RTMP | 1.128 (1.117 to 1.173) | 49.3 (49.2 to 49.3) | n/a | n/a |
+| split, encoder -> UDP TS -> publisher -> RTMP | 1.068 (1.028 to 1.099) | 49.2 (49.2 to 49.2) | 0.105 (0.101 to 0.106) | 19.1 (19.1 to 19.1) |
+
+The publisher used about 0.105 CPU seconds per 10 s, roughly 1 percent of one core here, and 19.1 MiB. The encoder cost did not change measurably. On a slow laptop CPU the percentage will be higher (UNVERIFIED).
+
+### B: tee, killed RTMP server, containers after kill -9, numbered files
+
+Setup: 640x360@30, 1000k, `-re`, video only, `-map 0:v -flush_packets 1 -flags +global_header -f tee "[f=flv...]rtmp://127.0.0.1/...|[f=matroska]rec.mkv"`, 10 s, receiver killed with SIGKILL after 4 s. One run per row.
+
+| flv slot option | ffmpeg exit | Exit after server kill | Recording |
+|---|---|---|---|
+| `onfail=ignore` | 0 | 5.52 s (at the end of `-t 10`) | 300 frames, 9.97 s, 0 decode errors |
+| `onfail=abort` | 224 | 0.0 s | 136 frames, 4.5 s, 0 decode errors |
+| none | 0 | 5.52 s | 300 frames, 9.97 s, 0 decode errors |
+| none, matroska `onfail=ignore` (LightStream's current spec) | 0 | 5.52 s | 300 frames, 9.97 s, 0 decode errors |
+
+Readings:
+
+- With ffmpeg 7.0.2, a tee slave **without** an `onfail` option did not abort when its RTMP server died. ffmpeg logged `Slave muxer #0 failed: Broken pipe, continuing with 1/2 slaves` and kept running. LightStream's reconnect loop waits for ffmpeg to exit, so with today's tee spec a dropped stream would not reconnect while the recording carries on. Only an explicit `onfail=abort` made ffmpeg exit at once. Two separate runs of the "none" case gave the same result.
+- Without `-flags +global_header` the matroska slave failed to write its header (`error writing header: Invalid data found when processing input`), left a 291 byte file, and `onfail=ignore` hid the failure while ffmpeg exited 0. With the flag: 147854 bytes for 2 s of 320x180.
+- A tee output with no `-map` fails to open: `Output file does not contain any stream`, exit 234.
+- The argv that `command.build_command` produces today for a stream with `record_to` (no scene), with only the x11grab and pulse inputs swapped for lavfi sources, failed the same way: exit 234, 0 RTMP packets, no recording file. Recording while streaming without a scene is therefore broken with ffmpeg 7.0.2 (scene streams add `-map` but would still hit the missing global header). Not fixed in this spike; FEAT-003 fixes it.
+
+Containers after SIGKILL (encoder killed 5 s into an 8 s run, 640x360@30 1000k, one run per row):
+
+| Container | No `-flush_packets` | With `-flush_packets 1` |
+|---|---|---|
+| Matroska | readable, 110 frames (3.63 s), 1 warning `File ended prematurely` | readable, 150 frames (4.97 s), 0 errors |
+| MP4 | unreadable, `moov atom not found` | unreadable, `moov atom not found` |
+| fragmented MP4 (`frag_keyframe+empty_moov`) | readable, 110 packets, 109 frames decoded, 4 error lines (`partial file`) | readable, 150 frames (4.97 s), 0 errors |
+
+Numbered files across a reconnect: attempt 1 wrote `b-reconnect.mkv` and was killed with SIGKILL after 3 s (readable, 53 frames covering 1.73 s of the 3 s run, warning `File ended prematurely`; the startup time of ffmpeg and the RTMP handshake account for part of the difference, not measured separately). Attempt 2 used `numbered_recording_path`, wrote `b-reconnect-2.mkv` (120 frames, 3.97 s, 0 errors), and the first file was still present.
+
+### C: potato filters and x264 rate control
+
+Setup: `-t 10 -f lavfi -i <source>=size=1280x720:rate=30`, not paced (as fast as possible), no audio, libx264 ultrafast zerolatency, `-bf 0 -g 30`, 4 threads unless the row sets threads, CRF 28 unless the row says CBR, MPEG-TS file output. Bitrate is file size over 10 s (includes MPEG-TS overhead). The source generator and filters are inside the CPU time. n = 3 per row; CPU is the median with min to max; kbps varied by under 0.1 percent between runs.
+
+| Config | testsrc2 (moving) CPU s | testsrc2 kbps | smptebars (static) CPU s | smptebars kbps |
+|---|---|---|---|---|
+| baseline | 1.108 (1.093 to 1.125) | 5834.9 | 0.575 (0.572 to 0.587) | 111.7 |
+| `format=gray` (yuv400 encode) | 1.340 (1.298 to 1.344) | 3786.5 | 0.942 (0.921 to 0.951) | 101.2 |
+| `format=gray,format=yuv420p` | 2.017 (2.005 to 2.030) | 3594.1 | 1.506 (1.499 to 1.520) | 105.6 |
+| `fps=15` | 0.646 (0.628 to 0.663) | 3449.6 | 0.299 (0.298 to 0.305) | 66.2 |
+| `fps=10` | 0.471 (0.459 to 0.482) | 2480.1 | 0.210 (0.200 to 0.213) | 62.9 |
+| `mpdecimate` (`-fps_mode vfr`) | 1.047 (1.033 to 1.057) | 5834.9 | 0.137 (0.136 to 0.144) | 4.2 |
+| scale 640x360 | 0.768 (0.752 to 0.777) | 1165.3 | 0.464 (0.449 to 0.467) | 108.7 |
+| scale 480x270 | 0.627 (0.620 to 0.643) | 788.5 | 0.407 (0.404 to 0.419) | 109.5 |
+| scale 640x360 + fps=15 | 0.579 (0.577 to 0.585) | 800.6 | 0.366 (0.365 to 0.383) | 65.4 |
+| scale 480x270 + fps=10 + gray to yuv420p | 0.535 (0.522 to 0.566) | 251.0 | 0.337 (0.330 to 0.346) | 56.4 |
+| threads 1 | 0.835 (0.833 to 0.852) | 5751.4 | 0.405 (0.402 to 0.410) | 108.4 |
+| threads 2 | 0.951 (0.941 to 0.959) | 5805.7 | 0.472 (0.467 to 0.481) | 109.9 |
+| threads 4 | 1.093 (1.052 to 1.104) | 5834.9 | 0.577 (0.569 to 0.599) | 111.7 |
+| CBR 2000k (`nal-hrd=cbr`) | 1.081 (1.052 to 1.092) | 2185.5 | 0.628 (0.624 to 0.646) | 2088.2 |
+| CBR 4000k (`nal-hrd=cbr`) | 1.085 (1.085 to 1.127) | 4308.2 | 0.658 (0.656 to 0.684) | 4098.4 |
+
+Readings:
+
+- Grayscale does **not** reduce CPU here: +21 percent (yuv400) and +82 percent (gray then yuv420p) on testsrc2, +64 and +162 percent on smptebars. It lowered CRF bitrate on the moving source only (5835 to 3787 kbps).
+- Frame rate and size are what cut CPU: `fps=10` -57 percent, `fps=15` -42 percent, 640x360 -31 percent, 640x360 at 15 fps -48 percent against baseline on testsrc2.
+- `mpdecimate` did nothing on a source where every frame changes and cut CPU by 76 percent and bitrate to 4.2 kbps on a static picture. Its output has a variable frame rate; how platforms handle that is UNVERIFIED: `-fps_mode vfr` into FLV/RTMP was only tested against loopback listeners, never a real ingest.
+- Fewer threads used less total CPU but took longer (wall median 0.65 s with 1 thread, 0.42 s with 4). Whether 1 thread keeps up in real time on a weak CPU is UNVERIFIED.
+- CBR padded the static source up to the target (2088 and 4098 kbps for a picture CRF encodes at 112 kbps). CPU was close to the CRF baseline.
+
+### D: SRT on loopback
+
+Setup: listener `ffmpeg -i "srt://127.0.0.1:P?mode=listener&latency=L"`, caller sends 6 s of 640x360@30 MPEG-TS with `-re`. One run per row.
+
+| latency option | Sender exit | Sender CPU (s) | Packets received (about 180 sent) | non-monotonic |
+|---|---|---|---|---|
+| 120000 us (120 ms) | 0 | 0.280 | 178 | 0 |
+| 500000 us (500 ms) | 0 | 0.301 | 167 | 0 |
+
+A caller with no listener failed after 3.04 s (`connect_timeout` default 3000 ms), exit 251. The lower count at 500 ms was not investigated (one run; likely the listener stopping before the receive buffer drained, not loss). Not measured: packet loss and retransmission (ARQ) behavior, because loopback has no loss and no `tc netem` was used. libsrt options in this build include `latency`, `rcvlatency`, `peerlatency`, `tlpktdrop`, `nakreport`, `maxbw`, `oheadbw`, `inputbw`, `passphrase`, `pbkeylen`, `enforced_encryption`, `streamid`, `connect_timeout`, `mode`, `transtype`, `payload_size`, `pkt_size`, `lossmaxttl` and others (full list in the JSON).
+
+## v0.12.0 against v0.11.0
+
+Method: the same command as the v0.11 section, `lightstream bench --seconds 10 --import-runs 21` with static ffmpeg 7.0.2, run once on the 0.12.0 tree (same Linux x86_64 VM, 8 threads). The "0.11.0" column is the "After" column of the v0.11 section above, taken on an earlier day, so machine noise applies. One run each, no repeats.
+
+| Metric | 0.11.0 | 0.12.0 | Reading |
+|---|---|---|---|
+| `import lightstream.cli` median (ms) | 73.5 | 63.8 | Bare interpreter was 10.7 vs 9.1 ms, so the machine was faster in this run; no regression shown |
+| RSS after import (MiB) | 22.0 | 22.5 | Within noise; about 0.4 MiB more is plausible from new modules but was not isolated |
+| RSS before to after 1000 ticks (MiB) | 21.74 to 21.74 | 21.66 to 21.92 | Growth of 0.26 MiB, not investigated, single run |
+| `TelemetrySampler.tick` (us) | 107.6 | 94.6 | Noise |
+| `build_insights` (us) | 49.6 | 44.3 | Noise |
+| `AutoScaler.update` (us) | 1.42 | 1.20 | Noise |
+
+| Profile | 0.11.0 speed (x) | 0.12.0 speed (x) | 0.11.0 CPU s per stream s | 0.12.0 CPU s per stream s | 0.12.0 peak RSS (MiB) |
+|---|---|---|---|---|---|
+| potato 640x360@24 | 65.6 | 75.1 | 0.028 | 0.025 | 27.3 |
+| balanced 1280x720@30 | 12.8 | 14.2 | 0.276 | 0.244 | 86.2 |
+| quality 1280x720@60 | 7.22 | 7.97 | 0.525 | 0.473 | 88.0 |
+| competitive 1280x720@60 | 6.24 | 7.06 | 0.506 | 0.442 | 83.8 |
+| potato_2000 640x360@15 (new) | n/a | 94.8 | n/a | 0.015 | 27.2 |
+| potato_4000 854x480@15 (new) | n/a | 64.0 | n/a | 0.027 | 39.2 |
+
+The 0.12 changes do not touch the encode settings of the four existing profiles, so the speed differences are machine noise, not a speedup. The two new Potato Stream profiles are cheaper per stream second than `potato` (0.015 and 0.027 vs 0.025) on this machine; behavior on a weak CPU is UNVERIFIED. Web page weight: 54256 to 55632 bytes (20190 to 20588 gzip), from the glass cards and the service worker fingerprint (`tools/page_weight.py`). Competitor numbers are UNKNOWN.
+
+## Benchmark tier (v0.12)
+
+`lightstream bench` now prints and stores a `tier`. A machine earns the highest tier whose three minimums it meets: CPU threads, RAM (MiB) and the ffmpeg speed (times real time) of the uncapped software `balanced` encode. Boundaries are inclusive. A metric that could not be measured is not checked and is listed under `skipped_metrics`, and the tier is marked `partial`: it is then an upper bound, not a measured result (for example 8 threads and 16 GiB with no ffmpeg gives Creator). `lightstream optimize` shows no tier when ffmpeg is missing. Low-End has no minimum. These thresholds are heuristics chosen for this project, not an industry standard; they only rank results from this harness.
+
+| Tier | CPU threads | RAM MiB | Speed |
+|---|---|---|---|
+| Low-End | any | any | any |
+| Balanced | 4 | 4096 | 2.0x |
+| Performance | 6 | 8192 | 4.0x |
+| Creator | 8 | 16384 | 6.0x |
+| Power User | 12 | 32768 | 10.0x |
+
+Real run (VERIFIED on this machine only): `lightstream bench --ffmpeg ffmpeg-7.0.2-static`, 10 stream-seconds per encode, Linux x86_64 cloud sandbox, Intel Xeon Platinum 8488C (model string from `/proc/cpuinfo`), 8 threads, 31560 MiB RAM, Python 3.11. Uncapped software balanced encode ran at 14.4x real time, 0.26 CPU-seconds per stream-second. Result: tier **Creator** (stopped there because 8 threads is below the 12 needed for Power User). This is a shared virtual machine, a single run, no game running, and says nothing about a real laptop. The raw JSON is written to `reports/bench-DATE.json` and not committed.

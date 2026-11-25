@@ -36,7 +36,7 @@ Hysteresis
 import time
 from collections import namedtuple
 
-from .presets import PRESETS
+from .presets import PRESETS, Preset
 
 LadderStep = namedtuple("LadderStep", "width height fps kbps")
 ScaleSignal = namedtuple("ScaleSignal", "state reason cpu_bound", defaults=(False,))
@@ -61,16 +61,32 @@ BITRATE_STEPS = 2               # bitrate steps before fps and resolution change
 MIN_LADDER_KBPS = 300
 FPS_STEPS = (60, 30, 24)
 DEFAULT_FLOOR_PRESET = "potato"
+# Ladder-only tiers so the ladder has 240p, 360p, 480p, 720p and 1080p steps.
+# They are not stream presets (not exported to the web page). 240p is below the
+# default floor; pass floor_preset=TIER_240P to allow it. Design values,
+# UNVERIFIED on real streams.
+TIER_240P = "tier-240p"
+TIER_1080P = "tier-1080p"
+LADDER_TIERS = {
+    TIER_240P: Preset(TIER_240P, 426, 240, 24, 400, 64, "ultrafast",
+                      "Ladder step below potato for a very weak uplink."),
+    TIER_1080P: Preset(TIER_1080P, 1920, 1080, 30, 4500, 128, "veryfast",
+                       "Ladder step under a higher chosen size."),
+}
+LADDER_SOURCES = dict(PRESETS, **LADDER_TIERS)
 
 assert UPSCALE_AFTER_SECONDS > DOWNSCALE_AFTER_SECONDS
 
 
-def build_ladder(top, floor_preset=DEFAULT_FLOOR_PRESET):
+def build_ladder(top, floor_preset=DEFAULT_FLOOR_PRESET, constant_size=False):
     """Ordered LadderSteps, index 0 = top (what the person chose).
 
     Order of lowering: bitrate first (BITRATE_STEPS of BITRATE_STEP_FACTOR),
     then fps (down FPS_STEPS), then resolution, using the sizes and bitrates
     of the existing presets down to floor_preset. top is a LadderStep.
+    constant_size keeps the top size on every step (only bitrate and fps
+    change), for persistent ingest where the output size must not change
+    inside a session.
     """
     steps = [top]
 
@@ -87,16 +103,19 @@ def build_ladder(top, floor_preset=DEFAULT_FLOOR_PRESET):
         if fps < current.fps:
             current = current._replace(fps=fps)
             add(current)
-    floor = PRESETS[floor_preset]
-    heights = sorted({p.height for p in PRESETS.values()
+    floor = LADDER_SOURCES[floor_preset]
+    heights = sorted({p.height for p in LADDER_SOURCES.values()
                       if floor.height <= p.height < current.height}, reverse=True)
     for height in heights:
-        preset = max((p for p in PRESETS.values() if p.height == height),
+        preset = max((p for p in LADDER_SOURCES.values() if p.height == height),
                      key=lambda p: p.video_kbps)
         current = LadderStep(preset.width, preset.height,
                              min(current.fps, preset.fps),
                              min(current.kbps, preset.video_kbps))
         add(current)
+    if constant_size:
+        same = [s._replace(width=top.width, height=top.height) for s in steps]
+        steps = [s for i, s in enumerate(same) if i == 0 or s != same[i - 1]]
     return steps
 
 

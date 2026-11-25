@@ -4,6 +4,7 @@ import argparse
 import getpass
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -25,18 +26,23 @@ from .portable import find_ffmpeg, is_portable
 from .hardware import PROFILES, classify_gpus, detect_gpu_names, get_profile
 from .adaptive import AdaptiveAdvisor
 from .autoscale import AutoScaleSession, AutoScaler, build_ladder, top_step
-from .optimizer import OptimizerContext, bottleneck_of, build_insights, insight_line
+from .optimizer import (OptimizerContext, bottleneck_of, build_insights, health_line,
+                        insight_line, session_health)
 from .telemetry import TelemetrySampler
 from .analytics import (analytics_enabled, append_history, history_entry,
                         load_history, build_session_report, reports_dir,
+                        performance_snapshot, save_performance_snapshot,
                         write_session_report)
 from .health import HealthTracker
-from .platforms import PLATFORMS, embedded_key_in_url, parse_audio_devices
-from .emergency import (emergency_settings, failover_settings,
+from .network import detect_congestion, detect_link, link_advice, output_kind
+from .platforms import PLATFORMS, embedded_key_in_url, ingest_url, parse_audio_devices
+from .command import RATE_MODES, ignored_setting_notes, publisher_command
+from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_settings,
+                        potato_stream_settings,
                         weak_connection_settings)
 from .perf_profiles import (PERF_PROFILES, STREAM_PRESETS, affinity_cpus)
 from .presets import PRESETS
-from .runner import format_command, run_with_reconnect
+from .runner import format_command, run_with_publisher, run_with_reconnect
 from .overlays import missing_images
 from .scene_collections import (collection_dir, export_collection, export_scene,
                                 import_scenes, scene_filename,
@@ -75,6 +81,10 @@ def build_parser():
     r.add_argument("--platform", choices=PLATFORMS,
                    help="also test how fast a connection to this platform opens")
     r.add_argument("--url", help="rtmp:// address to test (for --platform custom)")
+    sb = sub.add_parser("support-bundle",
+                        help="write a redacted JSON file to attach to a bug report")
+    sb.add_argument("--out", help="file to write (default: support-bundle.json "
+                                  "next to config.json)")
     bn = sub.add_parser("bench", help="measure this PC: startup, memory, CPU cost "
                                       "and a synthetic encode; writes a JSON report")
     bn.add_argument("--ffmpeg", help="path to ffmpeg (default: search as usual)")
@@ -86,6 +96,18 @@ def build_parser():
     bn.add_argument("--compare-src", help="another lightstream src folder "
                                           "(for example an older version) to compare startup")
     bn.add_argument("--out", help="report file (default: reports/bench-DATE.json)")
+    op = sub.add_parser("optimize", help="detect this PC, propose settings and show "
+                                         "the config diff; applies only if you confirm")
+    op.add_argument("--platform", choices=PLATFORMS)
+    op.add_argument("--upload-mbps", help="your upload speed in Mbps")
+    op.add_argument("--yes", action="store_true", help="confirm without asking")
+    op.add_argument("--no-bench", action="store_true",
+                    help="skip the short benchmark (tier is then not measured)")
+    ky = sub.add_parser("key", help="opt-in: keep the stream key in the system "
+                                    "credential store (never in config.json)")
+    ky.add_argument("action", choices=("status", "save", "forget"))
+    ky.add_argument("--yes", action="store_true",
+                    help="confirm that you want the key stored (required for save)")
     sc = sub.add_parser("scenes", help="list, check or create a scenes file")
     sc.add_argument("action", choices=("list", "validate", "example", "export", "import"))
     sc.add_argument("target", nargs="?",
@@ -148,6 +170,24 @@ def build_parser():
                         "longer rate-control buffer")
     s.add_argument("--upload-mbps", help="your upload speed in Mbps; with "
                    "--weak-connection it can lower the bitrate further")
+    s.add_argument("--potato-stream", type=int, choices=sorted(POTATO_STREAM_PROFILES),
+                   metavar="KBPS",
+                   help="Potato Stream for very weak PCs (about 512 MB): target 2000 or "
+                        "4000 kbps with low fps, small size and 1-2 threads. Never automatic")
+    s.add_argument("--grayscale", action="store_true",
+                   help="with --potato-stream: grayscale picture. A bitrate/look option, "
+                        "NOT a CPU saver (it raised CPU in measurements)")
+    s.add_argument("--skip-static", action="store_true",
+                   help="with --potato-stream: drop near-identical frames (mpdecimate, "
+                        "variable frame rate). Helps static screens only; platform "
+                        "handling is UNVERIFIED")
+    s.add_argument("--rate-mode", choices=RATE_MODES,
+                   help="vbr (capped, default) or cbr (libx264 only; pads quiet pictures "
+                        "up to the bitrate)")
+    s.add_argument("--persistent-ingest", action="store_true",
+                   help="opt in: a second ffmpeg (-c copy) keeps the connection while "
+                        "the encoder restarts, and a recording keeps going through "
+                        "ingest failures. The output size stays fixed per session")
     s.add_argument("--backup-url", help="backup ingest rtmp://host/app (no key). Used "
                    "after repeated quick connection failures, same stream key")
     s.add_argument("--noise", choices=NOISE_LEVELS,
@@ -158,6 +198,13 @@ def build_parser():
     s.add_argument("--dry-run", action="store_true",
                    help="print the ffmpeg command (key hidden) and exit")
     return p
+
+
+def free_udp_port():
+    """A free local UDP port for the persistent publisher (loopback only)."""
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
 
 
 def resolve_hardware(cli_value, file_cfg, os_name, detect=detect_gpu_names):
@@ -331,12 +378,91 @@ def cmd_bench(args, out, build=build_report, find=find_ffmpeg, today=None):
     report = build(ffmpeg=ffmpeg, seconds=args.seconds, ticks=args.ticks,
                    import_runs=args.import_runs, compare_src=args.compare_src)
     path = write_report(report, args.out or report_path(report["date"]))
+    tier = report.get("tier")
+    if tier:
+        out.write("Tier: %s (%s)\n" % (tier["name"], tier["basis"]))
+        if tier["skipped_metrics"]:
+            out.write("  PARTIAL: not measured: %s. Tier is an upper bound; "
+                      "run again with ffmpeg available for a full result.\n"
+                      % ", ".join(tier["skipped_metrics"]))
     out.write("Wrote %s\n%s\n" % (path, report["caveat"]))
     return 0
 
 
+def _saved_key(os_name):
+    """Key from the system credential store if the person opted in earlier."""
+    from .secure_store import SecureKeyStore, SecureStoreError, select_backend
+    try:
+        return SecureKeyStore(select_backend(
+            os_name, os.path.dirname(config_path(os_name)))).load()
+    except (SecureStoreError, OSError, subprocess.SubprocessError):
+        return None
+
+
+def cmd_optimize(args, out, input_fn=input, tier_fn=None, **kwargs):
+    from . import wizard
+    if tier_fn is None and not args.no_bench:
+        def tier_fn():
+            ffmpeg = find_ffmpeg()
+            report = build_report(ffmpeg=ffmpeg, seconds=2, ticks=100, import_runs=1)
+            return report["tier"]["name"] if ffmpeg else None
+    return wizard.run_optimize(detect_os(), out, input_fn=input_fn, yes=args.yes,
+                               platform=args.platform or "twitch",
+                               upload_mbps=args.upload_mbps, tier_fn=tier_fn, **kwargs)
+
+
+def cmd_key(args, out, store=None, prompt=getpass.getpass):
+    from .secure_store import SecureKeyStore, SecureStoreError, select_backend
+    os_name = detect_os()
+    if store is None:
+        store = SecureKeyStore(select_backend(os_name, os.path.dirname(config_path(os_name))))
+    if args.action == "status":
+        out.write("Secure key storage: %s\n"
+                  % (store.backend_name or "not available on this system (key is never saved)"))
+        return 0
+    if args.action == "forget":
+        store.forget()
+        out.write("Saved key removed (if there was one).\n")
+        return 0
+    try:
+        store.save(prompt("Stream key (hidden): "), opt_in=args.yes)
+    except SecureStoreError as exc:
+        out.write("%s\n" % exc)
+        return 1
+    out.write("Saved to %s. It is not in config.json.\n" % store.backend_name)
+    return 0
+
+
+def cmd_support_bundle(args, out, find=find_ffmpeg, probe=probe_encoders,
+                       environ=None):
+    """Opt-in: runs only when asked. The stream key and addresses are hidden."""
+    from .analytics import (BUNDLE_FILENAME, build_support_bundle, load_history,
+                            load_performance_snapshot, reports_dir,
+                            write_support_bundle)
+    environ = os.environ if environ is None else environ
+    os_name = detect_os()
+    cfg_file = config_path(os_name)
+    ffmpeg = find()
+    try:
+        encoders = probe(ffmpeg) if ffmpeg else set()
+    except RuntimeError:
+        encoders = set()
+    bundle = build_support_bundle(
+        __version__, os_name, encoders, load_file_config(cfg_file),
+        load_history(reports_dir(os_name)),
+        known_secrets=(environ.get("STREAM_KEY"),),
+        performance=load_performance_snapshot(reports_dir(os_name)))
+    path = args.out or os.path.join(os.path.dirname(cfg_file), BUNDLE_FILENAME)
+    write_support_bundle(path, bundle)
+    out.write("Wrote %s (no stream key or address inside; check it before sharing)\n"
+              % path)
+    return 0
+
+
 def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
-              report_dir=None):
+              report_dir=None, secret_sink=None):
+    """secret_sink (a list) receives the resolved stream key so a crash report
+    can scrub it even when it came from the prompt or the credential store."""
     os_name = detect_os()
     file_cfg = load_file_config(config_path(os_name))
     hardware = resolve_hardware(args.hardware, file_cfg, os_name, detect)
@@ -353,14 +479,26 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
          "noise": args.noise, "noise_model": args.noise_model,
          "profile": args.profile, "stream_preset": args.stream_preset,
          "audio_profile": args.audio_profile,
-         "backup_url": args.backup_url,
+         "backup_url": args.backup_url, "rate_mode": args.rate_mode,
          "hardware": hardware})
     settings = resolve_settings(cli_values, file_cfg)
     if args.emergency:
         settings = emergency_settings(settings)
+    if args.potato_stream:
+        settings = potato_stream_settings(settings, args.potato_stream,
+                                          args.grayscale, args.skip_static)
+    elif args.grayscale or args.skip_static:
+        raise ValueError("--grayscale and --skip-static need --potato-stream")
     if args.weak_connection:  # after emergency: its longer buffer is kept
         settings = weak_connection_settings(
             settings, mbps_to_kbps(args.upload_mbps) if args.upload_mbps else None)
+    persistent = bool(args.persistent_ingest) and not args.test_local
+    if args.persistent_ingest and args.test_local:
+        out.write("Note: --persistent-ingest is ignored with --test-local.\n")
+    if persistent and settings.backup_url:
+        raise ValueError("--persistent-ingest cannot be combined with --backup-url")
+    if persistent:
+        settings = settings._replace(local_ingest_port=free_udp_port())
     cpu_affinity = affinity_cpus(os.cpu_count() or 1, settings.reserved_cores)
     record_path = args.test_local
     if settings.scene:
@@ -372,7 +510,10 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         prepare_recording_path(settings.record_to)  # ValueError -> "Error: ..."
         out.write("Recording a copy to %s (later attempts add -2, -3, ...)\n"
                   % settings.record_to)
-    key = "test" if record_path else resolve_key(os.environ, getpass.getpass)
+    key = "test" if record_path else resolve_key(
+        os.environ, getpass.getpass, saved=lambda: _saved_key(os_name))
+    if secret_sink is not None:
+        secret_sink.append(key)
     secrets = key
     backup = bool(settings.backup_url) and not record_path
     if settings.backup_url and record_path:
@@ -409,7 +550,18 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                          record_path)
 
     out.write("Encoder: %s\n" % encoder)
+    for note in ignored_setting_notes(settings, encoder):
+        out.write("Note: %s\n" % note)
     out.write(format_command(argv, secrets) + "\n")
+    publisher_argv = None
+    if persistent:
+        publisher_argv = publisher_command(
+            settings.local_ingest_port,
+            ingest_url(settings.platform, key, settings.custom_url),
+            ffmpeg or "ffmpeg")
+        out.write("Persistent ingest (opt in): the publisher keeps the connection "
+                  "while the encoder restarts. The output size stays fixed.\n")
+        out.write(format_command(publisher_argv, secrets) + "\n")
     if backup:
         out.write("Backup ingest: %s (key hidden)\n"
                   % format_command(
@@ -427,7 +579,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         auto_scale = False
         out.write("Note: --auto-scale is ignored with --test-local.\n")
     scale = AutoScaleSession(
-        settings, advisor, AutoScaler(build_ladder(top_step(settings)), clock,
+        settings, advisor, AutoScaler(build_ladder(top_step(settings), constant_size=persistent), clock,
                                       enabled=auto_scale),
         threading.Event(), out.write, sampler,
         gaming_first=bool(settings.reserved_cores),
@@ -453,12 +605,15 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
         return current
 
     started = clock()
-    try:
-        code = run_with_reconnect(
+    encoder_stop = threading.Event()  # set when the publisher gives up
+
+    def run_encoder():
+        return run_with_reconnect(
             argv, secrets, os_name, on_status=on_status,
             max_failures=(1 if record_path else
                           None if args.keep_trying else MAX_QUICK_FAILURES),
             encoder=encoder, cpu_affinity=cpu_affinity, restart=scale.restart,
+            stop=encoder_stop if persistent else None,
             argv_factory=lambda enc: build_command(
                 scale.current_settings, key, os_name, enc, ffmpeg, record_path),
             argv_for_attempt=(None if record_path or not (
@@ -469,12 +624,35 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                 lambda n, enc: build_command(
                     failover_settings(settings_for_attempt(n)), key, os_name, enc,
                     ffmpeg)) if backup else None)
+
+    try:
+        if persistent:
+            code = run_with_publisher(
+                publisher_argv, secrets, os_name, run_encoder, out=out,
+                on_publisher_status=lambda state, detail: (
+                    tracker.on_status(state, detail) if state == "reconnecting" else None),
+                max_failures=None if args.keep_trying else MAX_QUICK_FAILURES,
+                encoder_stop=encoder_stop)
+        else:
+            code = run_encoder()
         if tracker.samples or tracker.reconnects:
             out.write("\n" + "\n".join(tracker.report_lines()) + "\n")
             stability = tracker.network_stability()
             if stability:
                 out.write("  network stability: %d/100 (%s)\n"
                           % (stability.score, stability.basis))
+            kind = output_kind(ingest_url(settings.platform, "x", settings.custom_url))
+            sample = sampler.latest
+            congestion = detect_congestion(
+                tracker.summary(), scale.current_settings.video_kbps, kind,
+                getattr(sample, "cpu_percent", None))
+            for finding in congestion:
+                out.write("  network: %s\n" % finding.message)
+            link = detect_link(os_name)
+            out.write("  link: %s%s (probe UNVERIFIED on real machines)\n"
+                      % (link.kind, ", hotspot hint" if link.hotspot_hint else ""))
+            for line in link_advice(link, tracker.speed_readings(), tracker.reconnects):
+                out.write("  network: %s\n" % line)
             recording_analytics = not record_path and analytics_enabled(
                 args.analytics, file_cfg)
             directory = report_dir or reports_dir(os_name)
@@ -482,11 +660,14 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                 advisor, tracker.summary(), list(sampler.history), stability,
                 OptimizerContext(preset_name, scale.current_settings.video_kbps,
                                  scale.current_settings.fps, encoder, settings.noise),
-                load_history(directory) if recording_analytics else ())
+                load_history(directory) if recording_analytics else (),
+                congestion)
             for rec in advisor.recommendations():  # suggestions only, never applied
                 out.write("  suggestion (not applied): %s\n" % rec.message)
             for insight in insights:
                 out.write("  insight: %s\n" % insight_line(insight))
+            health = session_health(tracker.summary(), sample, stability)
+            out.write("  %s\n" % health_line(health))
             if recording_analytics:
                 path = write_session_report(
                     directory,
@@ -496,7 +677,10 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
                         preset=preset_name,
                         hardware_profile=settings.hardware_profile))
                 append_history(directory, history_entry(
-                    tracker.summary(), bottleneck_of(insights), preset_name))
+                    tracker.summary(), bottleneck_of(insights), preset_name,
+                    health_score=health.score))
+                save_performance_snapshot(directory, performance_snapshot(
+                    tracker.summary(), sample, health))
                 out.write("Session report saved to %s (no stream key inside)\n" % path)
         return code
     except OSError as exc:
@@ -506,6 +690,7 @@ def cmd_start(args, out, detect=detect_gpu_names, clock=time.monotonic,
 
 def main(argv=None, out=sys.stdout):
     args = build_parser().parse_args(argv)
+    secret_sink = []
     try:
         if args.command == "doctor":
             return cmd_doctor(out)
@@ -519,6 +704,12 @@ def main(argv=None, out=sys.stdout):
             return cmd_readiness(args, out)
         if args.command == "bench":
             return cmd_bench(args, out)
+        if args.command == "optimize":
+            return cmd_optimize(args, out)
+        if args.command == "key":
+            return cmd_key(args, out)
+        if args.command == "support-bundle":
+            return cmd_support_bundle(args, out)
         if args.command == "gui":
             from .gui import main as gui_main  # lazy: tkinter is optional
             return gui_main()
@@ -539,7 +730,27 @@ def main(argv=None, out=sys.stdout):
                 return 1
             out.write("Wrote %s (the stream key is never stored here)\n" % path)
             return 0
-        return cmd_start(args, out)
+        return cmd_start(args, out, secret_sink=secret_sink)
     except (ValueError, FileExistsError) as exc:
         out.write("Error: %s\n" % exc)
         return 2
+    except Exception as exc:  # unexpected: keep a local report, never upload
+        return _report_crash(exc, out, secrets=secret_sink)
+
+
+def _report_crash(exc, out, directory=None, secrets=()):
+    """Write crashes/crash-*.json next to the config (this PC only) and say so."""
+    from .analytics import CRASH_DIRNAME, build_crash_report, write_crash_report
+    os_name = detect_os()
+    directory = directory or os.path.join(
+        os.path.dirname(config_path(os_name)), CRASH_DIRNAME)
+    report = build_crash_report(exc, __version__, os_name,
+                                known_secrets=(os.environ.get("STREAM_KEY"),) + tuple(secrets))
+    out.write("Unexpected error: %s: %s\n" % (report["error_type"], report["message"]))
+    try:
+        path = write_crash_report(directory, report)
+        out.write("A crash report was saved to %s. It stays on this PC and is "
+                  "never sent anywhere; check it before sharing.\n" % path)
+    except OSError as err:
+        out.write("Could not save a crash report (%s).\n" % err)
+    return 70

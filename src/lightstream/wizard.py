@@ -261,3 +261,77 @@ def run_setup(os_name, out, input_fn=input, yes=False, platform=None,
         out.write(line + "\n")
     out.write("The stream key is never saved. Start with: lightstream start\n")
     return 0
+
+
+# -- one-click optimize ------------------------------------------------------
+# Reuses build_recommended_config, readiness and the bench tier. It only PROPOSES
+# a config and a diff. Nothing is written until the person confirms.
+POTATO_RAM_MB = 2048          # at or below this the 360p15 potato_2000 profile
+OptimizeProposal = namedtuple("OptimizeProposal", "config diff notes readiness tier")
+
+
+def config_diff(current, proposed):
+    """[(key, old, new)] for keys whose value would change, sorted by key."""
+    return [(k, current.get(k), v) for k, v in sorted(proposed.items())
+            if current.get(k) != v]
+
+
+def propose_optimization(current, gpu_text, cpu_count, ram_mb, upload_kbps,
+                         platform, facts, tier=None):
+    """OptimizeProposal. Pure: no file or process access.
+
+    tier is the bench tier name or None (bench skipped). The potato fallback
+    applies when the bench says Low-End, or when it was skipped and the PC has
+    two or fewer CPU threads or at most LOW_RAM_MB of RAM.
+    """
+    config = build_recommended_config(gpu_text, cpu_count, ram_mb, upload_kbps, platform)
+    weak = (cpu_count is not None and 0 < cpu_count <= 2) or \
+           (ram_mb is not None and ram_mb <= LOW_RAM_MB)
+    notes = []
+    if tier == "Low-End" or (tier is None and weak):
+        config["profile"] = "potato_2000" if (ram_mb is not None
+                                              and ram_mb <= POTATO_RAM_MB) else "potato"
+        notes.append("Potato fallback: lowest CPU use profile (%s)." % config["profile"])
+    report = readiness_report(facts)
+    return OptimizeProposal(config, config_diff(current, config), notes,
+                            report.score, tier)
+
+
+def run_optimize(os_name, out, input_fn=input, yes=False, platform="twitch",
+                 upload_mbps=None, cpu_count=None, ram_mb=None, run=subprocess.run,
+                 path=None, find=find_ffmpeg, tier_fn=None):
+    """Detect, bench (tier_fn() -> tier name or None), propose, then ask.
+
+    Writes the config only after a typed yes (or --yes). Never touches the key.
+    """
+    upload_kbps = bandwidth.mbps_to_kbps(upload_mbps) if upload_mbps else None
+    gpu_text = "\n".join(detect_gpu_names(os_name, run))
+    cpu_count = cpu_count if cpu_count is not None else (os.cpu_count() or 0)
+    ram_mb = ram_mb if ram_mb is not None else detect_ram_mb(os_name)
+    path = path or config_path(os_name)
+    current = load_file_config(path)
+    facts = gather_readiness_facts(os_name, cpu_count, ram_mb, upload_kbps,
+                                   run=run, find=find)
+    tier = tier_fn() if tier_fn else None
+    prop = propose_optimization(current, gpu_text, cpu_count, ram_mb, upload_kbps,
+                                platform, facts, tier)
+    out.write("Readiness %d/100. Bench tier: %s.\n"
+              % (prop.readiness, tier or "not measured"))
+    for note in prop.notes:
+        out.write(note + "\n")
+    if not prop.diff:
+        out.write("Your config already matches. Nothing to change.\n")
+        return 0
+    out.write("Proposed changes to %s:\n" % path)
+    for key, old, new in prop.diff:
+        out.write("  %s: %s -> %s\n" % (key, old, new))
+    try:
+        answer = "y" if yes else input_fn("Apply these changes? [y/N]: ").strip().lower()
+    except EOFError:  # no terminal to ask on: treat as "no"
+        answer = ""
+    if answer not in ("y", "yes"):
+        out.write("Not applied. Config unchanged.\n")
+        return 0
+    save_config(path, prop.config)
+    out.write("Applied. The stream key is never saved.\n")
+    return 0

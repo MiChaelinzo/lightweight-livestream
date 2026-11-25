@@ -12,7 +12,8 @@
 - **Plays nice.** Runs at low priority so your game wins.
 - **Hard to break.** Reconnects with backoff, falls back to software encoding if a GPU encoder fails, and never prints or saves your key.
 - **Safe to try.** `--test-local` records 10 seconds to a file instead of going live. `--mute` sends silence.
-- Streams to Twitch, YouTube, Facebook Live (RTMPS) or any custom RTMP server.
+- Streams to Twitch, YouTube, Facebook Live (RTMPS) or any custom RTMP or SRT server.
+- **New in 0.12:** Potato Stream (2000 or 4000 kbps), recording while streaming that survives an ingest drop, opt-in persistent ingest, benchmark tiers, a 0 to 100 health score, `lightstream optimize` (asks before changing anything), opt-in secure key storage, a dashboard with sparklines, and a redacted support bundle. Real platforms, GUI rendering, Windows and macOS are UNVERIFIED; see [docs/ROADMAP.md](docs/ROADMAP.md) for the honest status of each area.
 
 ## Download (no Python, no Git)
 
@@ -20,9 +21,9 @@ Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-
 
 | Platform | Download | How to start |
 |---|---|---|
-| Windows | `LightStream-0.11.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
-| macOS | `LightStream-0.11.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
-| Linux | `LightStream-0.11.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
+| Windows | `LightStream-0.12.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
+| macOS | `LightStream-0.12.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
+| Linux | `LightStream-0.12.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
 
 - **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
 - **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.
@@ -211,7 +212,7 @@ Background handling: only chroma key (`chromakey`) and `blur`. `blur` is a plain
 
 ### Recording a copy
 
-`lightstream start --record [FILE]` (or the "Record a copy" checkbox) encodes once and writes to RTMP and a Matroska file through FFmpeg's tee muxer, so there is no second encode. Matroska survives a crash. The folder is created and checked for write access before starting (an error is printed if it fails), but a write error later (full disk) is ignored so the stream keeps going. After an automatic reconnect the copy goes to a new file (`name-2.mkv`, `name-3.mkv`) so earlier footage is never overwritten. The window saves to `recordings/` in the app data folder with a timestamp and prints the path. `--record` is ignored with `--test-local` (a notice is printed). The path may not contain `| [ ] '`.
+`lightstream start --record [FILE]` (or the "Record a copy" checkbox) encodes once and writes to RTMP and a Matroska file through FFmpeg's tee muxer, so there is no second encode. Matroska survives a crash. The folder is created and checked for write access before starting (an error is printed if it fails), but a write error later (full disk) is ignored so the stream keeps going. After an automatic reconnect the copy goes to a new file (`name-2.mkv`, `name-3.mkv`) so earlier footage is never overwritten. The window saves to `recordings/` in the app data folder with a timestamp and prints the path. `--record` is ignored with `--test-local` (a notice is printed). Since 0.12 the tee maps video and audio explicitly and the live slot aborts on ingest failure so the reconnect loop works; `.mp4` records fragmented MP4, `.webm` is refused, `--rate-mode cbr` is optional (libx264 only). `--persistent-ingest` (opt in) keeps one publisher connection and a continuous file across ingest failures; see [docs/ARCHITECTURE-NOTES.md](docs/ARCHITECTURE-NOTES.md). The path may not contain `| [ ] '`.
 
 ### Noise suppression
 
@@ -314,10 +315,11 @@ Run `lightstream profiles` for the full list.
 
 Status: option parsing, settings resolution, thread math and command building are VERIFIED by unit tests. All ten audio chains (five profiles, light and full) were run through ffmpeg 7.0.2 (static build) on a 1 second sine and were accepted; set `LIGHTSTREAM_TEST_FFMPEG` to repeat that. Effects on real games, Windows/macOS telemetry, `nvidia-smi` and CPU affinity on real hardware are UNVERIFIED.
 
-`lightstream readiness [--upload-mbps N] [--platform twitch]` scores how ready this PC is (0 to 100) with a fix per factor. `lightstream bench --ffmpeg PATH` measures startup, memory, CPU cost and a synthetic encode; see `docs/BENCHMARKS.md` for the method and the numbers from the dev sandbox (not representative of low-end laptops).
+`lightstream readiness [--upload-mbps N] [--platform twitch]` scores how ready this PC is (0 to 100) with a fix per factor. `lightstream bench --ffmpeg PATH` measures startup, memory, CPU cost and a synthetic encode; see `docs/BENCHMARKS.md` for the method and the numbers from the dev sandbox (not representative of low-end laptops). `lightstream bench` also prints a tier (Low-End to Power User; thresholds in `docs/BENCHMARKS.md`). `lightstream optimize` proposes settings and a config diff and applies them only if you confirm. `lightstream key save --yes` stores the stream key in the OS credential store (Windows DPAPI, macOS keychain, Linux `secret-tool`; UNVERIFIED on real systems) and refuses when none exists; the key is never written to `config.json`. `lightstream support-bundle` writes a redacted JSON file (no stream key or address) to attach to a bug report.
 
 ### Emergency, weak connection and backup ingest (0.11.0)
 
+- `start --potato-stream 2000|4000` (Potato Stream for very weak PCs: 15 fps, 360p or 480p, ultrafast, 1-2 threads; `--grayscale` and `--skip-static` are opt-in looks, not CPU savers). CPU numbers are in [docs/BENCHMARKS.md](docs/BENCHMARKS.md); the 512 MB memory budget is UNVERIFIED.
 - `start --emergency` starts with the safest settings. In the window, the orange EMERGENCY button does it while live (ffmpeg restarts briefly); press it again (it then reads RESTORE) to go back. Never automatic.
 - `start --weak-connection [--upload-mbps 5]` lowers the bitrate, uses 1 second keyframes and a 2 second buffer for a poor uplink.
 - `start --backup-url rtmp://backup-host/app` (no key in it) switches to that server after 3 quick connection failures, using the same stream key. A recording continues in the next numbered file. Real ingest servers are UNVERIFIED; the logic is tested with fakes and the ffmpeg argv with real ffmpeg.
@@ -339,7 +341,7 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|optimus_mx250|nvidia|generic] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|optimus_mx250|nvidia|generic] [--potato-stream 2000|4000] [--grayscale] [--skip-static] [--rate-mode vbr|cbr] [--persistent-ingest] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 

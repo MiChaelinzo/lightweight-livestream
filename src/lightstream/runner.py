@@ -16,6 +16,7 @@ WINDOWS_BELOW_NORMAL = 0x00004000  # BELOW_NORMAL_PRIORITY_CLASS
 FALLBACK_AFTER_FAILURES = 2  # quick failures of a hardware encoder before libx264
 LAGGING_BELOW_SPEED = 0.95   # ffmpeg speed under 1.0x means it cannot keep up
 STOP_POLL_SECONDS = 0.2
+STOP_JOIN_SECONDS = 5.0
 FAILOVER_AFTER_FAILURES = 3  # consecutive quick network failures before switching ingest
 # Known ffmpeg messages for a hardware encoder that cannot start. Network and
 # key errors ("Connection refused", "Input/output error") never match these.
@@ -49,6 +50,10 @@ _PROGRESS_FIELDS = (
 )
 
 
+# An SRT passphrase travels in the URL query; hide it even when it is not the key.
+_SRT_PASSPHRASE = re.compile(r"(passphrase=)[^&\s\"']+", re.IGNORECASE)
+
+
 def redact(text, key):
     """Hide key (a string, or a tuple/list of secrets) in text, including its
     percent-encoded and quote_plus (spaces as +) forms."""
@@ -60,7 +65,7 @@ def redact(text, key):
                  urllib.parse.quote(secret), urllib.parse.quote_plus(secret))
         for form in sorted(set(forms), key=len, reverse=True):
             text = text.replace(form, "****")
-    return text
+    return _SRT_PASSPHRASE.sub(r"\1****", text)
 
 
 def format_command(argv, key):
@@ -267,3 +272,72 @@ def run_with_reconnect(argv, key, os_name, popen=subprocess.Popen,
         if stop is not None and stop.is_set():
             report(STATUS_STOPPED)
             return 0
+
+
+class PrefixedOut:
+    """Writes each publisher message on its own line, marked "[publisher]", so
+    it cannot overwrite the encoder's carriage-return progress line."""
+
+    def __init__(self, out):
+        self._out = out
+
+    def write(self, text):
+        if text.strip():
+            self._out.write("\n[publisher] " + text.strip() + "\n")
+
+
+def run_with_publisher(publisher_argv, key, os_name, run_encoder,
+                       popen=subprocess.Popen, out=sys.stderr,
+                       on_publisher_status=None, max_failures=None,
+                       encoder_stop=None):
+    """Opt-in persistent ingest: keep a long-lived `-c copy` publisher alive
+    while run_encoder() (which may restart ffmpeg many times) feeds it.
+
+    The publisher has its own reconnect loop with backoff. It gives up after
+    max_failures quick failures in a row (None keeps trying forever), for
+    example a rejected key or an unreachable ingest. UDP writes from the
+    encoder succeed whether or not anyone reads them, so a dead publisher
+    would otherwise look like a healthy stream. When the publisher gives up
+    (or its thread dies with an exception) encoder_stop, a threading.Event
+    that run_encoder must honor as its stop event, is set so the encoder ends,
+    and the publisher's failure code is returned. Otherwise run_encoder's
+    return value is returned and the publisher is stopped when it returns.
+    Publisher messages are marked "[publisher]" and redacted like the
+    encoder's. A terminal Ctrl-C also reaches the publisher's ffmpeg, but its
+    reconnect loop checks its stop event after the backoff wait, and this
+    function sets that event as soon as the encoder returns, so it is not
+    relaunched.
+    """
+    publisher_stop = threading.Event()
+    failure = []
+
+    def on_status(state, detail):
+        if on_publisher_status:
+            on_publisher_status(state, detail)
+        if state == STATUS_FAILED:
+            failure.append(detail or 1)
+            if encoder_stop is not None:
+                encoder_stop.set()
+
+    def publish():
+        try:
+            run_with_reconnect(publisher_argv, key, os_name, popen=popen,
+                               out=PrefixedOut(out), stop=publisher_stop,
+                               max_failures=max_failures, on_status=on_status)
+        except Exception as exc:  # e.g. Popen raising: never fail silently
+            out.write("\n[publisher] stopped unexpectedly: %s\n"
+                      % redact(str(exc), key))
+            on_status(STATUS_FAILED, 1)
+
+    thread = threading.Thread(target=publish, daemon=True)
+    thread.start()
+    try:
+        code = run_encoder()
+    finally:
+        publisher_stop.set()
+        thread.join(STOP_JOIN_SECONDS)
+    if failure:
+        out.write("\nThe publisher could not keep the ingest connection "
+                  "(check the stream key and the ingest address).\n")
+        return failure[0]
+    return code

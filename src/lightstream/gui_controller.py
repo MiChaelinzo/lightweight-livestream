@@ -19,10 +19,16 @@ from .config import config_path, detect_os, effective_preset_name, resolve_setti
 from .config import scenes_path
 from .encoders import choose_working_encoder, probe_encoders
 from .adaptive import AdaptiveAdvisor
-from .analytics import build_session_report, reports_dir, write_session_report
+from .analytics import (append_history, build_session_report, history_entry,
+                        performance_snapshot, reports_dir, save_performance_snapshot,
+                        write_session_report)
 from .health import HealthTracker
-from .optimizer import OptimizerContext, build_insights, insight_line
-from .emergency import emergency_settings, failover_settings
+from .network import KIND_RTMP, detect_congestion, output_kind
+from .optimizer import (OptimizerContext, bottleneck_of, build_insights, health_line,
+                        insight_line, session_health)
+from .platforms import ingest_url
+from .emergency import (POTATO_STREAM_PROFILES, emergency_settings, failover_settings,
+                        potato_stream_settings)
 from .perf_profiles import affinity_cpus
 from .telemetry import TelemetrySampler
 from .scenes import load_scenes
@@ -43,7 +49,16 @@ PREFS_FILENAME = "gui.json"
 PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
                "audio_device", "keep_trying", "mute", "scene", "record",
                "hardware", "noise", "analytics", "profile", "audio_profile",
-               "auto_scale", "backup_url")
+               "auto_scale", "backup_url", "record_format", "rate_mode",
+               "potato", "potato_grayscale", "potato_skip_static")
+
+# Recording and Potato Stream choices: (label shown, stored value).
+RECORD_FORMAT_CHOICES = (("MKV (safest if the PC crashes)", "mkv"),
+                         ("MP4 (fragmented, plays everywhere)", "mp4"))
+RATE_MODE_CHOICES = (("Variable bitrate (default)", "vbr"),
+                     ("Constant bitrate (software x264 only)", "cbr"))
+POTATO_CHOICES = (("Off", ""), ("Potato Stream 2000 kbps", "2000"),
+                  ("Potato Stream 4000 kbps", "4000"))
 
 # (label shown to the user, value used internally)
 PLATFORM_CHOICES = (("Twitch", "twitch"), ("YouTube", "youtube"),
@@ -213,15 +228,49 @@ def one_click_setup(os_name=None, platform="twitch", upload_mbps=None,
     return fields, message
 
 
+def optimize_proposal(os_name=None, platform="twitch", upload_mbps=None,
+                      cpu_count=None, ram_mb=None, gpu_text=None, facts=None,
+                      tier=None, current=None):
+    """One-click optimize for the GUI: (OptimizeProposal, plain-words message).
+
+    Proposes only. The window must ask the person and then call
+    apply_optimization; nothing is written here."""
+    from . import bandwidth, wizard  # lazy: wizard imports this module
+    from .hardware import detect_gpu_names
+    os_name = os_name or detect_os()
+    if gpu_text is None:
+        gpu_text = "\n".join(detect_gpu_names(os_name))
+    cpu_count = cpu_count if cpu_count is not None else (os.cpu_count() or 0)
+    ram_mb = ram_mb if ram_mb is not None else wizard.detect_ram_mb(os_name)
+    upload_kbps = bandwidth.mbps_to_kbps(upload_mbps) if upload_mbps else None
+    if facts is None:
+        facts = wizard.gather_readiness_facts(os_name, cpu_count, ram_mb, upload_kbps)
+    if current is None:
+        from .config import load_file_config
+        current = load_file_config(config_path(os_name))
+    proposal = wizard.propose_optimization(current, gpu_text, cpu_count, ram_mb,
+                                           upload_kbps, platform, facts, tier)
+    lines = ["%s: %s -> %s" % d for d in proposal.diff] or ["no changes"]
+    return proposal, "\n".join(proposal.notes + lines)
+
+
+def apply_optimization(proposal, os_name=None, path=None):
+    """Write a confirmed proposal to config.json. Call only after the person says yes."""
+    from . import wizard
+    wizard.save_config(path or config_path(os_name or detect_os()), proposal.config)
+
+
 def _blank_to_none(value):
     value = (value or "").strip() if isinstance(value, str) else value
     return value or None
 
 
-def recording_path(now=None):
-    """Timestamped file in the app data folder, one per session."""
+def recording_path(now=None, record_format="mkv"):
+    """Timestamped file in the app data folder, one per session. Anything but
+    mp4 falls back to mkv (webm is not offered, see ROADMAP)."""
     stamp = time.strftime("%Y%m%d-%H%M%S", now or time.localtime())
-    return os.path.join(data_dir(), RECORDINGS_DIRNAME, "lightstream-%s.mkv" % stamp)
+    ext = "mp4" if record_format == "mp4" else "mkv"
+    return os.path.join(data_dir(), RECORDINGS_DIRNAME, "lightstream-%s.%s" % (stamp, ext))
 
 
 def cli_values_from_prefs(prefs, display=None):
@@ -243,7 +292,9 @@ def cli_values_from_prefs(prefs, display=None):
         "audio_device": _blank_to_none(prefs.get("audio_device")),
         "mute": bool(prefs.get("mute")) or None,
         "scene": _blank_to_none(prefs.get("scene")),
-        "record": recording_path() if prefs.get("record") else False,
+        "record": (recording_path(record_format=prefs.get("record_format"))
+                   if prefs.get("record") else False),
+        "rate_mode": _blank_to_none(prefs.get("rate_mode")),
         "hardware": _blank_to_none(prefs.get("hardware")),
         "backup_url": _blank_to_none(prefs.get("backup_url")),
         "noise": _blank_to_none(prefs.get("noise")),
@@ -254,7 +305,15 @@ def cli_values_from_prefs(prefs, display=None):
 def settings_from_prefs(prefs, display=None, cpu_count=None):
     """StreamSettings from GUI fields. Raises ValueError with plain words."""
     try:
-        return resolve_settings(cli_values_from_prefs(prefs, display), {}, cpu_count)
+        settings = resolve_settings(cli_values_from_prefs(prefs, display), {}, cpu_count)
+        potato = _blank_to_none(prefs.get("potato"))
+        if potato:
+            if int(potato) not in POTATO_STREAM_PROFILES:
+                raise ValueError("unknown Potato Stream choice %r" % potato)
+            settings = potato_stream_settings(
+                settings, int(potato), bool(prefs.get("potato_grayscale")),
+                bool(prefs.get("potato_skip_static")))
+        return settings
     except ValueError as exc:
         raise ValueError("One of your settings looks wrong (%s). Leave "
                          "Advanced boxes empty if unsure." % exc)
@@ -295,6 +354,7 @@ class StreamController:
         self._scale = None
         self._before_emergency = None
         self._context = OptimizerContext()
+        self._ingest_kind = KIND_RTMP
 
     # -- state for the GUI -------------------------------------------------
     def is_running(self):
@@ -340,9 +400,35 @@ class StreamController:
             if self._scale is not None:
                 current = self._scale.current_settings
                 context = context._replace(video_kbps=current.video_kbps, fps=current.fps)
-            return build_insights(self._advisor, self._health.summary(),
+            summary = self._health.summary()
+            congestion = detect_congestion(
+                summary, context.video_kbps, self._ingest_kind,
+                getattr(self._sampler.latest, "cpu_percent", None))
+            return build_insights(self._advisor, summary,
                                   list(self._sampler.history),
-                                  self._health.network_stability(), context)
+                                  self._health.network_stability(), context,
+                                  congestion=congestion)
+
+    def health_line(self):
+        """'Health: 82/100 (Good)' from live readings (heuristic, see optimizer)."""
+        with self._lock:
+            health = session_health(self._health.summary(), self._sampler.latest,
+                                    self._health.network_stability())
+        return health_line(health)
+
+    def comparison_lines(self):
+        """Plain lines comparing the last two saved sessions (opt-in history)."""
+        from .analytics import comparison_lines, load_history
+        return comparison_lines(load_history(
+            self._report_dir or reports_dir(self._os_name)))
+
+    def performance_snapshot(self):
+        """Numbers-only snapshot for the support bundle (opt-in sessions only)."""
+        with self._lock:
+            summary = self._health.summary()
+            sample = self._sampler.latest
+            health = session_health(summary, sample, self._health.network_stability())
+        return performance_snapshot(summary, sample, health)
 
     def insight_lines(self):
         """Plain-words insight lines with confidence, for the dashboard."""
@@ -406,6 +492,8 @@ class StreamController:
                 monitors=(self._health, self._advisor))
             self._context = OptimizerContext(self._preset_name, settings.video_kbps,
                                              settings.fps, None, settings.noise)
+            self._ingest_kind = output_kind(
+                ingest_url(settings.platform, "x", settings.custom_url))
             self._analytics = prefs.get("analytics") is True  # opt-in only
             self._help = ""
             self._before_emergency = None
@@ -479,8 +567,18 @@ class StreamController:
         if not self._analytics or test_file or not (summary["samples"] or summary["reconnects"]):
             return
         try:
+            directory = self._report_dir or reports_dir(self._os_name)
+            insights = self.insights()
+            with self._lock:
+                health = session_health(summary, self._sampler.latest,
+                                        self._health.network_stability())
+            append_history(directory, history_entry(
+                summary, bottleneck_of(insights), self._preset_name,
+                health_score=health.score))
+            save_performance_snapshot(directory, performance_snapshot(
+                summary, self._sampler.latest, health))
             path = write_session_report(
-                self._report_dir or reports_dir(self._os_name),
+                directory,
                 build_session_report(summary, encoder, seconds, bool(settings.record_to),
                                      preset=self._preset_name,
                                      hardware_profile=settings.hardware_profile))

@@ -32,6 +32,27 @@ PAGES = (
 )
 DEFAULT_PAGE = "dashboard"
 
+# The eight dashboard panels people ask for, each mapped onto an EXISTING page
+# (no duplicate pages): (panel id, label, page id, where on that page).
+PANELS = (
+    ("home", "Home", "dashboard", "Start and stop, health cards, suggestions"),
+    ("streams", "Streams", "scenes", "Scenes and scene import/export"),
+    ("devices", "Devices", "setup", "Setup wizard: detected hardware and capture"),
+    ("performance", "Performance", "dashboard", "Graphs, This PC, health score"),
+    ("network", "Network", "dashboard", "Network insights in the suggestions list"),
+    ("recording", "Recording", "recording", "Format, rate mode, Potato Stream"),
+    ("analytics", "Analytics", "dashboard", "Compare the last two saved sessions"),
+    ("settings", "Settings", "advanced", "Frame rate, devices, profiles, opt-ins"),
+)
+
+
+def panel_page(panel_id):
+    """Page id that holds a panel. Raises ValueError for an unknown panel."""
+    for known, _label, page_id, _where in PANELS:
+        if known == panel_id:
+            return page_id
+    raise ValueError("Unknown panel %r" % panel_id)
+
 AUTO_HARDWARE_LABEL = "Detect automatically"
 PREVIEW_INPUT_LABEL = "in"
 PREVIEW_OUTPUT_LABEL = "out"
