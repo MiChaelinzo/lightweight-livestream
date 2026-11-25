@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased (0.16 work)
+
+- Dev: `tools/idle_budget.py` measures GUI startup, idle RSS and idle CPU on a DISPLAY; `tests/test_idle_budget.py` enforces startup under 2 s, RSS under 150 MB and idle CPU under 5 percent (real-window test skipped without DISPLAY).
+- Dev: `tools/spikes.py --spike f` (runtime bitrate change) and `--spike g` (overlay cost). Findings and numbers in `docs/BENCHMARKS.md` ("v0.16 evidence"): `sendcmd` reaches filters but not encoders in this ffmpeg build, `zmq` and `drawtext` are absent here, and a pre-rendered PNG overlay showed no reliable CPU win.
+
 ## 0.15.0
 
 - New: `lightstream audio-check FILE` reports clipping and loudness (LUFS) of an audio or video file using ffmpeg `volumedetect` and `ebur128`. Pure parser in `audio_check.py`. VERIFIED by unit tests and a real-ffmpeg test (clipped sine detected, -12 dB sine not).
