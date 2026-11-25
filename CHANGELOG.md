@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased (0.16 work)
+## 0.16.0
+
+- Version bumped to 0.16.0 (`pyproject.toml`, `__init__.py`, README artifact names, RELEASING example).
+- Docs: `docs/architecture/V016-MAP.md` (feature map, decisions, final status, suite table), README, FEATURES, ROADMAP and docs index updated. Control API, phone remote, cloud scene sync and the companion app stay Roadmap; Crowd-Assisted Encoding savings are not claimed.
+- Observation, no change made: `.github/workflows/dependabot-auto-merge.yml` uses `pull_request_target` with `contents: write` and merges dependabot PRs without CI gating, there is no `dependabot.yml` and no runtime dependencies. Recommendation in `docs/ARCHITECTURE-NOTES.md`; needs the owner's decision.
 
 - New (opt in, off by default): `--guardian` (config `guardian`, GUI checkbox) turns on auto-scale and adds telemetry pressure (CPU, RAM, CPU temperature, GPU) and a bandwidth trend prediction as extra STRESSED reasons for the existing AutoScaler (`guardian.py`, `predictor.py`). Every step still restarts the encoder; `--persistent-ingest` keeps the connection alive meanwhile (about 10 percent of frames were lost near a restart on loopback). The ladder gained a 900p step (1920x1080 to 1600x900) and a 45 fps step (60, 45, 30, 24). Predictor results are on SYNTHETIC traces only (see `docs/BENCHMARKS.md`); real streams UNVERIFIED.
 - New (opt in, off by default): `--auto-survival` (config `auto_survival`, GUI checkbox). CPU at or above 95 percent or RAM at or above 90 percent for 10 seconds switches to constant-size emergency settings (same picture size, audio untouched, lower fps and bitrate, x264 ultrafast, no overlays, chromakey or blur). It leaves after CPU and RAM stay under 80 percent for 60 seconds, with a 60 second cooldown and at most 4 entries per hour. State machines VERIFIED with a fake clock; real machines UNVERIFIED.

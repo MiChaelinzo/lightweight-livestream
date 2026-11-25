@@ -164,3 +164,14 @@ Ordered by value. None were done in 0.12 because each needs its own tested chang
 - Decision: with persistent ingest the GUI Emergency button now uses the constant-size variant instead of being declined. The earlier decline message was removed.
 - Chat priority is a companion-app concern only. LightStream does not read chat and has no code for it.
 - The timeline (`timeline.py`) is in memory and printed at the end of a session. It uses "happened around" wording because a matching time is not a cause. No session data is persisted, so no `lightstream timeline` command exists.
+
+### Alternatives considered for live bitrate change (0.16)
+
+- `sendcmd` to the encoder: accepted with exit code 0 but ignored by libx264, libx265, libvpx, libvpx-vp9 and libaom-av1 (spike F). Rejected.
+- `zmq`: filter absent in the static build used here. Not testable; rejected for the stdlib-only, static-binary distribution.
+- Hardware encoders: not available in the sandbox, UNVERIFIED.
+- Chosen: restart through the reconnect loop, with persistent ingest to hide it from the platform.
+
+## Observation: dependabot auto-merge workflow (0.16, not changed)
+
+`.github/workflows/dependabot-auto-merge.yml` runs on `pull_request_target` with `contents: write` and `pull-requests: write`, approves PRs from `dependabot[bot]` and enables squash auto-merge. It has no CI gate of its own: auto-merge waits for checks only if branch protection requires them. There is no `.github/dependabot.yml`, so no ecosystem is configured, and the project has no runtime dependencies (stdlib Python, no npm in `web/`), so there is nothing to update today. GitHub Actions is billing-locked here, so it cannot run now. Recommendation for the owner (not applied): add `dependabot.yml` for the `github-actions` ecosystem only and require the CI checks in branch protection, or remove the workflow.
