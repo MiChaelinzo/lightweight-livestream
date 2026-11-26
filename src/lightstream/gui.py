@@ -1118,14 +1118,19 @@ class StreamWindow:
             self.root.destroy()
 
 
-def main(argv=None):
+def main(argv=None, out=None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    out = out or sys.stdout
+    if "--self-test" in argv:
+        from .selftest import main as selftest_main
+        return selftest_main(json_output="--self-test-json" in argv, out=out)
     if tk is None:
-        print(NO_GUI_MESSAGE)
+        print(NO_GUI_MESSAGE, file=out)
         return 1
     try:
         root = tk.Tk()
     except tk.TclError:
-        print(NO_GUI_MESSAGE)
+        print(NO_GUI_MESSAGE, file=out)
         return 1
     window = StreamWindow(root)
     root.report_callback_exception = window.on_callback_error

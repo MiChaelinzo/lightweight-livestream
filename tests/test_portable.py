@@ -137,6 +137,9 @@ class WindowsPortableBuilderTests(unittest.TestCase):
         with self.assertRaises(self.builder.BuildError):
             self.builder.build_exe(self.out, run=lambda cmd: Result(), find_module=lambda name: object())
 
+    def test_frozen_entry_propagates_self_test_exit_code(self):
+        self.assertIn("raise SystemExit(main())", self.builder.ENTRY_SOURCE)
+
 
 class PortableFoldersTests(unittest.TestCase):
     def setUp(self):

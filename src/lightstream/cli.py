@@ -67,7 +67,11 @@ def build_parser():
                                     "and audio profiles")
     sub.add_parser("init", help="write an example config file")
     sub.add_parser("devices", help="list audio devices (Windows and macOS)")
-    sub.add_parser("gui", help="open the easy window (3 steps, for beginners)")
+    g = sub.add_parser("gui", help="open the easy window (3 steps, for beginners)")
+    g.add_argument("--self-test", action="store_true",
+                   help="check application integrity without opening a window")
+    g.add_argument("--self-test-json", action="store_true",
+                   help="with --self-test, print one JSON object")
     u = sub.add_parser("setup", help="pick safe settings for this PC (never saves the key)")
     u.add_argument("--yes", action="store_true", help="no questions, use defaults")
     u.add_argument("--platform", choices=PLATFORMS)
@@ -875,7 +879,14 @@ def main(argv=None, out=sys.stdout):
             return cmd_support_bundle(args, out)
         if args.command == "gui":
             from .gui import main as gui_main  # lazy: tkinter is optional
-            return gui_main()
+            if args.self_test_json and not args.self_test:
+                raise ValueError("--self-test-json requires --self-test")
+            gui_args = []
+            if args.self_test:
+                gui_args.append("--self-test")
+            if args.self_test_json:
+                gui_args.append("--self-test-json")
+            return gui_main(gui_args, out=out)
         if args.command == "bandwidth":
             return cmd_bandwidth(args, out)
         if args.command == "setup":
