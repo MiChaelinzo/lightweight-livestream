@@ -733,6 +733,14 @@ class StreamController:
         with self._lock:
             return self._before_emergency is not None
 
+    def timeline_lines(self):
+        """Plain-words event lines for the remote page, [] when the timeline
+        is off. The timeline never holds the stream key."""
+        with self._lock:
+            if self._timeline is None:
+                return []
+            return list(self._timeline.report_lines())
+
     def _retarget(self, settings):
         for monitor in self._scale.monitors:
             monitor.retarget(settings.video_kbps, settings.fps)
