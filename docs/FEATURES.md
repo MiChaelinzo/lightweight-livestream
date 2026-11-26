@@ -2,8 +2,10 @@
 
 Everything that used to be in the top-level README lives here, with the text unchanged. The README keeps the short path; this file keeps the detail. Verification labels (VERIFIED, PARTIALLY VERIFIED, UNVERIFIED) are the same as in the README.
 
-## Release highlights (older)
+## Release highlights
 
+- **New in 0.18:** a headless source/frozen app self-test, architecture-labelled native release plans, per-user Windows MSI, macOS DMG/PKG, Linux AppImage/deb/rpm metadata, reproducible application icons, and an installable web companion with Android/iOS instructions. Only the Linux tarball was built and self-tested locally; every other package and the billing-locked workflow remain UNVERIFIED. The PWA is not a mobile broadcaster. See [INSTALLING.md](INSTALLING.md) and [architecture/V018-MAP.md](architecture/V018-MAP.md).
+- **New in 0.17:** opt-in GUI phone remote and Dashboard session timeline. See [architecture/V017-MAP.md](architecture/V017-MAP.md).
 - **New in 0.13:** a calmer, scrollable window with clear sidebar, cards, AA-checked colors and readable fonts, a reworked web showcase with real screenshots, and fixes to the crash report scrub list, the publisher reconnect count and GUI crash capture. See the [CHANGELOG](../CHANGELOG.md).
 - **New in 0.12:** Potato Stream (2000 or 4000 kbps), recording while streaming that survives an ingest drop, opt-in persistent ingest, benchmark tiers, a 0 to 100 health score, `lightstream optimize` (asks before changing anything), opt-in secure key storage, a dashboard with sparklines, and a redacted support bundle. Real platforms, GUI rendering, Windows and macOS are UNVERIFIED; see [docs/ROADMAP.md](ROADMAP.md) for the honest status of each area.
 
@@ -155,11 +157,19 @@ The window now has a sidebar (Dashboard, Setup wizard, Scenes, Overlays, Recordi
 
 ### Browser companion overlay (0.7.0)
 
-`web/companion/` is a static page you add as a browser source or open in a window: chat, viewer count, stream timer and goal bar. With no credentials it runs in demo mode. Twitch chat uses anonymous IRC; the viewer count needs a client ID and token that you pass in the URL fragment (after `#`). They are read at runtime, never stored and never committed. YouTube is not implemented. Chat text is inserted with `textContent`. The CSP in `web/vercel.json` allows `wss://irc-ws.chat.twitch.tv` and `https://api.twitch.tv` only for `/companion/*`; the showcase keeps `connect-src 'self'`. OBS stores a browser-source URL in its scene file, so a token in the fragment is saved there: use a limited-scope token and do not share the scene file. Logic is tested with node; rendering and the Twitch connection are UNVERIFIED.
+`web/companion/` is a static page you add as a browser source or open in a window: chat, viewer count, stream timer and goal bar. With no credentials it runs in demo mode. Twitch chat uses anonymous IRC; the viewer count needs a client ID and token that you pass in the URL fragment (after `#`). They are read at runtime, never stored and never committed. YouTube is not implemented. Chat text is inserted with `textContent`. The CSP in `web/vercel.json` allows `wss://irc-ws.chat.twitch.tv` and `https://api.twitch.tv` only for `/companion/*`; the showcase keeps `connect-src 'self'`. OBS stores a browser-source URL in its scene file, so a token in the fragment is saved there: use a limited-scope token and do not share the scene file. Logic is tested with Node; rendering and the Twitch connection are UNVERIFIED.
+
+Since 0.18, `web/manifest.webmanifest` and `/install/` make the guide/calculator/overlay shell installable from Android Chrome and iPhone/iPad Safari. The service worker precaches the manifest, install page, any/maskable/Apple icons, scripts, styles, presets, and companion shell. Its cache name fingerprints every cached byte, including PNGs. Manifest structure, icon dimensions, install wording, CSP, registration, and offline routing are VERIFIED by Node tests. A real home-screen installation is UNVERIFIED. This is a companion PWA, not a phone broadcaster, and no APK, AAB, or IPA exists.
 
 ### Windows portable builder (0.7.0)
 
-`python tools/build_windows_portable.py` creates `LightStreamPortable/` with `portable.flag`, `ffmpeg/`, `scenes/`, `recordings/` and `config/`. In portable mode scene collections go to `scenes/` and the default recording to `recordings/`. `config/` is created but NOT used yet: settings, `scenes.json` and reports are still stored in `data/`, which the app creates on first run. `LightStream.exe` is built with PyInstaller only if PyInstaller is installed; otherwise use `--layout-only`. FFmpeg is never bundled: the `ffmpeg/` folder gets a note telling you to add your own copy. The folder layout is tested; the exe build is UNVERIFIED.
+`python tools/build_windows_portable.py` creates `LightStreamPortable/` with `portable.flag`, `ffmpeg/`, `scenes/`, `recordings/` and `config/`. In portable mode scene collections go to `scenes/` and the default recording to `recordings/`. `config/` is created but NOT used yet: settings, `scenes.json` and reports are still stored in `data/`, which the app creates on first run. `LightStream.exe` is built with PyInstaller only if PyInstaller is installed; otherwise use `--layout-only`. FFmpeg is never bundled: the `ffmpeg/` folder gets a note telling you to add your own copy. The folder layout is tested; the standalone builder's exe is UNVERIFIED.
+
+### Native release builder (0.18.0)
+
+`python tools/build_release.py` is the production release path. It uses pinned PyInstaller 6.11.1 in CI, puts platform and architecture in every name, embeds the project icon and native version metadata, and invokes every built application with `--self-test --self-test-json` before packaging. Windows gets a separate one-file portable build and on-directory MSI payload. macOS gets a versioned app bundle, ZIP, DMG with Applications link, and PKG. Linux gets a one-file tar plus an on-directory payload for AppImage, deb, and rpm; installed packages add desktop and AppStream metadata and recommend host FFmpeg. `--formats` selects a subset for local work.
+
+The generated WiX, package metadata, native command plans, signing plans, names, checksums, and missing-tool failures are VERIFIED by unit tests. A real Linux tarball was built and self-tested locally. Every other native artifact remains UNVERIFIED while Actions is billing-locked. See [INSTALLING.md](INSTALLING.md) and [RELEASING.md](RELEASING.md).
 
 ### Web showcase upgrade (0.7.0)
 
@@ -224,7 +234,7 @@ The v0.10 audit, blueprint, benchmark method (competitor numbers UNKNOWN) and To
 
 ## Web demo (Vercel)
 
-`web/` is a separate static site: a 3D hero (plain WebGL, no libraries), a preset picker that estimates upload need and data use, install steps, and a local screen-recording demo. It is a guide and calculator only. Browsers cannot push RTMP, so it cannot stream to Twitch or YouTube, and it never asks for a stream key. The desktop app does not use it.
+`web/` is a separate static companion: plain WebGL hero, preset picker, install help, local screen-recording demo, and overlay shell. It has no npm dependencies. Browsers cannot push RTMP, so it cannot stream to Twitch or YouTube, and it never asks for a stream key. The desktop app does not embed it. Since 0.18, a standards-based manifest and service worker let supported browsers install the guide/companion shell. This does not add phone capture or native mobile broadcasting.
 
 Deploy on Vercel: import the repo, set **Root Directory** to `web`, Framework Preset **Other**, leave Build Command and Output Directory empty. Preview locally with `python3 -m http.server -d web` (ES modules need http, not file://).
 
@@ -244,7 +254,10 @@ python3 tools/export_presets.py --check  # fails if it is stale
 | Screen capture and recording | UNVERIFIED | needs a real browser |
 | Vercel deployment and headers (CSP) | UNVERIFIED | not deployed yet |
 | Companion logic (timer, goal, URL parsing, chat parsing/sanitizing) | VERIFIED | node tests |
+| PWA manifest, icon dimensions, install wording, service-worker registration and full-shell cache fingerprint | VERIFIED as static logic | Node tests; real Android/iOS home-screen install UNVERIFIED |
 | Companion rendering, Twitch chat and viewer API | UNVERIFIED | no browser or network in the dev sandbox; YouTube not implemented |
+| Frozen source/self-test dispatch | VERIFIED | Python tests; real Linux frozen tar self-test also passed |
+| Native Windows/macOS/Linux package plans | PARTIALLY VERIFIED | source, metadata and fake-command tests; only Linux tar built locally |
 | `build_windows_portable.py` folder layout | VERIFIED | unit tests and a `--layout-only` run |
 | `LightStream.exe` build with PyInstaller | UNVERIFIED | needs Windows and PyInstaller |
 

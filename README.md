@@ -19,26 +19,34 @@
 - **Hard to break.** Reconnects with backoff, falls back to software encoding if a GPU encoder fails, and never prints or saves your key.
 - **Safe to try.** `--test-local` records 10 seconds to a file instead of going live. `--mute` sends silence.
 - Streams to Twitch, YouTube, Facebook Live (RTMPS) or any custom RTMP or SRT server.
-- **New in 0.17:** an opt-in phone remote (GUI only, `127.0.0.1` by default, home network only by a second explicit box, random token that is never saved) that can trigger Emergency, Restore and Stop but cannot start a stream, and a Session timeline box on the Dashboard. Tested with loopback sockets; a real phone and a real home network are UNVERIFIED. See [docs/architecture/V017-MAP.md](docs/architecture/V017-MAP.md).
+- **New in 0.18:** architecture-labelled desktop release plans for Windows x86_64 (portable ZIP and per-user MSI), macOS arm64 (app ZIP, DMG, PKG), and Linux x86_64 (tar.gz, AppImage, deb, rpm); a frozen-app `--self-test`; one checked version invariant; and an installable offline web companion for Android/iPhone home screens. The Linux tarball was built and self-tested locally. Every other native package and the billing-locked release workflow remain UNVERIFIED. The mobile install is a companion, not an APK/AAB/IPA broadcaster. See [the install guide](docs/INSTALLING.md) and [v0.18 status map](docs/architecture/V018-MAP.md).
+- **In 0.17:** an opt-in phone remote (GUI only, `127.0.0.1` by default, home network only by a second explicit box, random token that is never saved) that can trigger Emergency, Restore and Stop but cannot start a stream, and a Session timeline box on the Dashboard. Tested with loopback sockets; a real phone and a real home network are UNVERIFIED. See [docs/architecture/V017-MAP.md](docs/architecture/V017-MAP.md).
 - **In 0.16:** opt-in `--guardian` and `--auto-survival` (off by default; every step restarts the encoder), a bandwidth trend predictor (synthetic tests only), a session timeline in the end-of-session output, profiles `potato_pc`, `office_laptop` and `budget_gaming`, idle budgets (startup, RSS, CPU) measured under Xvfb. Real machines UNVERIFIED. See [docs/architecture/V016-MAP.md](docs/architecture/V016-MAP.md).
 - **New in 0.15:** eight GUI themes and a reduce-motion setting, `lightstream audio-check`, Teaching and Meeting audio profiles, copilot insights, `lightstream highlights` (heuristic clips, 9:16 export) and `dashboard`, a plugin runtime (`lightstream plugins`, not yet connected to `start`) and `tools/benchlab.py` (OBS and Streamlabs columns are UNKNOWN). Details in [docs/FEATURES.md](docs/FEATURES.md) and the [CHANGELOG](CHANGELOG.md).
 - **In 0.14:** the health score uses the real dropped-frame percent, the Recording page has a persistent-ingest checkbox, the GUI banner states can be rendered for review, and this README is shorter (details moved to [docs/FEATURES.md](docs/FEATURES.md)). Earlier highlights are listed there and in the [CHANGELOG](CHANGELOG.md). Real platforms, Windows and macOS are UNVERIFIED; see [docs/ROADMAP.md](docs/ROADMAP.md) for the honest status of each area.
 
-**More:** [Features and guides](docs/FEATURES.md) | [Documentation index](docs/README.md) | [Roadmap](docs/ROADMAP.md) | [Benchmarks](docs/BENCHMARKS.md) | [Web showcase](web/)
+**More:** [Install guide](docs/INSTALLING.md) | [Features and guides](docs/FEATURES.md) | [Documentation index](docs/README.md) | [Roadmap](docs/ROADMAP.md) | [Benchmarks](docs/BENCHMARKS.md) | [Web companion](web/)
 
 ## Download (no Python, no Git)
 
-Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-livestream/releases). The release workflow is UNVERIFIED (never run yet), so a release may not exist until the maintainer publishes one.
+Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-livestream/releases). The v0.18 workflow is configured but UNVERIFIED because GitHub Actions is billing-locked. Treat an absent release as expected until the maintainer fixes billing and publishes one.
 
-| Platform | Download | How to start |
-|---|---|---|
-| Windows | `LightStream-0.17.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
-| macOS | `LightStream-0.17.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
-| Linux | `LightStream-0.17.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
+| Platform | v0.18 workflow output | Implemented and tested locally | Honest status |
+|---|---|---|---|
+| Windows 10/11 x86_64 | portable ZIP and per-user MSI | deterministic layout, WiX source, metadata and command tests | Workflow-only; exe and MSI install UNVERIFIED |
+| macOS 11+ arm64 | app ZIP, DMG with Applications link, PKG to `/Applications` | deterministic metadata and command tests | Workflow-only; app/install/signing UNVERIFIED |
+| Linux x86_64 | tar.gz, AppImage, deb, rpm | real tar.gz built, extracted, and frozen self-test passed; other formats have metadata/command tests | tar package integrity VERIFIED locally; capture and installed formats UNVERIFIED |
+| Android, iPhone, iPad | installable companion web app | manifest, icons, CSP, cache fingerprint and offline rules pass Node tests | Browser installation UNVERIFIED; not a broadcaster |
+| Android/iOS broadcaster | no artifact | none | NOT SUPPORTED; requires a separate native product |
 
-- **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
-- **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.
-- Android, iOS, `.msi`, `.deb`, `.rpm` and AppImage are not provided. See [docs/RELEASING.md](docs/RELEASING.md).
+Exact native names include version, platform, and architecture, for example `LightStream-0.18.0-windows-x86_64-unsigned.msi`, `LightStream-0.18.0-macos-arm64-unsigned.dmg`, and `LightStream-0.18.0-linux-x86_64.AppImage`. Signed artifacts use a different label only when optional secret-based signing succeeds.
+
+- **FFmpeg is not included.** The first-run window explains where to get it and offers **Choose ffmpeg file...**.
+- **Unsigned warnings are expected.** Verify `SHA256SUMS.txt`, then follow the Windows SmartScreen or macOS Gatekeeper steps in [docs/INSTALLING.md](docs/INSTALLING.md).
+- **Run package integrity checks without a window:** `lightstream gui --self-test`, or run a frozen executable with `--self-test`. Add `--self-test-json` for structured output. Missing FFmpeg is a warning, not a failed app-integrity check.
+- **Mobile means companion only.** Android Chrome and iPhone/iPad Safari can add the web companion to the home screen. There is no APK, AAB, or IPA broadcaster.
+
+See [docs/INSTALLING.md](docs/INSTALLING.md) for exact install, FFmpeg, uninstall, checksum, unsigned-warning, and troubleshooting steps.
 
 Prefer Python? Use the steps below instead.
 
@@ -158,7 +166,7 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|optimus_mx250|nvidia|generic] [--potato-stream 2000|4000] [--grayscale] [--skip-static] [--rate-mode vbr|cbr] [--persistent-ingest] [--guardian] [--auto-survival] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui [--self-test [--self-test-json]]`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|optimus_mx250|nvidia|generic] [--potato-stream 2000|4000] [--grayscale] [--skip-static] [--rate-mode vbr|cbr] [--persistent-ingest] [--guardian] [--auto-survival] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 
@@ -166,7 +174,7 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Web demo (Vercel)
 
-`web/` is a separate static site: a 3D hero, a preset picker that estimates upload need and data use, install steps and a local screen-recording demo. It is a guide and calculator only, cannot stream, and never asks for a stream key. Deploy steps, preset export and its verification table are in [docs/FEATURES.md](docs/FEATURES.md#web-demo-vercel). Web rendering in headless Chromium (1280 and 390 px, light and dark) is VERIFIED (Chromium only); a WebGL hero on a real GPU, Firefox and Safari are UNVERIFIED.
+`web/` is a separate static companion site: a 3D hero, preset picker, install help, local screen-recording demo, and overlay shell. Its manifest lets Android Chrome and iPhone/iPad Safari add it to the home screen, and its versioned service worker caches the static companion shell. It cannot capture a phone screen or push RTMP, and it never asks for a stream key. Manifest/install metadata, CSP, and cache behavior are VERIFIED by Node tests; real Android/iOS installation, WebGL on a real GPU, Firefox, and Safari are UNVERIFIED. It is not an APK, AAB, or IPA broadcaster.
 
 ## Verification status
 
@@ -196,9 +204,11 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 | Auto-scale on real games and streams, threshold fit to real hardware | UNVERIFIED | not run |
 | Game FPS gain from Gaming First (thread cap, CPU affinity) | UNVERIFIED | not measured |
 | Telemetry on Windows and macOS, `nvidia-smi` GPU readings, GUI telemetry row and new controls | UNVERIFIED | Linux parsing tested on sample text only; no display |
-| Linux PyInstaller build (`tools/build_release.py`), tar.gz plus SHA256SUMS, runs headless and prints the no-screen message | VERIFIED | built for 0.8.0 with PyInstaller, extracted and run locally (GUI itself not shown, no display) |
-| Windows `.exe` zip, macOS `.app` zip and `.dmg` | UNVERIFIED | only tested with a faked PyInstaller |
-| Release workflow `release.yml` | UNVERIFIED | YAML parses; Actions is billing-locked, never run |
+| Frozen `--self-test` (imports, Tcl/Tk, app/portable roots, writable state, FFmpeg status) | VERIFIED in source and a real Linux x86_64 tarball | unit tests plus extracted v0.18 PyInstaller executable; missing FFmpeg correctly warned and returned 0 |
+| Linux v0.18 PyInstaller tar.gz, architecture name and checksum | VERIFIED on this Linux sandbox | built with PyInstaller 6.11.1, extracted, frozen self-test passed; GUI/capture not run |
+| Windows portable ZIP/MSI, macOS app ZIP/DMG/PKG, Linux AppImage/deb/rpm | UNVERIFIED native artifacts | deterministic source/metadata/command tests use fake native tools; not built or installed here |
+| Release workflow `release.yml` | UNVERIFIED | YAML parses and static tests cover provenance, pins, matrix, checks and secret-only signing; Actions is billing-locked and has never run |
+| Installable web companion manifest and offline shell | VERIFIED as static logic only | Node tests cover manifest fields, icons, install metadata, CSP, registration and cache fingerprint; real browser installation UNVERIFIED |
 | First-run FFmpeg dialog on a real GUI | UNVERIFIED | no display; guidance and validator logic are unit tested |
 
 ## Known limitations, portable mode and standalone builds
@@ -210,10 +220,11 @@ See [docs/FEATURES.md](docs/FEATURES.md#known-limitations) for the limitations l
 ```sh
 python3 -m unittest discover -s tests -v
 python3 -m compileall -q src
-```
-
-```sh
 node --test "web/test/*.test.js"
+python3 tools/export_presets.py --check
+python3 tools/generate_icons.py --check
+python3 tools/check_version.py
+python3 tools/page_weight.py
 ```
 
-CI runs the same commands on Linux and Windows (`.github/workflows/ci.yml`).
+CI runs the source checks on Linux and Windows. The billing-locked release workflow repeats them on every native runner before packaging.
