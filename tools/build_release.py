@@ -366,8 +366,13 @@ def _macos_notarize(path, run, which, environ, staple=True):
     if not profile:
         return
     xcrun = _require_tool(which, "xcrun")
-    _run_checked(run, [xcrun, "notarytool", "submit", path,
-                       "--keychain-profile", profile, "--wait"],
+    command = [xcrun, "notarytool", "submit", path,
+               "--keychain-profile", profile]
+    keychain = environ.get("LIGHTSTREAM_MACOS_KEYCHAIN")
+    if keychain:
+        command += ["--keychain", keychain]
+    command.append("--wait")
+    _run_checked(run, command,
                  "macOS notarization", capture_output=True, text=True,
                  timeout=900)
     if staple:

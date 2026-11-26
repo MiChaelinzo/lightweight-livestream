@@ -326,6 +326,29 @@ class NativeBuildPlanTests(unittest.TestCase):
                             for c in commands(run)))
         self.assertTrue(any(os.path.basename(c[0]) == "pkgutil" for c in commands(run)))
 
+    def test_optional_macos_signing_and_notarization_are_command_planned(self):
+        run = FakeRun("macos")
+        env = {
+            "LIGHTSTREAM_MACOS_APP_IDENTITY": "Developer ID Application: Example",
+            "LIGHTSTREAM_MACOS_INSTALLER_IDENTITY": "Developer ID Installer: Example",
+            "LIGHTSTREAM_MACOS_NOTARY_PROFILE": "lightstream-notary",
+            "LIGHTSTREAM_MACOS_KEYCHAIN": "/tmp/release.keychain-db",
+        }
+        names = br.build("macos", "9.9.9", self.out, run=run,
+                         find_module=has_pyinstaller, which=all_tools,
+                         machine="arm64", formats=("zip", "pkg"), environ=env)
+        self.assertIn("LightStream-9.9.9-macos-arm64-signed-notarized.zip", names)
+        self.assertIn("LightStream-9.9.9-macos-arm64-signed-notarized.pkg", names)
+        calls = commands(run)
+        self.assertTrue(any(os.path.basename(c[0]) == "codesign" and "--options" in c
+                            for c in calls))
+        submissions = [c for c in calls if len(c) > 2 and c[1:3] == ["notarytool", "submit"]]
+        self.assertEqual(len(submissions), 2)  # app submission ZIP and signed PKG
+        self.assertTrue(all("--keychain-profile" in c and "--keychain" in c
+                            for c in submissions))
+        self.assertTrue(any(os.path.basename(c[0]) == "pkgbuild" and "--sign" in c
+                            for c in calls))
+
     def test_linux_tar_appimage_deb_and_rpm_are_built_and_checked(self):
         run = FakeRun("linux")
         names = br.build("linux", "9.9.9", self.out, run=run,
