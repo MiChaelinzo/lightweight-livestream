@@ -25,7 +25,8 @@ class RepositoryArtifactPolicyTests(unittest.TestCase):
         for path in self.tracked_files():
             lowered = path.lower()
             segments = set(lowered.split("/"))
-            if lowered.endswith(FORBIDDEN_SUFFIXES) or segments & FORBIDDEN_SEGMENTS:
+            if (lowered.endswith(FORBIDDEN_SUFFIXES) or segments & FORBIDDEN_SEGMENTS
+                    or any(segment.startswith(".venv") for segment in segments)):
                 violations.append(path)
         self.assertEqual(violations, [], "forbidden tracked artifacts: " + ", ".join(violations))
 

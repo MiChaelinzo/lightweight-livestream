@@ -34,6 +34,7 @@ LightStreamPortable/
 *.exe
 *.app
 node_modules/
+.venv*/
 .playwright/
 ms-playwright/
 .android/
