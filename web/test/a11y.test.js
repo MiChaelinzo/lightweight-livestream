@@ -98,6 +98,12 @@ test("vercel.json CSP forbids unsafe-inline and keeps companion hosts path-scope
   assert.doesNotMatch(JSON.stringify(root), /twitch/);
   const sw = config.headers.find((h) => h.source === "/sw.js");
   assert.ok(sw.headers.some((h) => h.key === "Cache-Control" && h.value === "no-cache"));
+  const manifest = config.headers.find((h) => h.source === "/manifest.webmanifest");
+  assert.ok(manifest.headers.some((h) => h.key === "Content-Type" && h.value.startsWith("application/manifest+json")));
+  const icons = config.headers.find((h) => h.source === "/icons/(.*)");
+  const iconCache = icons.headers.find((h) => h.key === "Cache-Control").value;
+  assert.match(iconCache, /max-age=/);
+  assert.doesNotMatch(iconCache, /immutable/); // filenames are stable, not content hashes
 });
 
 test("companion renders chat with textContent only", () => {
