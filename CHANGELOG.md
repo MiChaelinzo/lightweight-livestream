@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased (v0.17)
+
+- Phone remote (`src/lightstream/remote.py`, opt-in, not yet wired into the GUI): local HTTP API on 127.0.0.1 with a random bearer token, Host-header check and failed-auth lockout. It exposes emergency, restore and stop only; start is not exposed and the stream key never passes through it. Added `StreamController.timeline_lines()`.
+
 ## 0.16.0
 
 - Version bumped to 0.16.0 (`pyproject.toml`, `__init__.py`, README artifact names, RELEASING example).

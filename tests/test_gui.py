@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -365,6 +366,28 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(any(port in part for part in calls[0][0]))
         self.assertTrue(any(port in part for part in seen["argv"]))
         self.assertIs(calls[0][1]["stop"], seen["kw"]["encoder_stop"])
+
+    def test_emergency_presses_from_many_threads_apply_once(self):
+        c = make_controller(fake_runner_factory([]))
+        c.start(PREFS, SECRET)
+        c._thread.join(0.3)
+        results = []
+        gate = threading.Barrier(8)
+
+        def press():
+            gate.wait()
+            results.append(c.emergency())
+
+        threads = [threading.Thread(target=press) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(5)
+        on = [r for r in results if "Emergency mode is on" in r]
+        self.assertEqual(1, len(on), results)
+        self.assertTrue(c.emergency_active())
+        self.assertEqual([], c.timeline_lines())   # timeline is opt-in
+        c.stop()
 
     def test_guardian_and_survival_are_off_unless_ticked(self):
         for pref in ("guardian", "auto_survival"):
