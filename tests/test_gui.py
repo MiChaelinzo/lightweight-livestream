@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import types
 import unittest
 from unittest import mock
 
@@ -388,6 +389,41 @@ class ControllerTests(unittest.TestCase):
         self.assertTrue(c.emergency_active())
         self.assertEqual([], c.timeline_lines())   # timeline is opt-in
         c.stop()
+
+    def test_survival_and_emergency_race_leaves_one_consistent_mode(self):
+        class AlwaysEnter:
+            enabled = True
+
+            def update(self, _sample):
+                return types.SimpleNamespace(kind="enter", reason="test")
+
+        outcomes = set()
+        for _ in range(15):
+            c = make_controller(fake_runner_factory([]))
+            c.start(dict(PREFS, guardian=True, auto_survival=True), SECRET)
+            c._thread.join(0.05)
+            scale = c._scale
+            scale.survival = AlwaysEnter()
+            gate = threading.Barrier(2)
+
+            def survive():
+                gate.wait()
+                scale.on_status("live", {})
+
+            def press():
+                gate.wait()
+                c.emergency()
+
+            threads = [threading.Thread(target=survive), threading.Thread(target=press)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(5)
+            outcomes.add((c.emergency_active(), scale.in_survival))
+            self.assertFalse(c.emergency_active() and scale.in_survival,
+                             "emergency and survival both active")
+            c.stop()
+        self.assertTrue(outcomes)
 
     def test_guardian_and_survival_are_off_unless_ticked(self):
         for pref in ("guardian", "auto_survival"):
