@@ -1,5 +1,6 @@
 import { startHero } from "./hero3d.js";
 import { setupCaptureDemo } from "./capture-demo.js";
+import { registerOffline } from "./register-sw.js";
 import {
   PC_CLASSES, describeCommand, gbPerHour, recommendPreset,
   requiredUploadMbps, streamKbps,
@@ -68,14 +69,6 @@ async function initPicker() {
   }
   for (const el of [select, upload, pc]) el.addEventListener("input", update);
   update();
-}
-
-// Offline shell. Optional: any failure leaves the site working online.
-function registerOffline() {
-  if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
-  navigator.serviceWorker.register("/sw.js", { type: "module" }).catch((err) => {
-    console.warn("Offline mode unavailable:", err.message);
-  });
 }
 
 initHero();

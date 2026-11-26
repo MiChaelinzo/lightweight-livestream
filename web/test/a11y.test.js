@@ -8,7 +8,11 @@ import { join } from "node:path";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
 const read = (p) => readFileSync(join(WEB, p), "utf8");
-const PAGES = { "index.html": read("index.html"), "companion/index.html": read("companion/index.html") };
+const PAGES = {
+  "index.html": read("index.html"),
+  "install/index.html": read("install/index.html"),
+  "companion/index.html": read("companion/index.html"),
+};
 
 function ids(html) {
   return [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
@@ -21,6 +25,16 @@ test("pages declare lang, viewport, title, one h1 and a main landmark", () => {
     assert.match(html, /<title>[^<]+<\/title>/, name);
     assert.equal((html.match(/<h1[\s>]/g) || []).length, 1, name + " h1 count");
     assert.match(html, /<main[\s>]/, name);
+  }
+});
+
+test("installable pages expose manifest and Apple metadata", () => {
+  for (const name of ["index.html", "install/index.html"]) {
+    const html = PAGES[name];
+    assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/, name);
+    assert.match(html, /<link rel="icon" href="\/icons\/lightstream\.svg" type="image\/svg\+xml">/, name);
+    assert.match(html, /<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon-180\.png">/, name);
+    assert.match(html, /<meta name="theme-color" content="#101730">/, name);
   }
 });
 

@@ -1,22 +1,31 @@
 // Pure cache rules for sw.js. No browser APIs here so node can test them.
 
-// Bump when any cached .js or .css file changes so old caches are dropped on
-// activate. The suffix is a content fingerprint; web/test/sw-logic.test.js
-// fails and prints the new value when it is out of date.
-export const CACHE_NAME = "lightstream-shell-v1-facf26a3";
+// Bump when any offline-shell file changes so old caches are dropped on
+// activate. The suffix is a content fingerprint across text and binary shell
+// files; web/test/sw-logic.test.js prints the new value when it is stale.
+export const CACHE_NAME = "lightstream-shell-v2-8d999269";
 
 // Same-origin files cached on install. presets.json is cached too (offline
 // fallback) but is always tried on the network first.
 export const SHELL_FILES = [
   "/",
   "/style.css",
+  "/manifest.webmanifest",
   "/presets.json",
+  "/icons/lightstream.svg",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/maskable-512.png",
+  "/icons/apple-touch-icon-180.png",
   "/js/app.js",
   "/js/hero3d.js",
   "/js/geometry.js",
   "/js/capture-demo.js",
   "/js/presets-logic.js",
+  "/js/register-sw.js",
+  "/js/install.js",
   "/js/sw-logic.js",
+  "/install/",
   "/companion/",
   "/companion/companion.css",
   "/companion/companion.js",
