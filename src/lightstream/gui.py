@@ -26,6 +26,7 @@ except ImportError:  # some Linux Pythons ship without tkinter
 from . import gui_controller as gc
 from . import gui_pages as gp
 from . import gui_theme as gt
+from . import remote as rm
 from .telemetry import TelemetrySampler, UNKNOWN_SAMPLE
 from .cli import cmd_doctor
 from .config import scenes_path
@@ -140,6 +141,10 @@ class StreamWindow:
         self.auto_survival = tk.BooleanVar(value=saved.get("auto_survival") is True)
         self.persistent_ingest = tk.BooleanVar(
             value=saved.get("persistent_ingest") is True)
+        self.remote = tk.BooleanVar(value=saved.get("remote") is True)
+        self.remote_lan = tk.BooleanVar(value=saved.get("remote_lan") is True)
+        self.remote_url = tk.StringVar(value="")
+        self.remote_session = rm.RemoteSession(self.controller)
         self.backup_url = tk.StringVar(value=saved.get("backup_url") or "")
         self.noise = saved.get("noise")
         self.status = tk.StringVar(value="")
@@ -385,6 +390,10 @@ class StreamWindow:
         self.compare_label.pack(fill="x")
         self.advice = ttk.Label(frame, text="", wraplength=WRAP, justify="left")
         self.advice.pack(fill="x")
+        self.timeline_view = tk.Text(frame, height=4, state="disabled", relief="flat",
+                                     borderwidth=1, highlightthickness=1, padx=6, pady=4)
+        self.timeline_view.pack(fill="x", pady=(8, 0))
+        self._shown_timeline = None
         self.rec_frame = self._card(
             frame, "Suggestions (nothing changes unless you press Apply)")
         self._shown_recs = None
@@ -565,11 +574,12 @@ class StreamWindow:
     def _style_plain_widgets(self):
         """Classic tk widgets ignore ttk styles, so color them directly."""
         c = gt.palette(self.theme)
-        if hasattr(self, "log"):
-            self.log.config(bg=c["surface"], fg=c["foreground"], font="TkFixedFont",
-                            insertbackground=c["foreground"],
-                            highlightbackground=c["card_border"],
-                            highlightcolor=c["focus"])
+        for name in ("log", "timeline_view"):
+            if hasattr(self, name):
+                getattr(self, name).config(
+                    bg=c["surface"], fg=c["foreground"], font="TkFixedFont",
+                    insertbackground=c["foreground"],
+                    highlightbackground=c["card_border"], highlightcolor=c["focus"])
         if hasattr(self, "scene_list"):
             self.scene_list.config(bg=c["surface"], fg=c["foreground"],
                                    selectbackground=c["accent"],
@@ -771,8 +781,27 @@ class StreamWindow:
                  "this PC, never contains your key)", self.analytics)):
             ttk.Checkbutton(frame, text=text, variable=variable).pack(
                 anchor="w", pady=(8, 0))
+        ttk.Checkbutton(frame, text=rm.REMOTE_LABEL, variable=self.remote).pack(
+            anchor="w", pady=(8, 0))
+        ttk.Checkbutton(frame, text=rm.REMOTE_LAN_LABEL,
+                        variable=self.remote_lan).pack(anchor="w", padx=(20, 0))
+        self._hint(frame, rm.REMOTE_LAN_WARNING + " " + rm.REMOTE_HINT)
+        row = ttk.Frame(frame)
+        row.pack(fill="x", pady=(2, 0))
+        self.remote_entry = ttk.Entry(row, textvariable=self.remote_url,
+                                      state="readonly")
+        self.remote_entry.pack(side="left", fill="x", expand=True)
+        ttk.Button(row, text="Copy link", command=self.on_copy_remote).pack(
+            side="left", padx=(6, 0))
 
-    # -- actions --------------------------------------------------------------
+    # -- actions ---------------------------------------------------------------
+    def on_copy_remote(self):
+        if self.remote_url.get():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(self.remote_url.get())
+            self.status.set("Remote link copied.")
+        else:
+            self.status.set("The remote link appears once a stream is running.")
     def on_compare(self):
         self.compare_label.config(text="\n".join(self.controller.comparison_lines()))
 
@@ -807,6 +836,8 @@ class StreamWindow:
             "persistent_ingest": self.persistent_ingest.get(),
             "guardian": self.guardian.get(),
             "auto_survival": self.auto_survival.get(),
+            "remote": self.remote.get(),
+            "remote_lan": self.remote_lan.get(),
         }
 
     def apply_prefs(self, prefs):
@@ -934,6 +965,8 @@ class StreamWindow:
     def poll(self):
         text, color, help_text, log_text, running = self.controller.snapshot()
         self._paint_banner(text, color)
+        self.remote_url.set(self.remote_session.sync(
+            running, self.remote.get(), self.remote_lan.get()) or "")
         if help_text:
             self.status.set(help_text)
         if "dashboard" in self._pages:
@@ -995,6 +1028,13 @@ class StreamWindow:
             self._record_graphs(self.controller.health_summary(),
                                 self.telemetry.latest)
             self._draw_graphs()
+        timeline = rm.timeline_text(self.controller.timeline_lines())
+        if timeline != self._shown_timeline:
+            self._shown_timeline = timeline
+            self.timeline_view.config(state="normal")
+            self.timeline_view.delete("1.0", "end")
+            self.timeline_view.insert("end", timeline)
+            self.timeline_view.config(state="disabled")
         if log_text != self._shown_log:
             self._shown_log = log_text
             self.log.config(state="normal")
@@ -1070,6 +1110,8 @@ class StreamWindow:
     def on_close(self, waited=0):
         """Ask ffmpeg to stop, then close once it has (or after a few seconds)."""
         self.controller.stop(wait=False)
+        self.remote.set(False)  # stops the poll from reopening it
+        self.remote_session.close()
         if self.controller.is_running() and waited < CLOSE_WAIT_MS:
             self.root.after(100, lambda: self.on_close(waited + 100))
         else:

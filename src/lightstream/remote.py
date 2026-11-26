@@ -28,6 +28,17 @@ LOCKOUT_SECONDS = 30.0
 STATUS_LOG_CHARS = 2000
 STATUS_TIMELINE_LINES = 10
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]")
+LAN_HOST = "0.0.0.0"
+
+REMOTE_LABEL = "Phone remote (this PC network only, off by default)"
+REMOTE_LAN_LABEL = "Allow my home network"
+REMOTE_LAN_WARNING = ("Anyone on your home network who gets the link below can "
+                      "press Emergency or Stop. Keep the link private. The remote "
+                      "can never start a stream or see your key.")
+REMOTE_HINT = ("Starts when you start a stream and stops when it ends. "
+               "The link holds a one-time token. It is not saved.")
+TIMELINE_EMPTY = ("Session timeline: nothing recorded yet. Events appear here "
+                  "when Guardian or Auto-survival is on.")
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -250,3 +261,48 @@ class RemoteServer:
         self._thread.join(5)
         self._httpd = None
         self._thread = None
+
+
+def bind_host(lan):
+    """Loopback unless the user explicitly allowed the home network."""
+    return LAN_HOST if lan is True else DEFAULT_HOST
+
+
+def timeline_text(lines):
+    """Text for the read-only timeline area."""
+    return "\n".join(lines) if lines else TIMELINE_EMPTY
+
+
+class RemoteSession:
+    """Owns the optional RemoteServer for the GUI. sync() is called from the
+    tkinter timer, so no extra threads are created here. The token lives only
+    in the server object, never in prefs."""
+
+    def __init__(self, backend, server_factory=RemoteServer):
+        self._backend = backend
+        self._factory = server_factory
+        self._server = None
+
+    @property
+    def url(self):
+        return self._server.url if self._server is not None else None
+
+    def sync(self, running, enabled, lan):
+        """Start while a stream runs and the remote is enabled; stop otherwise.
+        Returns the current URL or None."""
+        wanted = bool(running) and enabled is True
+        if wanted and self._server is None:
+            server = self._factory(self._backend, host=bind_host(lan))
+            try:
+                server.start()
+            except OSError:
+                return None
+            self._server = server
+        elif not wanted and self._server is not None:
+            self.close()
+        return self.url
+
+    def close(self):
+        if self._server is not None:
+            self._server.stop()
+            self._server = None

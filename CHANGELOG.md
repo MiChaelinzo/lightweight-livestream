@@ -2,7 +2,9 @@
 
 ## Unreleased (v0.17)
 
-- Phone remote (`src/lightstream/remote.py`, opt-in, not yet wired into the GUI): local HTTP API on 127.0.0.1 with a random bearer token, Host-header check and failed-auth lockout. It exposes emergency, restore and stop only; start is not exposed and the stream key never passes through it. Added `StreamController.timeline_lines()`.
+- Phone remote (`src/lightstream/remote.py`, opt-in): local HTTP API on 127.0.0.1 with a random bearer token, Host-header check and failed-auth lockout. It exposes emergency, restore and stop only; start is not exposed and the stream key never passes through it. Added `StreamController.timeline_lines()`.
+- GUI: Advanced page checkboxes "Phone remote (this PC network only, off by default)" and "Allow my home network" (prefs `remote`, `remote_lan`; the token is never saved), a read-only link box with Copy link, and a themed "Session timeline" box on the Dashboard. `remote.RemoteSession` starts the server only while a stream runs and stops it on stream end, untick or window close. GUI only: no CLI `--remote` flag (the CLI has no emergency/restore controller). Idle budget unchanged within noise (see the task findings).
+- Test: Auto-survival entering at the same moment as an Emergency press never leaves both modes active.
 
 ## 0.16.0
 

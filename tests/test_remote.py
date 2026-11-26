@@ -149,5 +149,85 @@ class RemoteTests(unittest.TestCase):
         self.assertGreaterEqual(len(a.token), 24)
 
 
+class FakeServer:
+    instances = []
+
+    def __init__(self, backend, host="127.0.0.1"):
+        self.host = host
+        self.token = "tok"
+        self.started = self.stopped = False
+        FakeServer.instances.append(self)
+
+    @property
+    def url(self):
+        return "http://%s:1/#tok" % self.host if self.started and not self.stopped else None
+
+    def start(self):
+        self.started = True
+
+    def stop(self):
+        self.stopped = True
+
+
+class RemoteSessionTests(unittest.TestCase):
+    def setUp(self):
+        FakeServer.instances = []
+        self.session = remote.RemoteSession(FakeBackend(), FakeServer)
+
+    def test_off_by_default_never_starts(self):
+        self.assertIsNone(self.session.sync(True, False, False))
+        self.assertEqual([], FakeServer.instances)
+
+    def test_starts_only_while_running_and_stops_after(self):
+        self.assertIsNone(self.session.sync(False, True, False))
+        self.assertIn("127.0.0.1", self.session.sync(True, True, False))
+        self.session.sync(True, True, False)
+        self.assertEqual(1, len(FakeServer.instances))
+        self.assertIsNone(self.session.sync(False, True, False))
+        self.assertTrue(FakeServer.instances[0].stopped)
+
+    def test_lan_binds_all_interfaces_only_when_true(self):
+        self.assertEqual("0.0.0.0", remote.bind_host(True))
+        self.assertEqual("127.0.0.1", remote.bind_host(False))
+        self.assertEqual("127.0.0.1", remote.bind_host("yes"))
+
+    def test_untick_and_close_stop_the_server(self):
+        self.session.sync(True, True, False)
+        self.session.sync(True, False, False)
+        self.assertTrue(FakeServer.instances[0].stopped)
+        self.session.sync(True, True, False)
+        self.session.close()
+        self.assertTrue(FakeServer.instances[1].stopped)
+        self.assertIsNone(self.session.url)
+
+    def test_port_failure_is_not_fatal(self):
+        class Busy(FakeServer):
+            def start(self):
+                raise OSError("in use")
+        session = remote.RemoteSession(FakeBackend(), Busy)
+        self.assertIsNone(session.sync(True, True, False))
+
+    def test_timeline_text(self):
+        self.assertEqual("a\nb", remote.timeline_text(["a", "b"]))
+        self.assertIn("nothing recorded", remote.timeline_text([]))
+
+
+class RemotePrefsTests(unittest.TestCase):
+    def test_flags_round_trip_and_token_never_saved(self):
+        import tempfile
+        from lightstream import gui_controller as gc
+        server = remote.RemoteServer(FakeBackend(), token="SECRETTOKEN123")
+        prefs = {"remote": True, "remote_lan": False, "token": server.token,
+                 "remote_url": "http://x/#" + server.token}
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "p.json")
+            gc.save_prefs(path, prefs)
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+            loaded = gc.load_prefs(path)
+        self.assertNotIn("SECRETTOKEN123", text)
+        self.assertEqual({"remote": True, "remote_lan": False}, loaded)
+
+
 if __name__ == "__main__":
     unittest.main()

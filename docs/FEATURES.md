@@ -326,3 +326,10 @@ The zipapp recipe is VERIFIED on Linux (`presets` and `start --help` ran from th
 - Profiles `potato_pc`, `office_laptop` and `budget_gaming`: see [PROFILES.md](PROFILES.md).
 - Not detected: laughing, kill streaks, chat explosions. LightStream does not read chat.
 - Status: state machines, rules and argv VERIFIED by unit tests with fake clocks and golden files; predictor VERIFIED on synthetic traces only; real machines, real streams and the GUI checkboxes rendering UNVERIFIED. Map and limits: [architecture/V016-MAP.md](architecture/V016-MAP.md).
+
+### Phone remote and session timeline in the window (0.17, unreleased)
+
+- Advanced page: "Phone remote (this PC network only, off by default)". When ticked, a small local web page starts with the next stream and stops when the stream ends or the window closes. It binds 127.0.0.1. A second box, "Allow my home network", binds all interfaces and shows a warning. The link carries a random token in the `#` fragment; the token is never written to preferences or logs. The page offers Emergency, Restore and Stop. It cannot start a stream and never sees the key.
+- GUI only. `lightstream start` has no `--remote` flag: the CLI has no controller object with emergency and restore, and adding one would duplicate the GUI controller.
+- Dashboard: a read-only "Session timeline" box shows the same event lines as the end-of-session output while Guardian or Auto-survival is on. It is filled by the existing window timer, so no extra thread is added.
+- Status: start/stop lifecycle, LAN opt-in and prefs (no token saved) VERIFIED by unit tests with a fake server; the HTTP server itself VERIFIED by loopback tests; rendering VERIFIED on Linux under Xvfb only; a real phone on a real network UNVERIFIED.
