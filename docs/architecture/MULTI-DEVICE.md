@@ -45,7 +45,7 @@ This section is design only. No viewer or relay code exists and nothing listens 
 | Tablet or phone viewer | Roadmap | Needs a viewer app or a page plus a transport the phone can play. Browser-playable transports (HLS, WebRTC) need a packager or relay that this project does not ship |
 | Browser viewing | Roadmap | Same constraint. HLS from ffmpeg adds several seconds of delay |
 | Cloud relay | Roadmap | Third-party relays (an SRT or RTMP server) can be reached today through a custom URL. A hosted LightStream relay is not planned: it needs accounts, cost and security work |
-| Mobile remote control | Roadmap | See ROADMAP.md (loopback token API, not started) |
+| Mobile remote control | Partial (0.17) | GUI-only token API with Emergency, Restore and Stop; see [V017-MAP.md](V017-MAP.md). A real phone is UNVERIFIED |
 
 ## 4. OBS-style layers
 

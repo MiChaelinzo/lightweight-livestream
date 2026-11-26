@@ -462,3 +462,18 @@ Findings:
 | step from 1.0 to 0.6 at 90 s | flagged 9 to 10 s after the step: a step is not predicted ahead |
 
 The output queue length is not available from ffmpeg progress lines or `network.py`, so it is not used.
+
+## v0.17 idle budget with the phone remote code present
+
+Status: VERIFIED for these numbers on this one sandbox (Xvfb, no GPU, same machine for both columns). Real desktops, Windows and macOS are UNVERIFIED.
+
+Method: `python3 tools/idle_budget.py --duration 20` under Xvfb, as in the v0.16 section. "Before" is commit 7bf16d8 (before the GUI changes) run from a git worktree; "after" is the 0.17 branch. The remote is off by default, so no server socket exists at idle in either run. Two runs each.
+
+| Build | startup_s | rss_mb | idle CPU mean |
+|---|---|---|---|
+| before, run 1 | 0.347 | 38.39 | 0.3% |
+| before, run 2 | 0.212 | 38.73 | 0.3% |
+| after, run 1 | 0.163 | 38.79 | 0.3% |
+| after, run 2 | 0.159 | 38.78 | 0.2% |
+
+Reading: RSS is about 0.1 to 0.4 MB higher and the other values are inside run-to-run noise (two runs per side; the before startup differs by 0.135 s between its own runs). Do not read the lower startup as a speedup. The budgets (startup under 2 s, RSS under 150 MB, CPU under 5 percent) hold. Cost while the remote is running and serving a phone was not measured.

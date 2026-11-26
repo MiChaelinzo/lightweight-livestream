@@ -11,7 +11,7 @@ Branch `feat/v0.16-guardian` off 0.15.0. Environment: Linux sandbox, 8 cores, Py
 
 | Suite | Result | Status |
 |---|---|---|
-| `python3 -m unittest discover -s tests` | 828 tests, OK (3 skipped, display-gated) | VERIFIED |
+| `python3 -m unittest discover -s tests` | 828 tests, OK (3 skipped, display-gated; the 0.17 branch baseline was 913 tests, 4 skipped without `LIGHTSTREAM_TEST_FFMPEG`) | VERIFIED |
 | `node --test "web/test/*.test.js"` | 42 pass, 0 fail | VERIFIED |
 
 ## Feature map
@@ -77,7 +77,7 @@ Branch `feat/v0.16-guardian` off 0.15.0. Environment: Linux sandbox, 8 cores, Py
 
 | Suite | Result | Status |
 |---|---|---|
-| `python3 -m unittest discover -s tests` | 911 tests, OK (4 skipped, display-gated; the idle GUI test needs DISPLAY) | VERIFIED |
+| `python3 -m unittest discover -s tests` | 911 tests, OK (4 skipped, display-gated; the idle GUI test needs DISPLAY). Later counted as 913 tests, 4 skipped with `LIGHTSTREAM_TEST_FFMPEG` set | VERIFIED |
 | `node --test "web/test/*.test.js"` | 43 pass, 0 fail | VERIFIED |
 | `tools/export_presets.py --check` | up to date | VERIFIED |
 | `python3 -m compileall -q src` | clean | VERIFIED |
