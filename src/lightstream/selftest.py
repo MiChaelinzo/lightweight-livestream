@@ -156,12 +156,33 @@ def format_plain(report):
     return "\n".join(lines) + "\n"
 
 
-def main(json_output=False, out=None, **kwargs):
-    """Run the self-test and return 0 unless an integrity check failed."""
-    out = out or sys.stdout
+def main(json_output=False, out=None, output_path=None, **kwargs):
+    """Run the self-test and return 0 unless an integrity check failed.
+
+    ``output_path`` supports windowed frozen applications where Python sets
+    ``sys.stdout`` and ``sys.stderr`` to ``None``. Without a console or an
+    explicit file the checks still run and the process exit code remains useful.
+    """
     report = collect_report(**kwargs)
-    if json_output:
-        out.write(json.dumps(report, sort_keys=True) + "\n")
+    text = (json.dumps(report, sort_keys=True) + "\n"
+            if json_output else format_plain(report))
+    handle = None
+    close_handle = False
+    if output_path:
+        try:
+            handle = open(output_path, "w", encoding="utf-8", newline="\n")
+            close_handle = True
+        except OSError as exc:
+            fallback = out if out is not None else sys.stderr
+            if fallback is not None:
+                fallback.write("Self-test could not write %s: %s\n" % (output_path, exc))
+            return 1
     else:
-        out.write(format_plain(report))
+        handle = out if out is not None else sys.stdout
+    try:
+        if handle is not None:
+            handle.write(text)
+    finally:
+        if close_handle:
+            handle.close()
     return 0 if report["ok"] else 1

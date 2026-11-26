@@ -43,7 +43,7 @@ Exact native names include version, platform, and architecture, for example `Lig
 
 - **FFmpeg is not included.** The first-run window explains where to get it and offers **Choose ffmpeg file...**.
 - **Unsigned warnings are expected.** Verify `SHA256SUMS.txt`, then follow the Windows SmartScreen or macOS Gatekeeper steps in [docs/INSTALLING.md](docs/INSTALLING.md).
-- **Run package integrity checks without a window:** `lightstream gui --self-test`, or run a frozen executable with `--self-test`. Add `--self-test-json` for structured output. Missing FFmpeg is a warning, not a failed app-integrity check.
+- **Run package integrity checks without a window:** `lightstream gui --self-test`, or run a frozen executable with `--self-test`. Add `--self-test-json` for structured output and `--self-test-output FILE` for a Windows windowed executable with no console. Missing FFmpeg is a warning, not a failed app-integrity check.
 - **Mobile means companion only.** Android Chrome and iPhone/iPad Safari can add the web companion to the home screen. There is no APK, AAB, or IPA broadcaster.
 
 See [docs/INSTALLING.md](docs/INSTALLING.md) for exact install, FFmpeg, uninstall, checksum, unsigned-warning, and troubleshooting steps.
@@ -166,7 +166,7 @@ The key is read from the `STREAM_KEY` environment variable or typed at a hidden 
 
 ## Commands
 
-`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui [--self-test [--self-test-json]]`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|optimus_mx250|nvidia|generic] [--potato-stream 2000|4000] [--grayscale] [--skip-static] [--rate-mode vbr|cbr] [--persistent-ingest] [--guardian] [--auto-survival] [--dry-run]`
+`lightstream doctor`, `devices`, `presets`, `profiles`, `init`, `gui [--self-test [--self-test-json] [--self-test-output FILE]]`, `setup [--yes] [--platform NAME] [--upload-mbps N]`, `bandwidth [--platform NAME] [--upload-mbps N | --measure-url URL] [--hardware NAME]`, `scenes list|validate|example|export|import [--scenes-file FILE]`, `start [--platform twitch|youtube|facebook|custom] [--url URL] [--preset NAME] [--fps N] [--res WxH] [--bitrate K] [--window TITLE] [--audio-device NAME] [--video-device INDEX] [--mute] [--test-local [FILE]] [--keep-trying] [--encoder NAME] [--software] [--scene NAME] [--scenes-file FILE] [--record [FILE]] [--no-record] [--analytics] [--profile NAME] [--stream-preset NAME] [--audio-profile NAME] [--noise off|light|ai] [--noise-model PATH] [--hardware auto|intel_hd|intel_hd_optimized|nvidia_mx|mx250_streamer|optimus_mx250|nvidia|generic] [--potato-stream 2000|4000] [--grayscale] [--skip-static] [--rate-mode vbr|cbr] [--persistent-ingest] [--guardian] [--auto-survival] [--dry-run]`
 
 `--keep-trying` never gives up reconnecting. `--video-device` (macOS) picks the screen. On Linux the capture follows `$DISPLAY`.
 

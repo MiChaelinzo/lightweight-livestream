@@ -24,11 +24,12 @@ class FakeRun:
     """Create the outputs of native build tools without executing them."""
 
     def __init__(self, target, pyinstaller_returncode=0, produce=True,
-                 smoke_returncode=0):
+                 smoke_returncode=0, smoke_report=True):
         self.target = target
         self.pyinstaller_returncode = pyinstaller_returncode
         self.produce = produce
         self.smoke_returncode = smoke_returncode
+        self.smoke_report = smoke_report
         self.calls = []
         self.dmg_has_applications_link = False
 
@@ -41,8 +42,15 @@ class FakeRun:
             return subprocess.CompletedProcess(cmd, self.pyinstaller_returncode, "", "")
 
         if "--self-test" in cmd:
+            if self.smoke_report is not None and "--self-test-output" in cmd:
+                path = cmd[cmd.index("--self-test-output") + 1]
+                payload = ({"app": "LightStream", "ok": True, "checks": []}
+                           if self.smoke_report is True else self.smoke_report)
+                data = (json.dumps(payload).encode("utf-8") if isinstance(payload, dict)
+                        else str(payload).encode("utf-8"))
+                self._write(path, data)
             return subprocess.CompletedProcess(cmd, self.smoke_returncode,
-                                               '{"ok": true}\n', "")
+                                               "", "")
         tool = os.path.basename(cmd[0])
         if tool == "wix" and "build" in cmd:
             self._write(cmd[cmd.index("-o") + 1], b"fake-msi")
@@ -290,6 +298,7 @@ class NativeBuildPlanTests(unittest.TestCase):
         smoke = [c for c in commands(run) if "--self-test" in c]
         self.assertEqual(len(smoke), 2)
         self.assertTrue(all("--self-test-json" in c for c in smoke))
+        self.assertTrue(all("--self-test-output" in c for c in smoke))
         self.assertTrue(any(os.path.basename(c[0]) == "wix" for c in commands(run)))
 
     def test_optional_windows_signing_is_secret_driven_and_named(self):
@@ -391,6 +400,16 @@ class NativeBuildPlanTests(unittest.TestCase):
                      find_module=has_pyinstaller, which=all_tools,
                      machine="x86_64", formats=("tar.gz",), environ={})
         self.assertIn("self-test failed", str(context.exception))
+
+    def test_smoke_test_requires_a_valid_passing_json_report(self):
+        executable = os.path.join(self.tmp.name, "LightStream")
+        with open(executable, "wb") as handle:
+            handle.write(b"fake")
+        for report in (None, "not-json", {"app": "LightStream", "ok": False},
+                       {"app": "WrongApp", "ok": True}):
+            with self.subTest(report=report):
+                with self.assertRaises(br.BuildError):
+                    br.smoke_test(executable, run=FakeRun("linux", smoke_report=report))
 
     def test_checksums_match_every_artifact(self):
         names = br.build("linux", "9.9.9", self.out, run=FakeRun("linux"),

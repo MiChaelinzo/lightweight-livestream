@@ -1118,12 +1118,38 @@ class StreamWindow:
             self.root.destroy()
 
 
+def _option_value(argv, name):
+    values = []
+    prefix = name + "="
+    for index, argument in enumerate(argv):
+        if argument.startswith(prefix):
+            values.append(argument[len(prefix):])
+        elif argument == name:
+            if index + 1 >= len(argv) or argv[index + 1].startswith("--"):
+                raise ValueError("%s needs a file path" % name)
+            values.append(argv[index + 1])
+    if len(values) > 1:
+        raise ValueError("%s may be given only once" % name)
+    if values and not values[0]:
+        raise ValueError("%s needs a file path" % name)
+    return values[0] if values else None
+
+
 def main(argv=None, out=None):
     argv = list(sys.argv[1:] if argv is None else argv)
-    out = out or sys.stdout
+    out = out if out is not None else (sys.stdout if sys.stdout is not None else io.StringIO())
+    try:
+        output_path = _option_value(argv, "--self-test-output")
+    except ValueError as exc:
+        print("Error: %s" % exc, file=out)
+        return 2
+    if output_path and "--self-test" not in argv:
+        print("Error: --self-test-output requires --self-test", file=out)
+        return 2
     if "--self-test" in argv:
         from .selftest import main as selftest_main
-        return selftest_main(json_output="--self-test-json" in argv, out=out)
+        return selftest_main(json_output="--self-test-json" in argv, out=out,
+                             output_path=output_path)
     if tk is None:
         print(NO_GUI_MESSAGE, file=out)
         return 1

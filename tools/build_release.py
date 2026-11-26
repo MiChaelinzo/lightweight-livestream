@@ -15,6 +15,7 @@ Use ``--formats`` for a smaller local build, for example ``--formats tar.gz``.
 import argparse
 import gzip
 import hashlib
+import json
 import os
 import platform as platform_module
 import plistlib
@@ -303,10 +304,25 @@ def _run_checked(run, command, description, **kwargs):
 def smoke_test(executable, run=subprocess.run, extra_args=(), environ=None):
     if not os.path.isfile(executable):
         raise BuildError("Smoke-test executable was not produced: %s" % executable)
-    command = [executable] + list(extra_args) + ["--self-test", "--self-test-json"]
-    _run_checked(run, command, "Packaged application self-test",
-                 capture_output=True, text=True, timeout=SMOKE_TIMEOUT_SECONDS,
-                 env=environ)
+    with tempfile.TemporaryDirectory(prefix="lightstream-self-test-") as report_dir:
+        report_path = os.path.join(report_dir, "report.json")
+        command = ([executable] + list(extra_args) +
+                   ["--self-test", "--self-test-json",
+                    "--self-test-output", report_path])
+        _run_checked(run, command, "Packaged application self-test",
+                     capture_output=True, text=True, timeout=SMOKE_TIMEOUT_SECONDS,
+                     env=environ)
+        try:
+            with open(report_path, "r", encoding="utf-8") as handle:
+                report = json.load(handle)
+        except (OSError, ValueError) as exc:
+            raise BuildError("Packaged application self-test did not write valid JSON: %s"
+                             % exc)
+        if not isinstance(report, dict) or report.get("ok") is not True:
+            raise BuildError("Packaged application self-test report did not pass.")
+        if report.get("app") != APP_NAME:
+            raise BuildError("Packaged application self-test reported the wrong app identity.")
+        return report
 
 
 def _require_tool(which, name, environment=None, variable=None):
@@ -861,7 +877,7 @@ def plan(target, version, output, machine=None, formats=None):
     formats = resolve_formats(target, formats)
     steps = ["platform: " + target, "architecture: " + architecture,
              "version: " + version, "formats: " + ", ".join(formats),
-             "PyInstaller executable self-test: --self-test --self-test-json"]
+             "PyInstaller executable self-test: --self-test --self-test-json --self-test-output <temporary-file>"]
     for kind in formats:
         steps.append("artifact: " + os.path.join(
             output, artifact_name(version, target, architecture, kind)))

@@ -190,13 +190,24 @@ The companion can cache its static guide, install help, calculator, and overlay 
 
 The self-test does not open a GUI or start a stream. It checks frozen imports, Tcl/Tk availability, app and portable roots, writable state storage, and FFmpeg discovery. A missing FFmpeg produces a warning and exit code 0. Broken app imports or unwritable state produce a nonzero exit.
 
-```powershell
-# Windows portable
-.\LightStream.exe --self-test
+Windows release executables use the GUI subsystem, so they have no console stream. Write the structured report to a file, then read it:
 
-# Windows MSI
-& "$env:LOCALAPPDATA\Programs\LightStream\LightStream.exe" --self-test
+```powershell
+$report = Join-Path $env:TEMP "lightstream-self-test.json"
+
+# Windows portable
+.\LightStream.exe --self-test --self-test-json --self-test-output $report
+
+# Or, for the Windows MSI install
+& "$env:LOCALAPPDATA\Programs\LightStream\LightStream.exe" `
+  --self-test --self-test-json --self-test-output $report
+
+$exitCode = $LASTEXITCODE
+Get-Content $report
+$exitCode
 ```
+
+`--self-test` without an output file still returns the integrity exit code in a windowed build, but it has nowhere to display the report.
 
 ```sh
 # macOS
@@ -209,13 +220,13 @@ The self-test does not open a GUI or start a stream. It checks frozen imports, T
 lightstream gui --self-test
 ```
 
-Add `--self-test-json` for one machine-readable JSON object.
+Add `--self-test-json` for one machine-readable JSON object. `--self-test-output FILE` writes either the plain or JSON form to a file and is the useful transport for a windowed Windows executable.
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| App does not start | Run `--self-test` from a terminal and keep its output. Verify that you downloaded the correct architecture |
+| App does not start | Run `--self-test`; on a Windows release executable also use `--self-test-json --self-test-output FILE`. Verify that you downloaded the correct architecture |
 | FFmpeg warning | Install FFmpeg or use **Choose ffmpeg file...**. Missing FFmpeg does not mean the app package is corrupt |
 | Linux says `GLIBC_x.y not found` | The distribution is older than the build baseline. Use the Python source install or rebuild on that older supported distribution |
 | Linux window does not open | Run from an X11 desktop session. Current capture is X11, not Wayland portal capture |

@@ -102,6 +102,31 @@ class SelfTestReportTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertIsInstance(payload["checks"], list)
 
+    def test_output_file_works_when_windowed_app_has_no_console(self):
+        kwargs = dict(root=self.root, environ=self.environ, platform_name="linux",
+                      importer=fake_importer, ffmpeg_finder=lambda: None)
+        path = os.path.join(self.tmp.name, "self-test.json")
+        with mock.patch.object(sys, "stdout", None), mock.patch.object(sys, "stderr", None):
+            self.assertEqual(selftest.main(json_output=True, output_path=path, **kwargs), 0)
+        with open(path, encoding="utf-8") as handle:
+            payload = json.load(handle)
+        self.assertTrue(payload["ok"])
+
+    def test_no_console_without_output_file_still_returns_integrity_status(self):
+        kwargs = dict(root=self.root, environ=self.environ, platform_name="linux",
+                      importer=fake_importer, ffmpeg_finder=lambda: None)
+        with mock.patch.object(sys, "stdout", None), mock.patch.object(sys, "stderr", None):
+            self.assertEqual(selftest.main(**kwargs), 0)
+
+    def test_unwritable_output_file_returns_nonzero_without_traceback(self):
+        out = io.StringIO()
+        bad_path = os.path.join(self.tmp.name, "missing", "report.json")
+        self.assertEqual(selftest.main(output_path=bad_path, out=out, root=self.root,
+                                       environ=self.environ, platform_name="linux",
+                                       importer=fake_importer,
+                                       ffmpeg_finder=lambda: None), 1)
+        self.assertIn("could not write", out.getvalue())
+
 
 class SelfTestEntryPointTests(unittest.TestCase):
     def test_gui_self_test_runs_before_tk_window_creation(self):
@@ -109,13 +134,32 @@ class SelfTestEntryPointTests(unittest.TestCase):
         with mock.patch("lightstream.selftest.main", return_value=0) as run, \
                 mock.patch.object(gui.tk, "Tk", side_effect=AssertionError("window opened")):
             self.assertEqual(gui.main(["--self-test", "--self-test-json"], out=out), 0)
-        run.assert_called_once_with(json_output=True, out=out)
+        run.assert_called_once_with(json_output=True, out=out, output_path=None)
 
-    def test_cli_rejects_json_without_self_test(self):
+    def test_gui_self_test_passes_output_file_before_window_creation(self):
         out = io.StringIO()
-        self.assertEqual(__import__("lightstream.cli", fromlist=["main"]).main(
-            ["gui", "--self-test-json"], out), 2)
-        self.assertIn("requires --self-test", out.getvalue())
+        path = os.path.join(tempfile.gettempdir(), "lightstream-report.json")
+        with mock.patch("lightstream.selftest.main", return_value=0) as run, \
+                mock.patch.object(gui.tk, "Tk", side_effect=AssertionError("window opened")):
+            self.assertEqual(gui.main(["--self-test", "--self-test-json",
+                                       "--self-test-output", path], out=out), 0)
+        run.assert_called_once_with(json_output=True, out=out, output_path=path)
+
+    def test_gui_self_test_without_console_uses_a_safe_sink(self):
+        with mock.patch.object(sys, "stdout", None), \
+                mock.patch("lightstream.selftest.main", return_value=0) as run:
+            self.assertEqual(gui.main(["--self-test"]), 0)
+        self.assertIsInstance(run.call_args.kwargs["out"], io.StringIO)
+        self.assertIsNone(run.call_args.kwargs["output_path"])
+
+    def test_cli_rejects_self_test_outputs_without_self_test(self):
+        cli = __import__("lightstream.cli", fromlist=["main"])
+        for argv in (["gui", "--self-test-json"],
+                     ["gui", "--self-test-output", "report.json"]):
+            with self.subTest(argv=argv):
+                out = io.StringIO()
+                self.assertEqual(cli.main(argv, out), 2)
+                self.assertIn("requires --self-test", out.getvalue())
 
     def test_source_cli_self_test_needs_no_display(self):
         with tempfile.TemporaryDirectory() as home:
@@ -134,6 +178,24 @@ class SelfTestEntryPointTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(next(c for c in payload["checks"] if c["name"] == "ffmpeg")["status"],
                          "warn")
+
+    def test_source_cli_can_write_json_to_a_file(self):
+        with tempfile.TemporaryDirectory() as home:
+            path = os.path.join(home, "report.json")
+            env = dict(os.environ,
+                       PYTHONPATH=os.path.join(os.path.dirname(__file__), "..", "src"),
+                       HOME=home, XDG_CONFIG_HOME=os.path.join(home, ".config"),
+                       PATH="")
+            result = subprocess.run(
+                [sys.executable, "-m", "lightstream", "gui", "--self-test",
+                 "--self-test-json", "--self-test-output", path],
+                env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                universal_newlines=True, timeout=20)
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertTrue(payload["ok"])
 
 
 if __name__ == "__main__":

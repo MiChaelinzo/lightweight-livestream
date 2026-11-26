@@ -72,6 +72,8 @@ def build_parser():
                    help="check application integrity without opening a window")
     g.add_argument("--self-test-json", action="store_true",
                    help="with --self-test, print one JSON object")
+    g.add_argument("--self-test-output", metavar="FILE",
+                   help="with --self-test, write output to FILE (for windowed apps)")
     u = sub.add_parser("setup", help="pick safe settings for this PC (never saves the key)")
     u.add_argument("--yes", action="store_true", help="no questions, use defaults")
     u.add_argument("--platform", choices=PLATFORMS)
@@ -879,13 +881,17 @@ def main(argv=None, out=sys.stdout):
             return cmd_support_bundle(args, out)
         if args.command == "gui":
             from .gui import main as gui_main  # lazy: tkinter is optional
-            if args.self_test_json and not args.self_test:
-                raise ValueError("--self-test-json requires --self-test")
+            if (args.self_test_json or args.self_test_output) and not args.self_test:
+                option = ("--self-test-json" if args.self_test_json
+                          else "--self-test-output")
+                raise ValueError("%s requires --self-test" % option)
             gui_args = []
             if args.self_test:
                 gui_args.append("--self-test")
             if args.self_test_json:
                 gui_args.append("--self-test-json")
+            if args.self_test_output:
+                gui_args += ["--self-test-output", args.self_test_output]
             return gui_main(gui_args, out=out)
         if args.command == "bandwidth":
             return cmd_bandwidth(args, out)

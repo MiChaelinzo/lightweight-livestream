@@ -4,7 +4,7 @@
 
 The release workflow (`.github/workflows/release.yml`) is **UNVERIFIED** because GitHub Actions is billing-locked for this repository and the workflow has not run. The v0.18 Python tests verify artifact naming, architecture checks, generated WiX source, macOS command plans, Linux package metadata, signing/notarization command plans, checksums, and failure handling with fake native tools.
 
-A real v0.18 Linux x86_64 tarball was built locally with PyInstaller 6.11.1, extracted, and its frozen `--self-test --self-test-json` returned 0. The test confirmed imports, Tcl/Tk, app root, writable XDG state, and reported missing FFmpeg as a warning. Desktop capture and GUI display were not exercised. The Windows exe/MSI, macOS app/ZIP/DMG/PKG, AppImage, deb, rpm, signing, notarization, and the workflow itself remain **UNVERIFIED**.
+A real v0.18 Linux x86_64 tarball was built locally with PyInstaller 6.11.1, extracted, and its frozen self-test wrote a passing JSON report and returned 0. The test confirmed imports, Tcl/Tk, app root, writable XDG state, and reported missing FFmpeg as a warning. Desktop capture and GUI display were not exercised. The Windows exe/MSI, macOS app/ZIP/DMG/PKG, AppImage, deb, rpm, signing, notarization, and the workflow itself remain **UNVERIFIED**.
 
 Fix the repository's Actions billing lock before attempting a release. Do not change an UNVERIFIED label until the corresponding artifact has been built and installed or run on its target platform.
 
@@ -100,7 +100,7 @@ PYTHONPATH=src python -m lightstream gui --self-test --self-test-json
 python tools/build_release.py --platform TARGET --architecture ARCH
 ```
 
-`tools/build_release.py` then executes every freshly built native app with `--self-test --self-test-json` before packaging it. AppImage is also invoked with `--appimage-extract-and-run`. Package containers are checked with their native inspection tools where practical. A successful mocked unit test does not verify a real installer.
+`tools/build_release.py` then executes every freshly built native app with `--self-test --self-test-json --self-test-output <temporary-file>` before packaging it and parses the report. The file transport is required for Windows GUI-subsystem executables, where Python provides no stdout/stderr console. AppImage is also invoked with `--appimage-extract-and-run`. Package containers are checked with their native inspection tools where practical. A successful mocked unit test does not verify a real installer.
 
 A manual **Run workflow** builds and uploads workflow artifacts but does not publish a GitHub release. A matching `v*.*.*` tag runs the same builds, requires exactly one of every expected format, writes one combined `SHA256SUMS.txt`, and publishes or replaces the release assets.
 

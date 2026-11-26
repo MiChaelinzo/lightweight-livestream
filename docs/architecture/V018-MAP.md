@@ -31,9 +31,9 @@ Parent commit: `a9f60b7` on `feat/v0.17-live-studio`.
 | Area | State | Primary code | Boundary and evidence |
 |---|---|---|---|
 | Version invariant | New | `tools/check_version.py`, `tests/test_version.py` | Reads `[project].version` without adding a Python 3.8 TOML dependency and requires it to equal `lightstream.__version__`; tag jobs also pass the tag version |
-| Headless self-test | New | `src/lightstream/selftest.py`, `gui.main`, CLI `gui --self-test` | Runs before `tk.Tk()`. Checks frozen imports, Tcl/Tk without a display, app root, portable root containment, writable config directory, and FFmpeg discovery. Missing or invalid FFmpeg is a warning; a broken app check exits nonzero |
+| Headless self-test | New | `src/lightstream/selftest.py`, `gui.main`, CLI `gui --self-test` | Runs before `tk.Tk()`. Checks frozen imports, Tcl/Tk without a display, app root, portable root containment, writable config directory, and FFmpeg discovery. Missing or invalid FFmpeg is a warning; a broken app check exits nonzero. `--self-test-output FILE` works when a Windows windowed executable has no stdout/stderr console |
 | Frozen entry status | Extended | `tools/build_windows_portable.py` | Generated entry uses `raise SystemExit(main())`, so failed integrity checks reach the process exit status |
-| Release builder | Extended | `tools/build_release.py` | One native target per host; rejects unknown platform/architecture and cross-compilation in the CLI; supports format subsets locally; every executable is self-tested before packaging |
+| Release builder | Extended | `tools/build_release.py` | One native target per host; rejects unknown platform/architecture and cross-compilation in the CLI; supports format subsets locally; every executable writes a JSON self-test report to a temporary file before packaging, which also works for Windows GUI-subsystem binaries |
 | Reproducible identity assets | New | `tools/generate_icons.py`, `assets/icons/`, `web/icons/` | One stdlib generator emits SVG, ICO, ICNS and PNG. Tests check exact bytes, dimensions, headers, web weight, and `--check` reproducibility |
 | Windows portable | Extended | release builder plus portable layout helper | One-file, windowed PyInstaller exe; signed before staging when secrets exist; portable flag and folders; deterministic ZIP metadata; FFmpeg note but no FFmpeg binary |
 | Windows MSI | New | generated WiX v5 source | Separate on-directory PyInstaller payload under Local AppData, per-user scope, stable upgrade code, product metadata/icon, Start Menu shortcut, no `portable.flag`, config under APPDATA. Source and command plan VERIFIED; real MSI UNVERIFIED |
@@ -149,7 +149,7 @@ python3 -m unittest discover -s tests
 
 | Check | Result | Status |
 |---|---|---|
-| Python unittest | 978 tests, OK, 4 skipped | VERIFIED |
+| Python unittest | 985 tests, OK, 4 skipped | VERIFIED |
 | Node test | 54 passed, 0 failed, 0 skipped | VERIFIED |
 | `python3 -m compileall -q src` | clean | VERIFIED |
 | `python3 tools/export_presets.py --check` | up to date | VERIFIED |
