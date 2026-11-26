@@ -57,7 +57,7 @@ PREF_FIELDS = ("platform", "url", "preset", "fps", "bitrate", "window",
                "auto_scale", "backup_url", "record_format", "rate_mode",
                "potato", "potato_grayscale", "potato_skip_static",
                "persistent_ingest", "guardian", "auto_survival",
-               "remote", "remote_lan")
+               "remote")
 
 # Recording and Potato Stream choices: (label shown, stored value).
 RECORD_FORMAT_CHOICES = (("MKV (safest if the PC crashes)", "mkv"),

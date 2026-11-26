@@ -212,6 +212,76 @@ class RemoteSessionTests(unittest.TestCase):
         self.assertIn("nothing recorded", remote.timeline_text([]))
 
 
+class LanTests(unittest.TestCase):
+    def setUp(self):
+        self.server = remote.RemoteServer(FakeBackend(), host="0.0.0.0",
+                                          token="TOK", advertise_host="192.168.1.20")
+        self.server.start()
+        self.port = self.server._httpd.server_address[1]
+
+    def tearDown(self):
+        self.server.stop()
+
+    def _get(self, host_header, path="/"):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.putrequest("GET", path, skip_host=True)
+        conn.putheader("Host", host_header)
+        conn.putheader("Authorization", "Bearer TOK")
+        conn.endheaders()
+        status = conn.getresponse().status
+        conn.close()
+        return status
+
+    def test_url_advertises_lan_address_not_wildcard(self):
+        self.assertEqual("http://192.168.1.20:%d/#TOK" % self.port, self.server.url)
+
+    def test_ip_literal_hosts_accepted(self):
+        self.assertEqual(200, self._get("192.168.1.20:%d" % self.port))
+        self.assertEqual(200, self._get("10.0.0.7:%d" % self.port, "/api/status"))
+        self.assertEqual(200, self._get("[fe80::1]:%d" % self.port))
+
+    def test_hostnames_still_refused(self):
+        self.assertEqual(403, self._get("evil.example:%d" % self.port))
+        self.assertEqual(403, self._get("192.168.1.20.evil.example"))
+        self.assertEqual(403, self._get("my-pc.local:%d" % self.port))
+
+    def test_localhost_still_accepted(self):
+        self.assertEqual(200, self._get("localhost:%d" % self.port))
+
+    def test_lan_address_falls_back_to_placeholder(self):
+        server = remote.RemoteServer(FakeBackend(), host="0.0.0.0")
+        original = remote.lan_address
+        remote.lan_address = lambda: None
+        try:
+            server.start()
+            self.assertIn("<this-PC-address>", server.url)
+        finally:
+            remote.lan_address = original
+            server.stop()
+
+
+class HardeningTests(unittest.TestCase):
+    def test_handler_has_socket_timeout(self):
+        self.assertEqual(10, remote.SOCKET_TIMEOUT_SECONDS)
+        server = remote.RemoteServer(FakeBackend())
+        server.start()
+        try:
+            handler = server._httpd.RequestHandlerClass
+            self.assertEqual(10, handler.timeout)
+        finally:
+            server.stop()
+
+    def test_lockout_tables_pruned_on_access(self):
+        clock = FakeClock()
+        tracker = remote.LockoutTracker(clock, max_failures=1, lockout_seconds=5)
+        tracker.record_failure("a")
+        tracker.record_failure("b")
+        clock.now += 10
+        self.assertFalse(tracker.locked("c"))
+        self.assertEqual({}, tracker._locked_until)
+        self.assertEqual({}, tracker._failures)
+
+
 class RemotePrefsTests(unittest.TestCase):
     def test_flags_round_trip_and_token_never_saved(self):
         import tempfile
@@ -226,7 +296,7 @@ class RemotePrefsTests(unittest.TestCase):
                 text = fh.read()
             loaded = gc.load_prefs(path)
         self.assertNotIn("SECRETTOKEN123", text)
-        self.assertEqual({"remote": True, "remote_lan": False}, loaded)
+        self.assertEqual({"remote": True}, loaded)    # LAN choice never saved
 
 
 if __name__ == "__main__":

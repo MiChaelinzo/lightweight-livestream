@@ -9,14 +9,14 @@ Branch `feat/v0.17-live-studio` off 0.16.0. Environment: Linux sandbox, Python 3
 
 | Suite | Result | Status |
 |---|---|---|
-| `python3 -m unittest discover -s tests` | 913 tests, OK (4 skipped with `LIGHTSTREAM_TEST_FFMPEG` set) | VERIFIED |
+| `python3 -m unittest discover -s tests` | 943 tests, OK (4 skipped with `LIGHTSTREAM_TEST_FFMPEG` set; current run) | VERIFIED |
 
 ## Feature map
 
 | # | Feature | Status | Code | Reason and decision |
 |---|---|---|---|---|
 | R1 | Phone remote (local control API) | New (`remote.py`), opt in | `RemoteServer` on stdlib `http.server`, daemon thread. `GET /` phone page, `GET /api/status`, `POST /api/emergency`, `/api/restore`, `/api/stop` | Start is not exposed: it needs the stream key, which must not pass through a network endpoint. GUI only; no CLI `--remote`, because the CLI has no controller with emergency and restore |
-| R2 | GUI wiring | Extended (`gui.py`, `remote.RemoteSession`) | Advanced page boxes "Phone remote (this PC network only, off by default)" and "Allow my home network", read-only link, Copy link. Server runs only while a stream runs | Prefs `remote`, `remote_lan` are saved, the token never. Window timer drives `sync`, so no new tkinter thread |
+| R2 | GUI wiring | Extended (`gui.py`, `remote.RemoteSession`) | Advanced page boxes "Phone remote (this PC network only, off by default)" and "Allow my home network", read-only link, Copy link. Server runs only while a stream runs | Pref `remote` is saved; `remote_lan` and the token never are. Window timer drives `sync`, so no new tkinter thread |
 | R3 | Session timeline in the window | Extended (`StreamController.timeline_lines`) | Read-only Dashboard box, themed | Same event lines as the end-of-session output. Not persisted. Correlation, never a cause |
 | R4 | Emergency vs auto-survival race test | Test only | 8-thread test in `tests/test_gui.py` and a 15-round barrier test | Asserts both modes are never active together |
 | S1 | Cloud scene sync | Roadmap | None | Unchanged since 0.16 (accounts and storage) |
@@ -32,9 +32,9 @@ Assets: the stream key, control of a live stream, the user's PC network. Attacke
 |---|---|---|
 | Guessing the token | Random token from `secrets`, compared with `hmac.compare_digest`. After 5 failures from one address, further requests from it get a 30 s lockout (injected clock) | VERIFIED by loopback tests (lockout with a fake clock). Strength against a real attacker not assessed |
 | Token leaking through URL logs or history | Token is in the `#` fragment, which browsers do not send. The page script reads it and sends `Authorization: Bearer`. Not written to prefs or logs; the server's request log is silenced | VERIFIED for prefs and server log by tests. Browser history and screenshots of the link are the user's responsibility |
-| DNS rebinding and malicious web pages | `Host` header must be `127.0.0.1`, `localhost`, `[::1]` or the bound host; otherwise refused. No CORS headers are sent, so other origins cannot read responses. Bearer header in a custom header makes simple cross-site POSTs fail | VERIFIED for the Host check; browser behavior with a real cross-site page UNVERIFIED |
-| Network exposure | Binds `127.0.0.1` by default. `0.0.0.0` only when the user ticks "Allow my home network", which shows a warning. Traffic is plain HTTP, so on a home network the token can be sniffed by someone on that network | LAN bind UNVERIFIED on a real network. HTTPS is not provided |
-| Stream key disclosure | Backend does not expose the key. Status text passes through redaction. A test seeds the key into the backend log and checks no response contains it | VERIFIED |
+| DNS rebinding and malicious web pages | `Host` header must be `127.0.0.1`, `localhost`, `[::1]`, the bound host or an IP literal (DNS names cannot be IP literals, so rebinding stays blocked); other hostnames are refused. No CORS headers are sent, so other origins cannot read responses. Bearer header in a custom header makes simple cross-site POSTs fail | VERIFIED for the Host check on loopback and on a `0.0.0.0` bind with IP-literal and hostname Host headers (sockets on this machine); browser behavior with a real cross-site page UNVERIFIED |
+| Network exposure | Binds `127.0.0.1` by default. `0.0.0.0` only when the user ticks "Allow my home network", which shows a warning. The link shows this PC's LAN address (found without sending packets) and is never remembered between sessions; the tick is not saved. Handler sockets time out after 10 s. Traffic is plain HTTP, so on a home network the token can be sniffed by someone on that network | LAN bind UNVERIFIED on a real network (only a local socket test with a spoofed Host). HTTPS is not provided |
+| Stream key disclosure | Backend does not expose the key. The real protection is that the controller redacts the key before text reaches its log; the remote's own redact call only masks SRT passphrases. A test seeds the key into the backend log and checks no response contains it | VERIFIED |
 | Starting a stream remotely | Not exposed | By design |
 | Abuse by large or odd requests | Body cap of 1024 bytes, wrong method gives 405, bad token gives 401 with no detail | VERIFIED |
 | Leftover server | Started only while streaming; stopped on stream end, untick and window close. Bind failure returns no server and the GUI continues | VERIFIED with fakes; real port conflicts partly |
@@ -78,7 +78,7 @@ Assets: the stream key, control of a live stream, the user's PC network. Attacke
 
 | Suite | Result | Status |
 |---|---|---|
-| `python3 -m unittest discover -s tests` | 936 tests, OK (4 skipped headless; 0 skipped under Xvfb) | VERIFIED |
+| `python3 -m unittest discover -s tests` | 943 tests, OK (4 skipped with `LIGHTSTREAM_TEST_FFMPEG` set; 0 skipped under Xvfb earlier run, not repeated) | VERIFIED |
 | `node --test "web/test/*.test.js"` | 44 pass, 0 fail | VERIFIED |
 | `tools/export_presets.py --check` | up to date | VERIFIED |
 | `python3 -m compileall -q src` | clean | VERIFIED |

@@ -142,7 +142,8 @@ class StreamWindow:
         self.persistent_ingest = tk.BooleanVar(
             value=saved.get("persistent_ingest") is True)
         self.remote = tk.BooleanVar(value=saved.get("remote") is True)
-        self.remote_lan = tk.BooleanVar(value=saved.get("remote_lan") is True)
+        # Never restored: the home-network choice is made fresh each session.
+        self.remote_lan = tk.BooleanVar(value=False)
         self.remote_url = tk.StringVar(value="")
         self.remote_session = rm.RemoteSession(self.controller)
         self.backup_url = tk.StringVar(value=saved.get("backup_url") or "")
@@ -837,7 +838,6 @@ class StreamWindow:
             "guardian": self.guardian.get(),
             "auto_survival": self.auto_survival.get(),
             "remote": self.remote.get(),
-            "remote_lan": self.remote_lan.get(),
         }
 
     def apply_prefs(self, prefs):

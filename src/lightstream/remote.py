@@ -2,8 +2,9 @@
 
 Binds 127.0.0.1 unless the caller passes another host explicitly. Every API
 call needs a random bearer token (secrets, compared with hmac.compare_digest).
-The Host header must be loopback or the bound host, which blocks DNS
-rebinding. No CORS headers are sent. Repeated bad tokens from one address
+The Host header must be loopback, the bound host or an IP literal (an
+attacker's DNS name can never be an IP literal, so DNS rebinding stays
+blocked; hostnames other than localhost are refused). No CORS headers are sent. Repeated bad tokens from one address
 lock that address out for a growing, deterministic delay (injected clock).
 
 Start is deliberately not exposed: starting needs the stream key, and the key
@@ -13,8 +14,10 @@ timeline_lines() (StreamController fits), so tests use a fake.
 """
 
 import hmac
+import ipaddress
 import json
 import secrets
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -25,6 +28,7 @@ DEFAULT_HOST = "127.0.0.1"
 MAX_BODY_BYTES = 1024
 MAX_FAILURES = 5            # bad tokens from one address before lockout
 LOCKOUT_SECONDS = 30.0
+SOCKET_TIMEOUT_SECONDS = 10
 STATUS_LOG_CHARS = 2000
 STATUS_TIMELINE_LINES = 10
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "[::1]")
@@ -74,6 +78,30 @@ refresh();setInterval(refresh,3000);
 """
 
 
+def lan_address():
+    """This PC's LAN IPv4 address for the phone link, or None when unknown.
+    A UDP connect sends no packets; it only asks the OS which interface would
+    be used."""
+    probe = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        probe.connect(("192.0.2.1", 9))     # TEST-NET-1, never routed
+        address = probe.getsockname()[0]
+    except OSError:
+        return None
+    finally:
+        probe.close()
+    return None if address == LAN_HOST else address
+
+
+def is_ip_literal(name):
+    """True for 10.0.0.5 or [fe80::1]; False for any DNS name."""
+    try:
+        ipaddress.ip_address(name.strip("[]"))
+    except ValueError:
+        return False
+    return True
+
+
 class LockoutTracker:
     """Per-address failed-auth counter. Deterministic: time is injected."""
 
@@ -86,8 +114,14 @@ class LockoutTracker:
         self._locked_until = {}
         self._lock = threading.Lock()
 
+    def _prune(self, now):
+        for address in [a for a, until in self._locked_until.items() if now >= until]:
+            del self._locked_until[address]
+            self._failures.pop(address, None)
+
     def locked(self, address):
         with self._lock:
+            self._prune(self._clock())
             until = self._locked_until.get(address)
             if until is None:
                 return False
@@ -128,8 +162,9 @@ class RemoteServer:
     """Opt-in local HTTP control server. start() once, stop() when done."""
 
     def __init__(self, backend, host=DEFAULT_HOST, port=0, token=None,
-                 clock=time.monotonic):
+                 clock=time.monotonic, advertise_host=None):
         self._backend = backend
+        self._advertise = advertise_host
         self._host = host
         self._port = port
         self.token = token or secrets.token_urlsafe(24)
@@ -144,6 +179,8 @@ class RemoteServer:
         if self._httpd is None:
             return None
         host, port = self._httpd.server_address[:2]
+        if host == LAN_HOST:
+            host = self._advertise or lan_address() or "<this-PC-address>"
         return "http://%s:%d/#%s" % (host, port, self.token)
 
     def start(self):
@@ -155,6 +192,7 @@ class RemoteServer:
         class Handler(BaseHTTPRequestHandler):
             server_version = "LightStreamRemote"
             protocol_version = "HTTP/1.0"
+            timeout = SOCKET_TIMEOUT_SECONDS    # stalled clients free their thread
 
             def log_message(self, *_args):
                 pass    # never log request lines
@@ -177,7 +215,7 @@ class RemoteServer:
                     name = host[:host.find("]") + 1]
                 else:
                     name = host.rsplit(":", 1)[0] if ":" in host else host
-                return name in allowed
+                return name in allowed or is_ip_literal(name)
 
             def _authorized(self):
                 address = self.client_address[0]
