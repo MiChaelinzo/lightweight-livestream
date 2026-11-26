@@ -19,7 +19,8 @@
 - **Hard to break.** Reconnects with backoff, falls back to software encoding if a GPU encoder fails, and never prints or saves your key.
 - **Safe to try.** `--test-local` records 10 seconds to a file instead of going live. `--mute` sends silence.
 - Streams to Twitch, YouTube, Facebook Live (RTMPS) or any custom RTMP or SRT server.
-- **New in 0.16:** opt-in `--guardian` and `--auto-survival` (off by default; every step restarts the encoder), a bandwidth trend predictor (synthetic tests only), a session timeline in the end-of-session output, profiles `potato_pc`, `office_laptop` and `budget_gaming`, idle budgets (startup, RSS, CPU) measured under Xvfb. Real machines UNVERIFIED. See [docs/architecture/V016-MAP.md](docs/architecture/V016-MAP.md).
+- **New in 0.17:** an opt-in phone remote (GUI only, `127.0.0.1` by default, home network only by a second explicit box, random token that is never saved) that can trigger Emergency, Restore and Stop but cannot start a stream, and a Session timeline box on the Dashboard. Tested with loopback sockets; a real phone and a real home network are UNVERIFIED. See [docs/architecture/V017-MAP.md](docs/architecture/V017-MAP.md).
+- **In 0.16:** opt-in `--guardian` and `--auto-survival` (off by default; every step restarts the encoder), a bandwidth trend predictor (synthetic tests only), a session timeline in the end-of-session output, profiles `potato_pc`, `office_laptop` and `budget_gaming`, idle budgets (startup, RSS, CPU) measured under Xvfb. Real machines UNVERIFIED. See [docs/architecture/V016-MAP.md](docs/architecture/V016-MAP.md).
 - **New in 0.15:** eight GUI themes and a reduce-motion setting, `lightstream audio-check`, Teaching and Meeting audio profiles, copilot insights, `lightstream highlights` (heuristic clips, 9:16 export) and `dashboard`, a plugin runtime (`lightstream plugins`, not yet connected to `start`) and `tools/benchlab.py` (OBS and Streamlabs columns are UNKNOWN). Details in [docs/FEATURES.md](docs/FEATURES.md) and the [CHANGELOG](CHANGELOG.md).
 - **In 0.14:** the health score uses the real dropped-frame percent, the Recording page has a persistent-ingest checkbox, the GUI banner states can be rendered for review, and this README is shorter (details moved to [docs/FEATURES.md](docs/FEATURES.md)). Earlier highlights are listed there and in the [CHANGELOG](CHANGELOG.md). Real platforms, Windows and macOS are UNVERIFIED; see [docs/ROADMAP.md](docs/ROADMAP.md) for the honest status of each area.
 
@@ -31,9 +32,9 @@ Get the app from the [Releases page](https://github.com/MiChaelinzo/lightweight-
 
 | Platform | Download | How to start |
 |---|---|---|
-| Windows | `LightStream-0.16.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
-| macOS | `LightStream-0.16.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
-| Linux | `LightStream-0.16.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
+| Windows | `LightStream-0.17.0-windows-portable.zip` | Unzip, double-click `LightStream.exe` |
+| macOS | `LightStream-0.17.0-macos.zip` (or `.dmg`) | Open it, move `LightStream.app` to Applications, right-click > Open (Apple Silicon only, no Intel build) |
+| Linux | `LightStream-0.17.0-linux-x86_64.tar.gz` | `tar xzf` it, run `./LightStream` from a desktop session (needs a glibc as new as Ubuntu's current runner image; older distros may fail) |
 
 - **FFmpeg is not included.** On first run the app tells you if it is missing and offers a download link and a "Choose ffmpeg file..." button.
 - **Windows SmartScreen** may say "Windows protected your PC" because the app is unsigned. Click More info, then Run anyway. **macOS** may block it: right-click > Open, or run `xattr -d com.apple.quarantine LightStream.app`.
