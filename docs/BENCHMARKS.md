@@ -391,3 +391,74 @@ Method: `tools/benchlab.py --command ... --duration 10 --interval 1` on this 8-c
 | ffmpeg `testsrc` 1280x720 30 fps, libx264 ultrafast 4500k, `-f null`, ready text `frame=` | 0.506 | 508.21 | 512.83 | 170.6 | 187.26 |
 
 Reading the numbers: the ffmpeg run is not real time; it encodes as fast as it can, so it uses several cores and the CPU figure is not what a live 30 fps stream costs. One run each, no repeats, so run-to-run spread is unknown. Startup here means time to the first output containing the ready text, not time to a usable window.
+
+## v0.16 evidence (idle budgets, runtime bitrate change, overlay cost)
+
+Status: VERIFIED for these numbers on this one sandbox (8 cores, Python 3.11.15, static ffmpeg 7.0.2 from johnvansickle.com, no GPU, Xvfb 1280x800x24, sandbox clock 2026-11-25). Real desktops, real GPUs, Windows and macOS are UNVERIFIED. Nothing here compares against OBS Studio or Streamlabs Desktop; those stay UNKNOWN.
+
+### Idle budgets of the GUI window
+
+Method: `DISPLAY=:97 python3 tools/idle_budget.py --duration 20` (Xvfb started by hand, see `docs/DEV-RENDERING.md`). The tool starts a child Python that builds `StreamWindow` on the display with a throw-away HOME, draws it once (`root.update()`), and prints a marker. `startup_s` is the wall time from launch to that marker (it includes interpreter start and imports). After a 2 s settle, `/proc/PID/stat` and `/proc/PID/status` are sampled once a second for 20 s with the `tools/benchlab.py` code. Idle CPU is the mean over the 20 s (100 is one full core). Only the GUI process itself is sampled; no stream was running.
+
+| Run | startup_s | rss_mb (end) | idle CPU mean | idle CPU max of 1 s samples |
+|---|---|---|---|---|
+| 1 | 0.146 | 37.66 | 0.30% | 2.0% |
+| 2 | 0.146 | 37.54 | 0.25% | 1.0% |
+| 3 | 0.149 | 37.88 | 0.30% | 2.0% |
+
+Budgets enforced by `tests/test_idle_budget.py` (skipped without DISPLAY): startup under 2 s, RSS under 150 MB, idle CPU under 5%. Measured values are far inside them. CPU values come from 1/100 s clock ticks, so a 1 s sample can only be 0, 1, 2 percent and so on; do not read the means as more precise than about 0.1 point. The earlier figure of about 87 ms and 27.6 MiB for importing the GUI module is a different quantity (import only, no window) and is not comparable.
+
+CLI import: `python -c "import lightstream.cli"` with `PYTHONPATH=src`, 21 fresh interpreters, wall time median 74.0 ms (min 72.6, max 78.7), against 10.3 ms for `python -c pass` (min 9.6, max 10.8).
+
+### Runtime bitrate change (spike F)
+
+Method: `python3 tools/spikes.py --spike f`. A synthetic 640x360@30 stream is encoded for 8 s at `-b:v 3000k`. At 4 s a `sendcmd` line tries to set 500 kbit/s on the encoder (`<encoder> b_v 500000` and `<encoder> bit_rate 500000`). The output (Matroska) is read back with `-f framecrc` and the packet bytes before and after 4 s are converted to kbit/s. One run per row. A control run puts a `hue=s=1` filter in the graph and sends `4 hue s 0;`.
+
+Findings:
+
+- This ffmpeg build has `sendcmd` and `asendcmd`. It has no `zmq` or `azmq` filter (filters present: zmq false, azmq false).
+- `sendcmd` reaches filters. Control: `hue` saturation to 0 at 4 s lowered the bitrate from 3146.8 to 2034.9 kbit/s (ratio 0.647), against 3146.8 to 3090.8 (0.982) with no command.
+- `sendcmd` does not reach any encoder. For libx264, libx265, libvpx, libvpx-vp9 and libaom-av1, a command aimed at the encoder name gave exit code 0, no message and a bitrate identical to the run without a command. Aimed output stays at about the start rate:
+
+| Encoder | kbit/s before 4 s, no command | after 4 s, no command | after 4 s, command to encoder |
+|---|---|---|---|
+| libx264 | 3146.8 | 3090.8 | 3090.8 |
+| libx265 | 2681.8 | 3033.6 | 3033.6 |
+| libvpx | 2664.7 | 2827.8 | 2825.0 |
+| libvpx-vp9 | 2030.9 | 2004.5 | 2004.5 |
+| libaom-av1 | 2541.7 | 3010.7 | 3010.7 |
+
+  The command is silently ignored, so a bitrate change that must work cannot rely on it. Differences between before and after without a command are rate control warming up on a synthetic picture, not a setting change.
+- Hardware encoders: the build lists only `*_v4l2m2m` wrappers (h263, h264, hevc, mpeg4, vp8), which need a Video4Linux device that this sandbox does not have. NVENC, QSV, AMF, VAAPI and VideoToolbox are not in this build. Whether any hardware encoder accepts a live bitrate change through ffmpeg is UNVERIFIED.
+- Conclusion: for software encoders, no live bitrate change through ffmpeg commands. The restart path (`run_with_reconnect(restart=event)`, see `docs/ARCHITECTURE-NOTES.md`) stays the only supported way to change encoder bitrate.
+
+### Overlay cost at 720p30 (spike G)
+
+Method: `python3 tools/spikes.py --spike g --repeats 5`. Synthetic 1280x720@30 `testsrc2`, 10 s of stream time, libx264 ultrafast zerolatency, 4 threads, no audio, as fast as the CPU allows, MPEG-TS to a file. CPU is user plus system time from `os.wait4` of the ffmpeg child, 5 runs per row. The overlay PNG (400x80) is generated by ffmpeg at run time.
+
+| Config | CPU seconds, median (min to max), n=5 | Container kbit/s, median |
+|---|---|---|
+| baseline, moving picture | 1.160 (1.106 to 1.179) | 7898 |
+| PNG overlay, `-loop 1 -framerate 1` | 1.282 (1.237 to 1.323) | 7864 |
+| 400x80 overlay changing at 30 fps | 1.313 (1.294 to 1.348) | 8484 |
+| mpdecimate, moving picture | 1.161 (1.087 to 1.184) | 7898 |
+| baseline, static picture (SMPTE bars) | 0.597 (0.553 to 0.616) | 114 |
+| mpdecimate, static picture | 0.147 (0.144 to 0.149) | 4.4 |
+
+Findings:
+
+- `drawtext` per frame is UNMEASURED: this static ffmpeg build reports `Unknown filter 'drawtext'` although it lists libfreetype in its configuration. A text clock rendered by drawtext on every frame therefore has no number here. The 30 fps changing overlay is only a stand-in for the compositing part, not for text rendering.
+- Adding any overlay cost about 0.12 to 0.15 CPU seconds per 10 stream seconds (about 1.2 to 1.5 percent of one core at real time) on this machine. The pre-rendered PNG input (1.282) against the 30 fps changing overlay (1.313) differs by 0.03 s per 10 s (about 0.3 percent of a core), and the min to max ranges overlap (1.237 to 1.323 against 1.294 to 1.348). This is NOT a reliable win; with five runs it is within noise.
+- `mpdecimate` is neutral on a moving picture (1.161 against 1.160) and cuts CPU on a static picture by about 75 percent (0.597 to 0.147 s) because most frames are dropped (bitrate 114 to 4.4 kbit/s). Dropping frames changes the output frame rate, which a live platform may treat as a stalled feed; the effect on a real stream is UNVERIFIED.
+
+## v0.16 bandwidth trend predictor (SYNTHETIC traces only)
+
+`tests/test_predictor.py` feeds generated one-per-second ffmpeg speed and bitrate readings (deterministic noise) to `predictor.TrendPredictor` (EWMA plus least-squares slope over 40 s, slope must be 5 standard errors below zero, 5 degrading readings in a row, 30 s extrapolation horizon). These are synthetic traces, not real streams. They say nothing about accuracy on a real connection, which is UNVERIFIED.
+
+| Synthetic trace | Result (observed in an ad hoc run; the tests assert only the bounds in brackets) |
+|---|---|
+| steady speed 1.0, noise of 2 percent and 5 percent, 40 seeds each | 0 false positives in 80 traces |
+| ramp down, 1.10 falling 0.003 per second, crossing 0.95 at 50 s, noise 2 percent, 20 seeds | flagged 14 to 27 s before the crossing (bound asserted: at least 10 s) |
+| step from 1.0 to 0.6 at 90 s | flagged 9 to 10 s after the step: a step is not predicted ahead |
+
+The output queue length is not available from ffmpeg progress lines or `network.py`, so it is not used.

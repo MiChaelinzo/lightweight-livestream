@@ -38,7 +38,9 @@ export function recommendPreset(presets, uploadMbps, pcClass) {
   if (!Number.isFinite(uploadMbps) || uploadMbps <= 0) {
     throw new Error("Upload speed must be a positive number");
   }
-  const byBitrate = [...presets].sort(
+  // Profile-only presets are never picked from upload speed (same rule as
+  // bandwidth.recommend in Python).
+  const byBitrate = presets.filter((p) => !p.profile_only).sort(
     (a, b) => streamKbps(a) - streamKbps(b) || a.fps - b.fps
   );
   const fitting = byBitrate.filter(

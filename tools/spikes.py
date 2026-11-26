@@ -13,6 +13,12 @@ Spikes (all traffic stays on 127.0.0.1; no network beyond loopback):
     d  SRT loopback and the options libsrt exposes in this build
     e  audio chains: CPU seconds of every audio profile chain (light and full)
        on a synthetic sine plus noise input, against a no-filter baseline
+    f  runtime bitrate change: which filters can carry commands (sendcmd, zmq),
+       what they can target, and whether any encoder in this build changes its
+       bitrate mid-stream when commanded (output bitrate before and after)
+    g  overlay cost at 720p30: per-frame drawtext clock vs a pre-rendered PNG
+       input (-loop 1 -framerate 1) vs a 30 fps changing overlay, and
+       mpdecimate on moving and static pictures
 
 Only JSON goes to stdout. The pure helpers at the top (framecrc parsing,
 packet analysis, /proc parsing, summaries) are unit tested in
@@ -40,7 +46,7 @@ from lightstream.audio import AUDIO_CHAINS, AUDIO_PROFILES, audio_profile_chain 
 from lightstream.command import build_command, numbered_recording_path  # noqa: E402
 
 LOOPBACK = "127.0.0.1"
-SPIKE_NAMES = ("a", "b", "c", "d", "e")
+SPIKE_NAMES = ("a", "b", "c", "d", "e", "f", "g")
 
 
 # ---------------------------------------------------------------- pure helpers
@@ -168,6 +174,50 @@ def summarize(values):
     median = nums[mid] if len(nums) % 2 else (nums[mid - 1] + nums[mid]) / 2.0
     return {"n": len(nums), "median": round(median, 3),
             "min": round(nums[0], 3), "max": round(nums[-1], 3)}
+
+
+def parse_filter_names(filters_text):
+    """Filter names from `ffmpeg -filters` (rows like ` T.. name  V->V  text`)."""
+    names = set()
+    for line in filters_text.splitlines():
+        match = re.match(r"^\s([TSC.]{3})\s+(\S+)\s+\S+->\S+\s", line)
+        if match:
+            names.add(match.group(2))
+    return names
+
+
+def parse_video_encoder_names(encoders_text):
+    """Video encoder names from `ffmpeg -encoders` (rows like ` V....D libx264  text`)."""
+    names = []
+    for line in encoders_text.splitlines():
+        match = re.match(r"^\s(V[.FSXBD]{5})\s+(\S+)\s", line)
+        if match:
+            names.append(match.group(2))
+    return names
+
+
+def half_bitrates(packets, timebase, split_ms, stream=0):
+    """Bitrate in kbit/s of the packets before and after `split_ms` (by pts).
+
+    Each half uses the span from its first to the end of its last packet's
+    window, so a short stream still gives a rate. A half with no packets is None.
+    """
+    num, den = timebase
+    to_ms = 1000.0 * num / den
+    halves = ([], [])
+    for packet in packets:
+        if packet["stream"] != stream or packet["pts"] is None:
+            continue
+        halves[0 if packet["pts"] * to_ms < split_ms else 1].append(packet)
+    rates = []
+    for index, half in enumerate(halves):
+        if not half:
+            rates.append(None)
+            continue
+        start = split_ms if index else 0.0
+        end = max((p["pts"] + p["duration"]) * to_ms for p in half)
+        rates.append(bitrate_kbps(sum(p["size"] for p in half), (end - start) / 1000.0))
+    return tuple(rates)
 
 
 def bitrate_kbps(size_bytes, seconds):
@@ -926,9 +976,191 @@ def spike_e(ffmpeg, workdir, repeats=3):
             "results": results}
 
 
+# ------------------------------------------------------------------- spike F
+
+F_SECONDS = 8
+F_CHANGE_AT_S = 4
+F_START_KBPS = 3000
+F_NEW_KBPS = 500
+# (encoder, extra output args). Only software encoders: no GPU in the sandbox.
+F_ENCODERS = [
+    ("libx264", ["-preset", "ultrafast", "-tune", "zerolatency", "-bf", "0"]),
+    ("libx265", ["-preset", "ultrafast", "-x265-params", "log-level=error"]),
+    ("libvpx", ["-deadline", "realtime", "-cpu-used", "8"]),
+    ("libvpx-vp9", ["-deadline", "realtime", "-cpu-used", "8"]),
+    ("libaom-av1", ["-cpu-used", "8", "-usage", "realtime"]),
+]
+
+
+def _f_argv(ffmpeg, encoder, extra, command, out, pre_filter=None):
+    """Encode a synthetic 640x360@30 stream; `command` is a sendcmd line or None.
+
+    `pre_filter` is an extra filter placed before format (the control run puts
+    a `hue` there for sendcmd to reach). Output is Matroska so that VP8, VP9 and
+    AV1 packets can be read back too.
+    """
+    vf = "format=yuv420p"
+    if pre_filter:
+        vf = pre_filter + "," + vf
+    if command:
+        vf = "sendcmd=c='%s'," % command + vf
+    return [ffmpeg, "-hide_banner", "-y", "-v", "error", "-t", str(F_SECONDS),
+            "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30", "-vf", vf,
+            "-c:v", encoder, "-b:v", "%dk" % F_START_KBPS, "-g", "30"] + extra + \
+        ["-an", "-f", "matroska", out]
+
+
+def _f_halves(ffmpeg, ts_path):
+    code, out, _err = run_to_end([ffmpeg, "-hide_banner", "-v", "error", "-i", ts_path,
+                                  "-c", "copy", "-f", "framecrc", "-"])
+    if code != 0:
+        return None, None
+    timebases, packets = parse_framecrc(out)
+    return half_bitrates(packets, timebases.get(0, (1, 1000)), F_CHANGE_AT_S * 1000)
+
+
+def _f_probe(ffmpeg, encoder, extra, command, workdir, pre_filter=None):
+    out = os.path.join(workdir, "f-out.mkv")
+    code, _out, err = run_to_end(_f_argv(ffmpeg, encoder, extra, command, out,
+                                         pre_filter))
+    row = {"return_code": code,
+           "stderr_last": (err.strip().splitlines() or [""])[-1][:200]}
+    if code == 0 and os.path.exists(out):
+        before, after = _f_halves(ffmpeg, out)
+        row.update({"kbps_before": before, "kbps_after": after,
+                    "after_over_before": None if not before or after is None
+                    else round(after / before, 3)})
+    return row
+
+
+def spike_f(ffmpeg, workdir, repeats=1):
+    del repeats
+    _code, filters_out, _err = run_to_end([ffmpeg, "-hide_banner", "-filters"])
+    filters = parse_filter_names(filters_out)
+    _code, enc_out, _err = run_to_end([ffmpeg, "-hide_banner", "-encoders"])
+    encoders = parse_video_encoder_names(enc_out)
+    hardware = [e for e in encoders if re.search(
+        r"nvenc|qsv|vaapi|amf|videotoolbox|v4l2m2m|mf$|omx|vulkan", e)]
+    results = []
+    for encoder, extra in F_ENCODERS:
+        if encoder not in encoders:
+            results.append({"encoder": encoder, "available": False})
+            continue
+        row = {"encoder": encoder, "available": True}
+        row["no_command"] = _f_probe(ffmpeg, encoder, extra, None, workdir)
+        # sendcmd targets a filter instance by name. The encoder is not one.
+        for label, target in (("sendcmd_to_encoder_name", "%s b_v %d" % (encoder, F_NEW_KBPS * 1000)),
+                              ("sendcmd_to_encoder_bitrate_option", "%s bit_rate %d" % (encoder, F_NEW_KBPS * 1000))):
+            row[label] = _f_probe(
+                ffmpeg, encoder, extra,
+                "%d %s;" % (F_CHANGE_AT_S, target), workdir)
+        results.append(row)
+    # Controls: the same sendcmd mechanism does reach a filter. With a `hue`
+    # instance in the graph, desaturating at the change time lowers the bitrate.
+    control = _f_probe(ffmpeg, "libx264", F_ENCODERS[0][1],
+                       "%d hue s 0;" % F_CHANGE_AT_S, workdir, pre_filter="hue=s=1")
+    control_off = _f_probe(ffmpeg, "libx264", F_ENCODERS[0][1], None, workdir,
+                           pre_filter="hue=s=1")
+    return {"stream_seconds": F_SECONDS, "change_at_s": F_CHANGE_AT_S,
+            "start_kbps": F_START_KBPS, "commanded_kbps": F_NEW_KBPS,
+            "filters_present": {name: name in filters
+                                for name in ("sendcmd", "asendcmd", "zmq", "azmq")},
+            "hardware_encoders_listed": hardware,
+            "note_control": "a `hue=s=1` filter is in the graph; sendcmd sets its "
+                            "saturation to 0 at the change time. A bitrate drop shows the "
+                            "command mechanism works on filters.",
+            "control_sendcmd_to_filter": control,
+            "control_no_command": control_off,
+            "results": results}
+
+
+# ------------------------------------------------------------------- spike G
+
+G_SECONDS = 10
+G_BASE = "testsrc2=size=1280x720:rate=30"
+G_TEXT_FILTER = ("drawtext=text='%{localtime\\:%X}':x=20:y=20:fontsize=48:"
+                 "fontcolor=white:box=1:boxcolor=black@0.5")
+
+
+def _g_png(ffmpeg, workdir):
+    """A 400x80 PNG made by ffmpeg itself (nothing is committed)."""
+    path = os.path.join(workdir, "g-clock.png")
+    code, _out, err = run_to_end([ffmpeg, "-hide_banner", "-y", "-v", "error", "-f", "lavfi",
+                                  "-i", "color=c=black:size=400x80,format=yuv420p",
+                                  "-frames:v", "1", path])
+    if code != 0:
+        raise RuntimeError("could not make the overlay PNG: %s" % err.strip()[-120:])
+    return path
+
+
+def _g_encode_tail(out):
+    return ["-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+            "-bf", "0", "-g", "30", "-threads", "4", "-an", "-f", "mpegts", out]
+
+
+def g_configs(png, has_drawtext):
+    """(label, note, input args, filter args). Overlay inputs are -i entries."""
+    base = ["-t", str(G_SECONDS), "-f", "lavfi", "-i", G_BASE]
+    still = ["-t", str(G_SECONDS), "-f", "lavfi", "-i",
+             "smptebars=size=1280x720:rate=30"]
+    configs = [("baseline", "no overlay, moving picture", base, [])]
+    if has_drawtext:
+        configs.append(("drawtext clock per frame", "text re-rendered for every frame",
+                        base, ["-vf", G_TEXT_FILTER]))
+    configs += [
+        ("PNG overlay, -loop 1 -framerate 1",
+         "pre-rendered picture, 1 input frame per second",
+         base + ["-loop", "1", "-framerate", "1", "-t", str(G_SECONDS), "-i", png],
+         ["-filter_complex", "[0:v][1:v]overlay=20:20:eof_action=repeat[v]", "-map", "[v]"]),
+        ("changing overlay at 30 fps",
+         "a 400x80 source that changes every frame; stands in for per-frame text",
+         base + ["-f", "lavfi", "-i", "testsrc2=size=400x80:rate=30"],
+         ["-filter_complex", "[0:v][1:v]overlay=20:20:shortest=1[v]", "-map", "[v]"]),
+        ("mpdecimate, moving picture", "drops nothing on a moving picture",
+         base, ["-vf", "mpdecimate"]),
+        ("baseline, static picture", "SMPTE bars, no overlay", still, []),
+        ("mpdecimate, static picture", "SMPTE bars; near duplicates dropped",
+         still, ["-vf", "mpdecimate"]),
+    ]
+    return configs
+
+
+def spike_g(ffmpeg, workdir, repeats=3):
+    _code, filters_out, _err = run_to_end([ffmpeg, "-hide_banner", "-filters"])
+    has_drawtext = "drawtext" in parse_filter_names(filters_out)
+    png = _g_png(ffmpeg, workdir)
+    out = os.path.join(workdir, "g-out.ts")
+    results = []
+    for label, note, inputs, filter_args in g_configs(png, has_drawtext):
+        cpus, walls, kbps = [], [], []
+        error = None
+        for _ in range(repeats):
+            argv = [ffmpeg, "-hide_banner", "-y", "-v", "error"] + inputs + \
+                filter_args + _g_encode_tail(out)
+            code, wall, cpu, _mb, err = timed_run(argv)
+            if code != 0:
+                error = (err.strip().splitlines() or ["failed"])[-1][:160]
+                break
+            cpus.append(cpu)
+            walls.append(wall)
+            kbps.append(bitrate_kbps(os.path.getsize(out), G_SECONDS))
+        results.append({"config": label, "note": note, "error": error,
+                        "cpu_s": summarize(cpus), "wall_s": summarize(walls),
+                        "container_kbps": summarize(kbps)})
+    if not has_drawtext:
+        results.insert(1, {"config": "drawtext clock per frame",
+                           "note": "UNMEASURED: this ffmpeg build has no drawtext filter",
+                           "error": "Unknown filter 'drawtext'", "cpu_s": summarize([]),
+                           "wall_s": summarize([]), "container_kbps": summarize([])})
+    return {"stream_seconds": G_SECONDS, "repeats": repeats, "drawtext_available": has_drawtext,
+            "input": "1280x720@30 lavfi, not paced, no audio, libx264 ultrafast zerolatency, 4 threads",
+            "results": results}
+
+
 # ----------------------------------------------------------------------- main
 
-SPIKE_FUNCS = {"a": spike_a, "b": spike_b, "c": spike_c, "d": spike_d, "e": spike_e}
+SPIKE_FUNCS = {"a": spike_a, "b": spike_b, "c": spike_c, "d": spike_d, "e": spike_e,
+               "f": spike_f, "g": spike_g}
 
 
 def host_summary(ffmpeg):
@@ -959,7 +1191,7 @@ def parse_args(argv):
         else:
             raise ValueError("unknown argument %s" % arg)
     if not opts["spikes"]:
-        raise ValueError("choose --all or --spike a|b|c|d|e")
+        raise ValueError("choose --all or --spike a|b|c|d|e|f|g")
     return opts
 
 

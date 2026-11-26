@@ -8,8 +8,10 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 |---|---|
 | [FEATURES.md](FEATURES.md) | detailed feature guides, window layouts, web demo, known limitations, portable mode, standalone builds (moved out of the top README in 0.14) |
 | [ROADMAP.md](ROADMAP.md) | status table per area |
-| [ARCHITECTURE-NOTES.md](ARCHITECTURE-NOTES.md) | auto-scale design and alternatives, optimizer notes, 0.12 platform v2 decisions from measured spikes |
-| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, v0.11 before and after, web page weight, v0.12 spikes (`tools/spikes.py`), v0.13 import cost and page weight before and after, v0.14 page weight and demo decision, v0.15 audio chain cost, highlights analysis cost and Benchmark Lab harness check |
+| [ARCHITECTURE-NOTES.md](ARCHITECTURE-NOTES.md) | auto-scale design and alternatives, v0.16 guardian decisions and the dependabot workflow observation, optimizer notes, 0.12 platform v2 decisions from measured spikes |
+| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, v0.11 before and after, web page weight, v0.12 spikes (`tools/spikes.py`), v0.13 import cost and page weight before and after, v0.14 page weight and demo decision, v0.15 audio chain cost, highlights analysis cost and Benchmark Lab harness check, v0.16 idle budgets, runtime bitrate change, overlay cost and synthetic predictor results |
+| [architecture/V016-MAP.md](architecture/V016-MAP.md) | v0.16 feature map (guardian, auto-survival, predictor, profiles, timeline, portable audit), roadmap decisions, final status and suite tables |
+| [PROFILES.md](PROFILES.md) | one-click profiles `potato_pc`, `office_laptop`, `budget_gaming` and `recommend_profile` rules |
 | [architecture/V015-MAP.md](architecture/V015-MAP.md) | v0.15 upgrade paths mapped to existing code (existing, extended, new, roadmap) with decisions and the 0.14 test baseline |
 | [architecture/MULTI-DEVICE.md](architecture/MULTI-DEVICE.md) | dashboard panel map, viewer and relay design, OBS-style layers, Moonlight/Parsec class feasibility (covers remote play and P2P) |
 | [ARCHITECTURE-NOTES.md#diagrams-012](ARCHITECTURE-NOTES.md#diagrams-012) | Mermaid diagrams (process topology, recovery state machine, data flow) and refactoring recommendations |

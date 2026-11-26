@@ -49,6 +49,21 @@ class EmergencySettingsTests(unittest.TestCase):
         self.assertIsNone(s.audio_filter)
         self.assertIsNone(s.scene)
 
+    def test_constant_size_keeps_picture_and_audio_chain(self):
+        original = base(noise="light")._replace(audio_filter="highpass=f=80")
+        s = emergency_settings(original, constant_size=True)
+        self.assertEqual((original.width, original.height), (s.width, s.height))
+        self.assertEqual(original.audio_kbps, s.audio_kbps)
+        self.assertEqual("light", s.noise)
+        self.assertEqual("highpass=f=80", s.audio_filter)
+        self.assertEqual((24, 700, "ultrafast"), (s.fps, s.video_kbps, s.x264_preset))
+        self.assertIsNone(s.scene)
+        self.assertEqual(LEAN_BUFSIZE_SECONDS, s.bufsize_seconds)
+
+    def test_default_emergency_is_unchanged_by_the_new_option(self):
+        self.assertEqual(emergency_settings(base()),
+                         emergency_settings(base(), constant_size=False))
+
     def test_never_raises_a_lower_value(self):
         s = emergency_settings(base(preset="potato", bitrate=400, fps=15))
         self.assertEqual((400, 15), (s.video_kbps, s.fps))

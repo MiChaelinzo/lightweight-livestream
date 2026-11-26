@@ -317,3 +317,12 @@ The zipapp recipe is VERIFIED on Linux (`presets` and `start --help` ran from th
 - Subprocess isolation is not an OS sandbox: a plugin runs with your privileges. The stream key, ingest URL and file paths are never sent to a plugin.
 - Status: runtime, limits and permissions VERIFIED by tests with real subprocess plugins on Linux; Windows and macOS UNVERIFIED. Plugins are not connected to a live stream yet (Roadmap).
 - `python3 tools/benchlab.py --pid LABEL:PID | --command LABEL:COMMAND` samples CPU, RSS and startup from `/proc` and writes JSON and a markdown table. Competitor columns are UNKNOWN by default. Method and limits: [architecture/DELIVERY.md](architecture/DELIVERY.md). Linux only (other systems UNVERIFIED).
+
+### Guardian, auto-survival, profiles and timeline (0.16)
+
+- `--guardian` (config `guardian`, GUI Advanced checkbox) is opt in and off by default. It turns on auto-scale and adds CPU, RAM, CPU temperature, GPU and a bandwidth trend prediction as extra reasons for the existing AutoScaler. It is rule based, not a model. Every step restarts the encoder, because ffmpeg ignores runtime bitrate changes for libx264, libx265, libvpx and libaom (measured in [BENCHMARKS.md](BENCHMARKS.md)). Use `--persistent-ingest` to keep the connection up; about 10 percent of frames were lost near a restart on loopback.
+- `--auto-survival` (config `auto_survival`, GUI checkbox) is opt in. CPU at or above 95 percent or RAM at or above 90 percent for 10 seconds switches to constant-size emergency settings: same picture size, lower fps and bitrate, x264 ultrafast, no overlays, chromakey or blur, audio untouched. It leaves after both stay under 80 percent for 60 seconds.
+- The end-of-session output lists load spikes with events that "happened around" them. That is a time match, not a cause. Nothing is saved to disk.
+- Profiles `potato_pc`, `office_laptop` and `budget_gaming`: see [PROFILES.md](PROFILES.md).
+- Not detected: laughing, kill streaks, chat explosions. LightStream does not read chat.
+- Status: state machines, rules and argv VERIFIED by unit tests with fake clocks and golden files; predictor VERIFIED on synthetic traces only; real machines, real streams and the GUI checkboxes rendering UNVERIFIED. Map and limits: [architecture/V016-MAP.md](architecture/V016-MAP.md).

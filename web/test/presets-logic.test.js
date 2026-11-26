@@ -35,9 +35,28 @@ test("bandwidth maths", () => {
 
 test("recommendation respects upload and PC class", () => {
   assert.equal(recommendPreset(data.presets, 50, "strong").name, "720p60");
+  assert.equal(recommendPreset(data.presets, 6, "strong").name, "balanced");
   assert.equal(recommendPreset(data.presets, 50, "average").name, "balanced");
   assert.equal(recommendPreset(data.presets, 50, "old").name, "light");
   assert.equal(recommendPreset(data.presets, 2, "strong").name, "light");
+});
+
+test("profile-only presets are never picked from upload speed", () => {
+  for (const mbps of [2, 6, 50, 1000]) {
+    for (const pc of ["old", "average", "strong"]) {
+      const name = recommendPreset(data.presets, mbps, pc).name;
+      assert.ok(!["office_laptop", "budget_gaming"].includes(name), name);
+    }
+  }
+});
+
+test("one-click profile presets use 30 or 60 fps and stay within the Twitch cap", () => {
+  for (const name of ["office_laptop", "budget_gaming"]) {
+    assert.ok([30, 60].includes(byName[name].fps), name + " fps");
+    assert.ok(byName[name].video_kbps <= 6000, name + " bitrate");
+  }
+  assert.equal(byName.office_laptop.height, 900);
+  assert.equal(byName.budget_gaming.height, 1080);
 });
 
 test("recommendation falls back to the lowest preset", () => {
@@ -45,7 +64,7 @@ test("recommendation falls back to the lowest preset", () => {
 });
 
 test("every preset is recommendable with enough upload on a strong PC", () => {
-  for (const p of data.presets) {
+  for (const p of data.presets.filter((q) => !q.profile_only)) {
     const best = recommendPreset(data.presets, requiredUploadMbps(p), "strong");
     assert.ok(streamKbps(best) >= streamKbps(p), p.name);
   }

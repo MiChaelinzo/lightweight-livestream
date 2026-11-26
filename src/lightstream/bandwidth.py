@@ -11,7 +11,7 @@ import urllib.request
 from collections import namedtuple
 
 from .hardware import cap_preset_name
-from .presets import PRESETS
+from .presets import PRESETS, PROFILE_ONLY_PRESETS
 
 HEADROOM = 0.7  # use at most 70% of upload so bursts and Wi-Fi dips fit
 MIN_VIDEO_KBPS = 300
@@ -38,6 +38,8 @@ def recommend(upload_kbps, platform, hardware_profile=None):
     usable = int(upload_kbps * HEADROOM)
     chosen = None
     for preset in PRESETS.values():  # ordered lightest to heaviest
+        if preset.name in PROFILE_ONLY_PRESETS:
+            continue
         if min(preset.video_kbps, cap) + preset.audio_kbps <= usable:
             chosen = preset
     if chosen is None:

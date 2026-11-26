@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.0
+
+- Version bumped to 0.16.0 (`pyproject.toml`, `__init__.py`, README artifact names, RELEASING example).
+- Docs: `docs/architecture/V016-MAP.md` (feature map, decisions, final status, suite table), README, FEATURES, ROADMAP and docs index updated. Control API, phone remote, cloud scene sync and the companion app stay Roadmap; Crowd-Assisted Encoding savings are not claimed.
+- Observation, no change made: `.github/workflows/dependabot-auto-merge.yml` uses `pull_request_target` with `contents: write` and merges dependabot PRs without CI gating, there is no `dependabot.yml` and no runtime dependencies. Recommendation in `docs/ARCHITECTURE-NOTES.md`; needs the owner's decision.
+
+- New (opt in, off by default): `--guardian` (config `guardian`, GUI checkbox) turns on auto-scale and adds telemetry pressure (CPU, RAM, CPU temperature, GPU) and a bandwidth trend prediction as extra STRESSED reasons for the existing AutoScaler (`guardian.py`, `predictor.py`). Every step still restarts the encoder; `--persistent-ingest` keeps the connection alive meanwhile (about 10 percent of frames were lost near a restart on loopback). The ladder gained a 900p step (1920x1080 to 1600x900) and a 45 fps step (60, 45, 30, 24). Predictor results are on SYNTHETIC traces only (see `docs/BENCHMARKS.md`); real streams UNVERIFIED.
+- New (opt in, off by default): `--auto-survival` (config `auto_survival`, GUI checkbox). CPU at or above 95 percent or RAM at or above 90 percent for 10 seconds switches to constant-size emergency settings (same picture size, audio untouched, lower fps and bitrate, x264 ultrafast, no overlays, chromakey or blur). It leaves after CPU and RAM stay under 80 percent for 60 seconds, with a 60 second cooldown and at most 4 entries per hour. State machines VERIFIED with a fake clock; real machines UNVERIFIED.
+- Changed: with persistent ingest the GUI Emergency button is no longer declined. It uses the constant-size variant because persistent ingest keeps the picture size fixed (`emergency_settings(constant_size=True)`).
+- New: `timeline.py`, a bounded in-memory event log (guardian steps, survival, reconnects, Emergency and Restore). The end-of-session output lists load spikes with the events that "happened around" them (a time correlation, never a cause). Nothing is persisted, so there is no `lightstream timeline` command yet.
+- Changed: plain `--auto-scale` now has a longer ladder (a 45 fps rung and a 900p rung). Each rung is one encoder restart. Profile-only presets are excluded from the ladder sources.
+- New: one-click profiles `potato_pc` (480p30, 1000k, 2 threads), `office_laptop` (900p30, 3500k) and `budget_gaming` (1080p60, 6000k, needs a hardware encoder) with presets `office_laptop` and `budget_gaming` (exported to `web/presets.json`, marked `profile_only` in the JSON so the web recommender skips them, as `bandwidth.recommend` does), and a pure `recommend_profile()` whose answer `optimize` prints. 40 fps was rejected (judders on 60 Hz displays). Reasoning in `docs/PROFILES.md`; real PCs UNVERIFIED. `wizard.LOW_RAM_MB` and `POTATO_RAM_MB` now live in `perf_profiles.py`.
+- Fix: plugin names are matched with `fullmatch`, so a name with a trailing newline is rejected (the `$` anchor accepted it).
+
+- Dev: `tools/idle_budget.py` measures GUI startup, idle RSS and idle CPU on a DISPLAY; `tests/test_idle_budget.py` enforces startup under 2 s, RSS under 150 MB and idle CPU under 5 percent (real-window test skipped without DISPLAY).
+- Dev: `tools/spikes.py --spike f` (runtime bitrate change) and `--spike g` (overlay cost). Findings and numbers in `docs/BENCHMARKS.md` ("v0.16 evidence"): `sendcmd` reaches filters but not encoders in this ffmpeg build, `zmq` and `drawtext` are absent here, and a pre-rendered PNG overlay showed no reliable CPU win.
+
 ## 0.15.0
 
 - New: `lightstream audio-check FILE` reports clipping and loudness (LUFS) of an audio or video file using ffmpeg `volumedetect` and `ebur128`. Pure parser in `audio_check.py`. VERIFIED by unit tests and a real-ffmpeg test (clipped sine detected, -12 dB sine not).

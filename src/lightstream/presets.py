@@ -22,8 +22,23 @@ PRESETS = {
                "Potato Stream 4000k: 15 fps, 480p, ultrafast."),
         Preset("720p60", 1280, 720, 60, 4000, 128, "veryfast",
                "Fast action games. Needs a hardware encoder or a good CPU."),
+        # One-click profile presets (design choices, UNVERIFIED on real PCs).
+        # 30 or 60 fps only: 40 fps judders on 60 Hz displays and platforms
+        # expect 30 or 60. Bitrates fit inside every platform cap they are
+        # meant for (see bandwidth.PLATFORM_VIDEO_CAP_KBPS).
+        Preset("office_laptop", 1600, 900, 30, 3500, 128, "veryfast",
+               "Office laptop: 900p30 at 3500k. 30 fps, not 40, because 40 fps "
+               "judders on 60 Hz screens."),
+        Preset("budget_gaming", 1920, 1080, 60, 6000, 128, "veryfast",
+               "Budget gaming PC: 1080p60 at 6000k (the Twitch cap). Needs a "
+               "hardware encoder such as NVENC."),
     )
 }
+
+# Presets chosen only by name (--profile, --preset). Automatic upload-speed
+# recommendations skip them so a fast connection never picks 1080p60 for a
+# PC that cannot encode it.
+PROFILE_ONLY_PRESETS = frozenset(("office_laptop", "budget_gaming"))
 
 DEFAULT_PRESET = "light"
 

@@ -65,7 +65,7 @@ Evidence: `tools/spikes.py`, numbers and method in [BENCHMARKS.md](BENCHMARKS.md
 | --- | --- | --- | --- |
 | Split publisher: encoder -> MPEG-TS over local UDP -> long-lived `-c copy` publisher -> RTMP | Adopt as an opt-in path for quality changes (auto-scale, Emergency) on top of the existing restart; the restart through the reconnect loop stays the default | RTMP session to a local ffmpeg listener survived encoder SIGKILL with 1 s and 5 s gaps; received dts strictly increasing; publisher costs about 0.105 CPU s per 10 s and 19.1 MiB (n = 3) | ffmpeg collapses the gap in the timeline; about 30 of 300 frames lost per run (mostly at publisher start); platform reaction to a silence and to collapsed timestamps UNVERIFIED |
 | Resolution change after an encoder restart vs constant output resolution | Keep the output resolution constant inside one publisher session (scale to the top step size, change bitrate and fps only); a size change goes through the normal restart | A 640x360 to 960x540 switch decoded with 0 errors in ffmpeg | Platform transcoders and players with a mid-stream size change UNVERIFIED, so not relied on |
-| `sendcmd` / `zmq` live filter commands | Still rejected | Not measured; the 0.9.0 reason stands (cannot change encoder bitrate or rate control) | none new |
+| `sendcmd` / `zmq` live filter commands | Still rejected | Measured in v0.16 (BENCHMARKS.md, spike F): sendcmd reaches filters but not encoders; no software encoder changed bitrate. Hardware encoders UNVERIFIED | none new |
 | Earlier "two process relay costs too much" rejection | Revised: the measured cost is small (about 1 percent of one core here, 19.1 MiB). Kept opt-in because the gap and platform behavior are unverified | spike A overhead table | slow CPUs may show a higher share (UNVERIFIED) |
 | Tee recording spec | Must change (FEAT-003): add explicit `-map` for video and audio, `-flags +global_header`, flv slot `onfail=abort`, matroska slot `onfail=ignore` | Today's `build_command` argv with `record_to` exits 234 (`Output file does not contain any stream`); without global header the mkv slot writes 291 bytes and the failure is hidden; a slot without `onfail` keeps ffmpeg running after the RTMP server dies (so reconnect never fires), `onfail=abort` exits at once and leaves a readable mkv | Real platform disconnect may surface differently than a killed local listener (UNVERIFIED) |
 | Recording container | Keep Matroska with `-flush_packets 1`; reject plain MP4; fragmented MP4 not adopted (no gain over Matroska) | After SIGKILL: MKV readable (150 of 150 frames with flush), MP4 `moov atom not found`, fragmented MP4 readable | none new |
@@ -155,3 +155,23 @@ Ordered by value. None were done in 0.12 because each needs its own tested chang
 4. `gui.py` and `gui_pages.py` are the only large untested-by-execution files. Keep drawing code thin and add a headless render check when a display is available.
 5. Health score weights and tier thresholds are constants in `optimizer.py` and `bench.py`. Collect real opted-in history before changing them.
 6. There is no log file, so `support-bundle` carries history rows only. A rotating, redacted log would help diagnosis; it must reuse the existing redaction.
+
+## v0.16 Guardian, auto-survival and persistent ingest (decisions)
+
+- One engine: `guardian.Guardian` only supplies extra `ScaleSignal`s to `autoscale.assess(extra=...)`; the AutoScaler hysteresis, cooldown and hourly cap still decide. `--guardian` implies auto-scale.
+- Every step restarts the encoder (ffmpeg ignores runtime bitrate changes for libx264, x265, vpx and aom; see BENCHMARKS v0.16 evidence). Persistent ingest keeps the RTMP connection alive; about 10 percent of frames were lost near a restart on loopback.
+- Auto-survival (`guardian.SurvivalMonitor`, applied in `AutoScaleSession`) pauses the ladder while active and restores the earlier settings on exit. Audio has priority: audio bitrate and the audio chain are never reduced.
+- Decision: with persistent ingest the GUI Emergency button now uses the constant-size variant instead of being declined. The earlier decline message was removed.
+- Chat priority is a companion-app concern only. LightStream does not read chat and has no code for it.
+- The timeline (`timeline.py`) is in memory and printed at the end of a session. It uses "happened around" wording because a matching time is not a cause. No session data is persisted, so no `lightstream timeline` command exists.
+
+### Alternatives considered for live bitrate change (0.16)
+
+- `sendcmd` to the encoder: accepted with exit code 0 but ignored by libx264, libx265, libvpx, libvpx-vp9 and libaom-av1 (spike F). Rejected.
+- `zmq`: filter absent in the static build used here. Not testable; rejected for the stdlib-only, static-binary distribution.
+- Hardware encoders: not available in the sandbox, UNVERIFIED.
+- Chosen: restart through the reconnect loop, with persistent ingest to hide it from the platform.
+
+## Observation: dependabot auto-merge workflow (0.16, not changed)
+
+`.github/workflows/dependabot-auto-merge.yml` runs on `pull_request_target` with `contents: write` and `pull-requests: write`, approves PRs from `dependabot[bot]` and enables squash auto-merge. It has no CI gate of its own: auto-merge waits for checks only if branch protection requires them. There is no `.github/dependabot.yml`, so no ecosystem is configured, and the project has no runtime dependencies (stdlib Python, no npm in `web/`), so there is nothing to update today. GitHub Actions is billing-locked here, so it cannot run now. Recommendation for the owner (not applied): add `dependabot.yml` for the `github-actions` ecosystem only and require the CI checks in branch protection, or remove the workflow.

@@ -352,13 +352,49 @@ class ControllerTests(unittest.TestCase):
         with mock.patch.object(gc, "run_with_publisher", fake_publisher):
             self.assertIsNone(c.start(dict(PREFS, persistent_ingest=True), SECRET))
             c._thread.join(0.3)
-            self.assertEqual(
-                gc.PERSISTENT_EMERGENCY_NOTE, c.emergency())
+            before = c._scale.current_settings
+            self.assertIn("Emergency mode is on", c.emergency())
+            after = c._scale.current_settings
+            self.assertTrue(c._scale.restart.is_set())
             c.stop()
+        # constant size: same picture and audio, lower fps/bitrate
+        self.assertEqual((before.width, before.height), (after.width, after.height))
+        self.assertEqual(before.audio_kbps, after.audio_kbps)
+        self.assertLessEqual(after.video_kbps, before.video_kbps)
         port = str(c._scale.current_settings.local_ingest_port)
         self.assertTrue(any(port in part for part in calls[0][0]))
         self.assertTrue(any(port in part for part in seen["argv"]))
         self.assertIs(calls[0][1]["stop"], seen["kw"]["encoder_stop"])
+
+    def test_guardian_and_survival_are_off_unless_ticked(self):
+        for pref in ("guardian", "auto_survival"):
+            self.assertIn(pref, gc.PREF_FIELDS)
+        c = make_controller(fake_runner_factory([]))
+        c.start(PREFS, SECRET)
+        c._thread.join(0.3)
+        c.stop()
+        self.assertIsNone(c._scale.guardian)
+        self.assertIsNone(c._scale.survival)
+        self.assertIsNone(c._timeline)
+        self.assertFalse(c._scale.scaler.enabled)
+
+    def test_guardian_pref_turns_on_autoscale_guardian_and_timeline(self):
+        c = make_controller(fake_runner_factory([]))
+        c.start(dict(PREFS, guardian=True, auto_survival=True), SECRET)
+        c._thread.join(0.3)
+        c.stop()
+        self.assertTrue(c._scale.scaler.enabled)
+        self.assertIsNotNone(c._scale.guardian)
+        self.assertTrue(c._scale.survival.enabled)
+        self.assertIsNotNone(c._timeline)
+
+    def test_flags_are_ignored_for_test_recordings(self):
+        c = make_controller(fake_runner_factory([]))
+        c.start(dict(PREFS, guardian=True, auto_survival=True), "", test_local=True)
+        c._thread.join(0.3)
+        c.stop()
+        self.assertIsNone(c._scale.guardian)
+        self.assertFalse(c._scale.scaler.enabled)
 
     def test_persistent_pref_is_remembered_and_never_the_key(self):
         self.assertIn("persistent_ingest", gc.PREF_FIELDS)

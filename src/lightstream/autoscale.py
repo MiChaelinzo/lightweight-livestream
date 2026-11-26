@@ -36,7 +36,7 @@ Hysteresis
 import time
 from collections import namedtuple
 
-from .presets import PRESETS, Preset
+from .presets import PRESETS, PROFILE_ONLY_PRESETS, Preset
 
 LadderStep = namedtuple("LadderStep", "width height fps kbps")
 ScaleSignal = namedtuple("ScaleSignal", "state reason cpu_bound", defaults=(False,))
@@ -59,7 +59,7 @@ GAMING_STEP_UP_HOLDOFF_SECONDS = 600.0   # no step up this soon after a CPU-trig
 BITRATE_STEP_FACTOR = 0.8
 BITRATE_STEPS = 2               # bitrate steps before fps and resolution change
 MIN_LADDER_KBPS = 300
-FPS_STEPS = (60, 30, 24)
+FPS_STEPS = (60, 45, 30, 24)
 DEFAULT_FLOOR_PRESET = "potato"
 # Ladder-only tiers so the ladder has 240p, 360p, 480p, 720p and 1080p steps.
 # They are not stream presets (not exported to the web page). 240p is below the
@@ -67,13 +67,20 @@ DEFAULT_FLOOR_PRESET = "potato"
 # UNVERIFIED on real streams.
 TIER_240P = "tier-240p"
 TIER_1080P = "tier-1080p"
+TIER_900P = "tier-900p"
 LADDER_TIERS = {
     TIER_240P: Preset(TIER_240P, 426, 240, 24, 400, 64, "ultrafast",
                       "Ladder step below potato for a very weak uplink."),
     TIER_1080P: Preset(TIER_1080P, 1920, 1080, 30, 4500, 128, "veryfast",
                        "Ladder step under a higher chosen size."),
+    TIER_900P: Preset(TIER_900P, 1600, 900, 30, 3500, 128, "veryfast",
+                      "Ladder step between 1080p and 720p."),
 }
-LADDER_SOURCES = dict(PRESETS, **LADDER_TIERS)
+# Profile-only presets stay out so a 6000k 1080p profile cannot raise the
+# bitrate of an existing 1080p rung.
+LADDER_SOURCES = dict(
+    {n: p for n, p in PRESETS.items() if n not in PROFILE_ONLY_PRESETS},
+    **LADDER_TIERS)
 
 assert UPSCALE_AFTER_SECONDS > DOWNSCALE_AFTER_SECONDS
 
@@ -188,12 +195,15 @@ class AutoScaler:
         return ScaleDecision(direction, before, self.index, self.step, reason)
 
 
-def assess(advisor, sample=None, gaming_first=False):
+def assess(advisor, sample=None, gaming_first=False, extra=()):
     """ScaleSignal from the advisor (and a telemetry Sample) right now.
 
     Gaming First: when system CPU is at or above GAMING_CPU_STEP_DOWN_PERCENT
     while ffmpeg speed is fine, step down anyway to protect the game, and say so.
     Reconnect pressure is NEUTRAL: it blocks stepping up but does not step down.
+    extra holds more ScaleSignals (guardian pressure and trend, empty unless the
+    person opted in): any STRESSED one steps down, any NEUTRAL one only blocks
+    stepping up.
     """
     if advisor.is_slow():
         return ScaleSignal(STRESSED, "Encoding speed is %.2fx, below real time."
@@ -206,7 +216,11 @@ def assess(advisor, sample=None, gaming_first=False):
         return ScaleSignal(STRESSED, "Gaming First: system CPU is at %.0f%% while the "
                            "stream is fine, so the stream steps down to protect your "
                            "game." % cpu, cpu_bound=True)
-    if advisor.last_speed() is None or advisor.reconnect_pressure():
+    for signal in extra:
+        if signal.state == STRESSED:
+            return signal
+    if (advisor.last_speed() is None or advisor.reconnect_pressure()
+            or any(signal.state == NEUTRAL for signal in extra)):
         return ScaleSignal(NEUTRAL, "")
     return ScaleSignal(HEALTHY, "")
 
@@ -225,7 +239,8 @@ class AutoScaleSession:
     """
 
     def __init__(self, settings, advisor, scaler, restart, write,
-                 sampler=None, gaming_first=False, monitors=()):
+                 sampler=None, gaming_first=False, monitors=(),
+                 guardian=None, survival=None, timeline=None):
         self.current_settings = settings
         self.advisor = advisor
         self.scaler = scaler
@@ -234,25 +249,81 @@ class AutoScaleSession:
         self.sampler = sampler
         self.gaming_first = gaming_first
         self.monitors = list(monitors)   # objects with retarget(video_kbps, fps)
+        self.guardian = guardian         # opt-in: guardian.Guardian
+        self.survival = survival         # opt-in: guardian.SurvivalMonitor
+        self.timeline = timeline         # opt-in: timeline.Timeline
+        self.manual_hold = False         # a person's Emergency press pauses survival
         self.decisions = []
+        self._before_survival = None     # (settings, scaler enabled) while in survival
+
+    @property
+    def in_survival(self):
+        return self._before_survival is not None
+
+    def _log(self, kind, text):
+        if self.timeline is not None:
+            self.timeline.record(kind, text)
 
     def on_status(self, state, detail=None):
-        if not self.scaler.enabled or state != "live":
+        if state == "reconnecting":
+            self._log("reconnect", "the connection dropped and ffmpeg is reconnecting")
+        if state != "live":
             return
         sample = self.sampler.latest if self.sampler is not None else None
-        decision = self.scaler.update(assess(self.advisor, sample, self.gaming_first))
+        if self.timeline is not None:
+            self.timeline.note_sample(sample)
+        if (self.survival is not None and self.survival.enabled
+                and not self.manual_hold and self._survival_step(sample)):
+            return
+        if not self.scaler.enabled or self.in_survival:
+            return
+        extra = (self.guardian.observe(detail, sample)
+                 if self.guardian is not None else ())
+        decision = self.scaler.update(
+            assess(self.advisor, sample, self.gaming_first, extra))
         if decision is None:
             return
         self.decisions.append(decision)
         self.current_settings = apply_step(self.current_settings, decision.step)
         step = decision.step
-        for monitor in self.monitors:
-            monitor.retarget(step.kbps, step.fps)
+        self._retarget()
         self.write("Auto-scale %s: %dx%d at %d fps, %d kbps. %s Restarting ffmpeg "
                    "(a brief interruption).\n"
                    % (decision.direction, step.width, step.height, step.fps,
                       step.kbps, decision.reason))
+        self._log("guardian step", "%s to %dx%d, %d fps, %d kbps. %s"
+                  % (decision.direction, step.width, step.height, step.fps,
+                     step.kbps, decision.reason))
         self.restart.set()
+
+    def _retarget(self):
+        for monitor in self.monitors:
+            monitor.retarget(self.current_settings.video_kbps, self.current_settings.fps)
+
+    def _survival_step(self, sample):
+        """Apply a survival enter/exit. True when a restart was requested."""
+        event = self.survival.update(sample)
+        if event is None:
+            return False
+        if event.kind == "enter":
+            from .emergency import emergency_settings  # emergency imports this module
+            self._before_survival = (self.current_settings, self.scaler.enabled)
+            self.scaler.enabled = False   # survival paused the ladder, it cannot undo it
+            self.current_settings = emergency_settings(self.current_settings,
+                                                       constant_size=True)
+            self.write("Auto-survival ON: %s Same picture size, audio kept, lower "
+                       "frame rate and bitrate, no overlays. Restarting ffmpeg "
+                       "(a brief interruption).\n" % event.reason)
+            self._log("survival enter", event.reason)
+        else:
+            self.current_settings, self.scaler.enabled = self._before_survival
+            self._before_survival = None
+            self.write("Auto-survival OFF: %s Your previous settings are back. "
+                       "Restarting ffmpeg (a brief interruption).\n" % event.reason)
+            self._log("survival exit", event.reason)
+        self._retarget()
+        self.restart.set()
+        return True
 
 
 def top_step(settings):

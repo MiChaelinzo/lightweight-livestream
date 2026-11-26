@@ -13,7 +13,8 @@ from lightstream.config import resolve_settings
 from lightstream.presets import PRESETS
 from lightstream.runner import priority_kwargs
 
-EXPECTED_PROFILES = {"potato", "potato_2000", "potato_4000", "balanced", "quality", "competitive", "low_latency"}
+EXPECTED_PROFILES = {"potato", "potato_2000", "potato_4000", "balanced", "quality", "competitive", "low_latency",
+                     "potato_pc", "office_laptop", "budget_gaming"}
 EXPECTED_STREAMS = {"youtube_gaming", "twitch_gaming", "facebook_live", "kick", "podcast",
                     "just_chatting", "tutorial", "esports"}
 EXPECTED_AUDIO = {"gaming", "podcast", "music", "commentary", "asmr", "teaching",
@@ -209,6 +210,96 @@ class RealFfmpegAudioChainTests(unittest.TestCase):
                         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                         universal_newlines=True)
                     self.assertEqual(0, result.returncode, result.stderr)
+
+
+class OneClickProfileTests(unittest.TestCase):
+    def test_office_laptop_is_900p30_and_never_40_fps(self):
+        preset = PRESETS[pp.get_perf_profile("office_laptop").preset_name]
+        self.assertEqual((1600, 900, 30), (preset.width, preset.height, preset.fps))
+        for p in PRESETS.values():
+            self.assertNotEqual(40, p.fps, p.name)
+
+    def test_budget_gaming_is_1080p60_within_every_cap_it_is_chosen_for(self):
+        preset = PRESETS[pp.get_perf_profile("budget_gaming").preset_name]
+        self.assertEqual((1920, 1080, 60), (preset.width, preset.height, preset.fps))
+        self.assertLessEqual(preset.video_kbps, PLATFORM_VIDEO_CAP_KBPS["twitch"])
+        self.assertIn("hardware encoder", pp.get_perf_profile("budget_gaming").description)
+
+    def test_office_laptop_fits_the_smallest_platform_cap(self):
+        self.assertLessEqual(PRESETS["office_laptop"].video_kbps,
+                             min(PLATFORM_VIDEO_CAP_KBPS.values()))
+
+    def test_potato_pc_is_480p30_at_1000k_with_two_threads(self):
+        s, argv = argv_for({"profile": "potato_pc"}, cpus=8)
+        self.assertEqual((854, 480, 30, 1000), (s.width, s.height, s.fps, s.video_kbps))
+        self.assertEqual("2", option(argv, "-threads"))
+
+    def test_cli_accepts_the_new_profile_names(self):
+        for name in ("potato_pc", "office_laptop", "budget_gaming"):
+            args = cli.build_parser().parse_args(["start", "--profile", name])
+            self.assertEqual(name, args.profile)
+
+    def test_gui_profile_list_shows_the_new_profiles(self):
+        from lightstream import gui_pages
+        choices = gui_pages.profile_choices()
+        for name in ("potato_pc", "office_laptop", "budget_gaming"):
+            self.assertIn(name, choices)
+
+    def test_new_presets_are_never_chosen_by_upload_recommendation(self):
+        from lightstream import bandwidth
+        for hardware in (None, "nvidia"):
+            rec = bandwidth.recommend(100000, "twitch", hardware)
+            self.assertNotIn(rec.preset, ("office_laptop", "budget_gaming"))
+
+    def test_intel_hd_caps_the_new_presets_to_light(self):
+        from lightstream.hardware import cap_preset_name
+        for name in ("office_laptop", "budget_gaming"):
+            self.assertEqual("light", cap_preset_name("intel_hd", name))
+
+
+class RecommendProfileTests(unittest.TestCase):
+    def test_weak_pcs_get_potato_profiles(self):
+        self.assertEqual("potato_2000", pp.recommend_profile(2, 2048))
+        self.assertEqual("potato_pc", pp.recommend_profile(2, 8192))
+        self.assertEqual("potato_pc", pp.recommend_profile(8, 4096))
+
+    def test_intel_hd_gets_potato_pc(self):
+        self.assertEqual("potato_pc", pp.recommend_profile(
+            4, 8192, "Intel(R) HD Graphics 620"))
+
+    def test_nvidia_with_capable_cpu_gets_budget_gaming(self):
+        self.assertEqual("budget_gaming", pp.recommend_profile(
+            6, 16384, "NVIDIA GeForce GTX 1650"))
+        self.assertEqual("budget_gaming", pp.recommend_profile(
+            6, 16384, hardware_profile="nvidia"))
+
+    def test_capable_pc_without_nvenc_gets_office_laptop(self):
+        self.assertEqual("office_laptop", pp.recommend_profile(4, 8192, "AMD Radeon"))
+        self.assertEqual("office_laptop", pp.recommend_profile(
+            8, 16384, hardware_profile="mx250_streamer"))
+
+    def test_middle_pc_and_unknowns_get_balanced(self):
+        self.assertEqual("balanced", pp.recommend_profile(4, 6144))
+        self.assertEqual("balanced", pp.recommend_profile(None, None))
+
+    def test_hardware_profile_overrides_gpu_name(self):
+        self.assertEqual("potato_pc", pp.recommend_profile(
+            8, 16384, "NVIDIA GeForce GTX 1650", hardware_profile="intel_hd"))
+
+    def test_every_answer_is_a_known_profile(self):
+        for cpus in (None, 1, 2, 4, 8):
+            for ram in (None, 1024, 4096, 6144, 8192, 32768):
+                for gpu in (None, "NVIDIA GeForce GTX 1650", "Intel HD Graphics 620"):
+                    self.assertIn(pp.recommend_profile(cpus, ram, gpu), pp.PERF_PROFILES)
+
+    def test_optimize_text_names_the_one_click_profile(self):
+        from lightstream import wizard
+        prop = wizard.propose_optimization(
+            {}, "NVIDIA GeForce GTX 1650", 6, 16384, None, "twitch",
+            wizard.gather_readiness_facts("linux", 6, 16384, None,
+                                          run=lambda *a, **k: None,
+                                          find=lambda: None))
+        self.assertTrue(any("--profile budget_gaming" in n for n in prop.notes), prop.notes)
 
 
 if __name__ == "__main__":

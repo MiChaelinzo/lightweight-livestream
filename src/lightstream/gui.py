@@ -136,6 +136,8 @@ class StreamWindow:
         self.audio_profile = tk.StringVar(
             value=gp.audio_profile_label(saved.get("audio_profile")))
         self.auto_scale = tk.BooleanVar(value=saved.get("auto_scale") is True)
+        self.guardian = tk.BooleanVar(value=saved.get("guardian") is True)
+        self.auto_survival = tk.BooleanVar(value=saved.get("auto_survival") is True)
         self.persistent_ingest = tk.BooleanVar(
             value=saved.get("persistent_ingest") is True)
         self.backup_url = tk.StringVar(value=saved.get("backup_url") or "")
@@ -734,8 +736,8 @@ class StreamWindow:
                         ).pack(anchor="w", pady=(8, 0))
         self._hint(frame, "Off by default. A separate copy-only process holds the "
                    "connection while the encoder restarts. The picture size stays "
-                   "fixed, and it cannot be combined with a backup server address "
-                   "or Emergency mode.")
+                   "fixed, and it cannot be combined with a backup server address. "
+                   "Emergency mode then keeps the size and lowers frame rate and bitrate.")
 
     def _build_advanced(self, frame):
         self._heading(frame, "Advanced")
@@ -756,6 +758,13 @@ class StreamWindow:
                 ("Auto-scale quality (off by default). When the stream struggles it "
                  "steps quality down, and back up when healthy. Each step restarts "
                  "the stream for a moment.", self.auto_scale),
+                ("Performance Guardian (off by default). Turns on auto-scale and also "
+                 "watches CPU, RAM, temperature and a bandwidth trend. Every step "
+                 "restarts the encoder for a moment; persistent ingest keeps the "
+                 "connection alive meanwhile.", self.guardian),
+                ("Auto-survival (off by default). If CPU stays at 95% or RAM at 90% "
+                 "for 10 seconds, keeps the picture size and audio but cuts frame rate, "
+                 "bitrate and overlays, with a brief restart.", self.auto_survival),
                 ("Mute (send silence)", self.mute),
                 ("Keep trying if the internet drops", self.keep_trying),
                 ("Save a session report after streaming (off by default, stays on "
@@ -796,6 +805,8 @@ class StreamWindow:
             "auto_scale": self.auto_scale.get(),
             "backup_url": self.backup_url.get(),
             "persistent_ingest": self.persistent_ingest.get(),
+            "guardian": self.guardian.get(),
+            "auto_survival": self.auto_survival.get(),
         }
 
     def apply_prefs(self, prefs):

@@ -49,13 +49,28 @@ class LadderTests(unittest.TestCase):
         self.assertEqual((1280, 720, 60), steps[1][:3])
         self.assertLess(steps[1].kbps, 4000)
         self.assertEqual((1280, 720, 60), steps[2][:3])
-        self.assertEqual((1280, 720, 30), steps[3][:3])
+        self.assertEqual((1280, 720, 45), steps[3][:3])
+        self.assertEqual((1280, 720, 30), steps[4][:3])
         for before, after in zip(steps, steps[1:]):
             self.assertTrue(after.kbps <= before.kbps and after.fps <= before.fps
                             and after.height <= before.height)
             self.assertNotEqual(before, after)
         self.assertEqual(360, steps[-1].height)
         self.assertIn(480, [s.height for s in steps])
+
+    def test_1080p_steps_to_900p_and_60_fps_to_45(self):
+        steps = au.build_ladder(au.LadderStep(1920, 1080, 60, 6000))
+        heights = [s.height for s in steps]
+        self.assertIn(900, heights)
+        self.assertLess(heights.index(900), heights.index(720))
+        self.assertIn((1600, 900), [(s.width, s.height) for s in steps])
+        fps = [s.fps for s in steps]
+        self.assertLess(fps.index(45), fps.index(30))
+
+    def test_profile_only_presets_do_not_change_ladder_bitrates(self):
+        steps = au.build_ladder(au.LadderStep(2560, 1440, 30, 9000))
+        rung = [s for s in steps if s.height == 1080]
+        self.assertEqual([4500], [s.kbps for s in rung])
 
     def test_user_bitrate_kept_and_floor_respected(self):
         steps = au.build_ladder(au.LadderStep(854, 480, 30, 900), "light")

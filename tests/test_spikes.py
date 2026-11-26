@@ -174,5 +174,54 @@ class AudioSpikeTests(unittest.TestCase):
         self.assertIn("e", spikes.SPIKE_FUNCS)
 
 
+FILTERS = """Filters:
+  T.. = Timeline support
+ ... asendcmd          A->A       Send commands to filters.
+ T.. hue               V->V       Adjust the hue and saturation of the input video.
+ ... sendcmd           V->V       Send commands to filters.
+ ..C amovie            |->N       Read audio from a movie source.
+"""
+
+ENCODERS = """Encoders:
+ V....D libx264              libx264 H.264 / AVC (codec h264)
+ V..... h264_v4l2m2m         V4L2 mem2mem H.264 encoder wrapper (codec h264)
+ A....D aac                  AAC (Advanced Audio Coding)
+"""
+
+
+class FilterAndEncoderParsingTest(unittest.TestCase):
+    def test_filter_names(self):
+        names = spikes.parse_filter_names(FILTERS)
+        self.assertEqual(names, {"amovie", "asendcmd", "hue", "sendcmd"})
+        self.assertNotIn("zmq", names)
+
+    def test_video_encoder_names_skip_audio(self):
+        self.assertEqual(spikes.parse_video_encoder_names(ENCODERS),
+                         ["libx264", "h264_v4l2m2m"])
+
+
+class HalfBitratesTest(unittest.TestCase):
+    def packet(self, pts_ms, size):
+        return {"stream": 0, "dts": pts_ms, "pts": pts_ms, "duration": 1000,
+                "size": size}
+
+    def test_rate_before_and_after_the_split(self):
+        packets = [self.packet(0, 1000), self.packet(1000, 1000),
+                   self.packet(2000, 500), self.packet(3000, 500)]
+        before, after = spikes.half_bitrates(packets, (1, 1000), 2000)
+        self.assertEqual(before, 8.0)   # 2000 bytes over 2 s
+        self.assertEqual(after, 4.0)    # 1000 bytes over 2 s
+
+    def test_empty_half_is_none(self):
+        before, after = spikes.half_bitrates([self.packet(0, 1000)], (1, 1000), 5000)
+        self.assertEqual(before, 8.0)   # 1000 bytes over the one packet window
+        self.assertIsNone(after)
+
+    def test_other_streams_and_missing_pts_are_ignored(self):
+        packets = [{"stream": 1, "dts": 0, "pts": 0, "duration": 1000, "size": 99999},
+                   {"stream": 0, "dts": 0, "pts": None, "duration": 1000, "size": 99999}]
+        self.assertEqual(spikes.half_bitrates(packets, (1, 1000), 2000), (None, None))
+
+
 if __name__ == "__main__":
     unittest.main()

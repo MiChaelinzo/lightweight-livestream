@@ -36,9 +36,26 @@ WEAK_KEYINT_SECONDS = 1          # keyframe every second: faster recovery
 WEAK_BUFSIZE_SECONDS = 2.0       # rate-control buffer in seconds of video
 
 
-def emergency_settings(settings):
-    """StreamSettings with the safest known values. Never raises a value."""
+def emergency_settings(settings, constant_size=False):
+    """StreamSettings with the safest known values. Never raises a value.
+
+    constant_size keeps the picture size and the whole audio chain (audio
+    bitrate, noise suppression, audio filter: audio has priority over
+    video) and cuts only frame rate, video bitrate, x264 preset, encoder
+    threads, the lean buffer and the scene (overlays, webcam with chromakey and blur).
+    Persistent ingest and auto-survival use it because the output size must
+    not change inside a session.
+    """
     floor = PRESETS[DEFAULT_FLOOR_PRESET]
+    if constant_size:
+        return settings._replace(
+            fps=min(settings.fps, floor.fps),
+            video_kbps=min(settings.video_kbps, floor.video_kbps),
+            x264_preset=floor.x264_preset,
+            threads=(POTATO_THREAD_CAP if not settings.threads
+                     else min(settings.threads, POTATO_THREAD_CAP)),
+            scene=None,
+            bufsize_seconds=LEAN_BUFSIZE_SECONDS)
     if settings.width * settings.height > floor.width * floor.height:
         width, height = floor.width, floor.height
     else:

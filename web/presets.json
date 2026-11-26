@@ -9,7 +9,8 @@
       "video_kbps": 700,
       "audio_kbps": 64,
       "x264_preset": "ultrafast",
-      "description": "Oldest PCs, weak Wi-Fi, mobile emulators. Lowest CPU use."
+      "description": "Oldest PCs, weak Wi-Fi, mobile emulators. Lowest CPU use.",
+      "profile_only": false
     },
     {
       "name": "light",
@@ -19,7 +20,8 @@
       "video_kbps": 1000,
       "audio_kbps": 96,
       "x264_preset": "ultrafast",
-      "description": "Old laptops. Good default for Arknights / Limbus Company."
+      "description": "Old laptops. Good default for Arknights / Limbus Company.",
+      "profile_only": false
     },
     {
       "name": "balanced",
@@ -29,7 +31,8 @@
       "video_kbps": 2500,
       "audio_kbps": 128,
       "x264_preset": "veryfast",
-      "description": "Decent PCs or any PC with a hardware encoder."
+      "description": "Decent PCs or any PC with a hardware encoder.",
+      "profile_only": false
     },
     {
       "name": "potato_2000",
@@ -39,7 +42,8 @@
       "video_kbps": 2000,
       "audio_kbps": 64,
       "x264_preset": "ultrafast",
-      "description": "Potato Stream 2000k: 15 fps, 360p, ultrafast. Built from the measured CPU levers (frame rate and size)."
+      "description": "Potato Stream 2000k: 15 fps, 360p, ultrafast. Built from the measured CPU levers (frame rate and size).",
+      "profile_only": false
     },
     {
       "name": "potato_4000",
@@ -49,7 +53,8 @@
       "video_kbps": 4000,
       "audio_kbps": 96,
       "x264_preset": "ultrafast",
-      "description": "Potato Stream 4000k: 15 fps, 480p, ultrafast."
+      "description": "Potato Stream 4000k: 15 fps, 480p, ultrafast.",
+      "profile_only": false
     },
     {
       "name": "720p60",
@@ -59,7 +64,30 @@
       "video_kbps": 4000,
       "audio_kbps": 128,
       "x264_preset": "veryfast",
-      "description": "Fast action games. Needs a hardware encoder or a good CPU."
+      "description": "Fast action games. Needs a hardware encoder or a good CPU.",
+      "profile_only": false
+    },
+    {
+      "name": "office_laptop",
+      "width": 1600,
+      "height": 900,
+      "fps": 30,
+      "video_kbps": 3500,
+      "audio_kbps": 128,
+      "x264_preset": "veryfast",
+      "description": "Office laptop: 900p30 at 3500k. 30 fps, not 40, because 40 fps judders on 60 Hz screens.",
+      "profile_only": true
+    },
+    {
+      "name": "budget_gaming",
+      "width": 1920,
+      "height": 1080,
+      "fps": 60,
+      "video_kbps": 6000,
+      "audio_kbps": 128,
+      "x264_preset": "veryfast",
+      "description": "Budget gaming PC: 1080p60 at 6000k (the Twitch cap). Needs a hardware encoder such as NVENC.",
+      "profile_only": true
     }
   ]
 }
