@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="LightStream broadcast mark">
+<defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#17234a"/><stop offset="1" stop-color="#070a14"/></linearGradient><linearGradient id="wave" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#29e0ff"/><stop offset="1" stop-color="#c04dff"/></linearGradient></defs>
+<rect x="2" y="2" width="96" height="96" rx="22" fill="url(#bg)"/>
+<path d="M27 25v50h25" fill="none" stroke="#f4f7ff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="47" cy="50" r="6" fill="#29e0ff"/>
+<path d="M56 39a16 16 0 0 1 0 22M64 30a29 29 0 0 1 0 40M73 21a42 42 0 0 1 0 58" fill="none" stroke="url(#wave)" stroke-width="6" stroke-linecap="round"/>
+</svg>
