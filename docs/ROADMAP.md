@@ -1,6 +1,6 @@
 # Roadmap
 
-Status as of 0.17.0 (live studio release: opt-in GUI phone remote with Emergency, Restore and Stop on a token-protected local page, and a Session timeline box; real phone and home network UNVERIFIED, see [architecture/V017-MAP.md](architecture/V017-MAP.md)). Previous: 0.16.0 (guardian release: opt-in `--guardian` and `--auto-survival`, bandwidth trend predictor on synthetic traces, session timeline text, three new profiles, idle budgets; cloud scene sync, companion app and Crowd-Assisted Encoding stay Roadmap, see [architecture/V016-MAP.md](architecture/V016-MAP.md)). Previous: 0.15.0 (copilot and studio release: eight themes, audio-check, highlights, creator dashboard text command, plugin runtime library, Benchmark Lab; Scene composer drag-and-drop, a Creator GUI page, plugin wiring into `start` and live collection of copilot inputs stay Roadmap). Previous: 0.14.0 (showcase release: real dropped-frame health signal, GUI persistent-ingest toggle, shorter README with details in [FEATURES.md](FEATURES.md), web hero). Earlier: 0.13.0 (polish release on top of Platform V2). 0.13 changed no streaming behavior; it adds a polished window and web page, real screenshots (rendering VERIFIED on Linux under Xvfb and in headless Chromium only; Windows and macOS looks UNVERIFIED), GUI crash capture and three fixes, see the [CHANGELOG](../CHANGELOG.md). The scorecards below answer the 15 requested areas and 6 headline features; the detailed table that follows is older and more granular. Plans for each Roadmap row are in [architecture/BLUEPRINT.md](architecture/BLUEPRINT.md); ranking in [audit/TOP-100.md](audit/TOP-100.md). Done means implemented and covered by unit tests (see the README verification table for what was never run on real hardware). Partial means some of the area exists. Roadmap means not started; the design notes are intentions, not code.
+Status as of 0.18.0 (everywhere release: architecture-qualified desktop package plans, frozen `--self-test`, a real locally self-tested Linux tarball, and an installable mobile companion PWA; every Windows/macOS/installer workflow artifact remains UNVERIFIED while Actions is billing-locked, see [architecture/V018-MAP.md](architecture/V018-MAP.md) and [INSTALLING.md](INSTALLING.md)). Previous: 0.17.0 (live studio release: opt-in GUI phone remote with Emergency, Restore and Stop on a token-protected local page, and a Session timeline box; real phone and home network UNVERIFIED, see [architecture/V017-MAP.md](architecture/V017-MAP.md)). Previous: 0.16.0 (guardian release: opt-in `--guardian` and `--auto-survival`, bandwidth trend predictor on synthetic traces, session timeline text, three new profiles, idle budgets; cloud scene sync, companion app and Crowd-Assisted Encoding stay Roadmap, see [architecture/V016-MAP.md](architecture/V016-MAP.md)). Previous: 0.15.0 (copilot and studio release: eight themes, audio-check, highlights, creator dashboard text command, plugin runtime library, Benchmark Lab; Scene composer drag-and-drop, a Creator GUI page, plugin wiring into `start` and live collection of copilot inputs stay Roadmap). Previous: 0.14.0 (showcase release: real dropped-frame health signal, GUI persistent-ingest toggle, shorter README with details in [FEATURES.md](FEATURES.md), web hero). Earlier: 0.13.0 (polish release on top of Platform V2). 0.13 changed no streaming behavior; it adds a polished window and web page, real screenshots (rendering VERIFIED on Linux under Xvfb and in headless Chromium only; Windows and macOS looks UNVERIFIED), GUI crash capture and three fixes, see the [CHANGELOG](../CHANGELOG.md). The scorecards below answer the 15 requested areas and 6 headline features; the detailed table that follows is older and more granular. Plans for each Roadmap row are in [architecture/BLUEPRINT.md](architecture/BLUEPRINT.md); ranking in [audit/TOP-100.md](audit/TOP-100.md). Done means implemented and covered by unit tests (see the README verification table for what was never run on real hardware). Partial means some of the area exists. Roadmap means not started; the design notes are intentions, not code.
 
 ## v0.12 scorecard: the 15 areas
 
@@ -75,11 +75,46 @@ Status words: Done (implemented and unit tested), Partial (some of it exists), R
 | Plugin architecture | Partial (runtime v1 in 0.15) | `plugins.py` and `lightstream plugins list/check/run-demo` implement [architecture/PLUGIN-PROTOCOL.md](architecture/PLUGIN-PROTOCOL.md), VERIFIED with real subprocess plugins on Linux. Not wired into `start`, no GUI button, no `--no-plugins` flag, no plugin store (Roadmap). Design: each plugin is a subprocess that talks a narrow JSON protocol over stdin and stdout. In-process Python cannot be sandboxed, so in-process plugins are rejected | 3 | stream wiring, kill switch UI | Wiring touches the stream runner, so it needs its own review and a real use case |
 | Onboarding | Done | Setup wizard, readiness score, first-run FFmpeg helper. Window rendering VERIFIED on Linux/Xvfb only, Windows and macOS UNVERIFIED | | | |
 | UI/UX (dark mode, compact mode, shortcuts) | Done (0.11.0), polished in 0.13; rendering VERIFIED on Linux/Xvfb only | Eight themes (v0.15), reduce motion, compact mode, shortcuts, sparkline graphs; contrast tested to WCAG AA. On-screen rendering never run | 2 | none | Cannot be checked without a display |
-| Web site (accessibility, offline) | Done (0.11.0), polished in 0.13; layout VERIFIED in headless Chromium only | Landmarks, 44px targets, light scheme, reduced motion, offline service worker; static checks in node tests | | | Headless browser does not run in the dev sandbox |
+| Web companion (accessibility, offline, installable PWA) | Done as static companion in 0.18; real installation UNVERIFIED | Landmarks, 44px targets, light scheme, reduced motion, strict CSP, manifest, any/maskable/Apple icons, Android/iOS install help, shared service-worker registration and a content fingerprint over every cached shell byte. It remains a guide/calculator/overlay, not a mobile broadcaster | | | Real Android Chrome and iOS Safari installation still needs device testing |
 | Architecture refactor | Partial | Incremental: logic stays in tkinter-free modules. No DI container or event bus this round | 3 | | A container adds indirection for no current need; injected callables already make tests possible |
 | Adaptive Creator Intelligence | Partial | Phase 1 done: opt-in local history raises optimizer confidence. Later phases: deterministic rules that compare sessions (same game, same hour) and suggest a profile. No cloud, no learning model | 2 | history from real users | Rules need real data to avoid guessing thresholds |
 
 Phase 2 is the next release, phase 3 is after that. These are ordering notes, not dates.
+
+## Native mobile broadcaster roadmap (separate product)
+
+The v0.18 PWA is complete as a static companion shell, with manifest and offline behavior covered by Node tests. Real installation on Android/iOS is UNVERIFIED. It is not a broadcaster and does not claim APK, AAB, or IPA support.
+
+A functional phone broadcaster cannot reuse the desktop tkinter plus child-FFmpeg process model. It needs a separate native application with different capture, lifecycle, encoder, permission, and signing boundaries.
+
+### Android broadcaster
+
+Roadmap architecture:
+
+1. A native Android host app requests user consent through **MediaProjection** for every capture session.
+2. A **foreground service** owns the live session and persistent notification so Android does not silently stop capture in the background.
+3. A MediaProjection virtual display feeds **MediaCodec** H.264. Microphone or permitted playback capture feeds an Android audio encoder. The app must avoid a general FFmpeg subprocess dependency.
+4. A bounded native mux/network pipeline publishes RTMP or SRT, with reconnection, backpressure, thermal limits, rotation, and permission revocation handled explicitly.
+5. Keys use Android Keystore-backed storage. Logs and support exports apply the desktop redaction rules.
+6. APK debug installation and signed AAB store release are separate validation tracks. Device capture, foreground-service behavior, codec compatibility, battery use, and Play signing all need real-device tests.
+
+No Android project or manifest is added in 0.18 because none of those capture and lifecycle paths can be validated by wrapping the desktop code.
+
+### iOS broadcaster
+
+Roadmap architecture:
+
+1. A native host app configures and starts a **ReplayKit Broadcast Upload Extension**. Screen capture arrives as ReplayKit sample buffers inside the extension.
+2. The extension uses **VideoToolbox** for H.264 and a native audio/network pipeline. It must stay within extension memory and execution limits and cannot launch the desktop FFmpeg process.
+3. App Group storage passes non-secret settings between host and extension. Secrets use Keychain with the narrowest access group.
+4. The extension handles broadcast pause/finish, network reconnect, orientation, background lifecycle, and ReplayKit termination without corrupting the stream.
+5. The app, extension, entitlements, provisioning profiles, and store build must all be signed. IPA and App Store distribution need an Apple developer account and real-device review.
+
+No Xcode project, Broadcast Upload Extension, or IPA is added in 0.18. A file with an `.ipa` extension would not provide these systems.
+
+### Linux sandbox packages
+
+Snap and Flatpak remain roadmap items. Current Linux capture uses FFmpeg `x11grab`, direct device access, and a host FFmpeg subprocess. A truthful confined package first needs PipeWire plus the desktop ScreenCast portal for user-approved capture, then tested camera, microphone, GPU/encoder, and host-FFmpeg access. Shipping an untested manifest would imply support that does not exist.
 
 ## Local control API (decision for v0.12, partly superseded in 0.17)
 

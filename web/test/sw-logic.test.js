@@ -20,6 +20,8 @@ test("presets.json and page navigations are network-first", () => {
 test("same-origin static assets are cache-first", () => {
   assert.equal(strategyFor({ url: ORIGIN + "/style.css", method: "GET", origin: ORIGIN, mode: "no-cors" }), "cache-first");
   assert.equal(strategyFor({ url: ORIGIN + "/js/app.js", method: "GET", origin: ORIGIN, mode: "cors" }), "cache-first");
+  assert.equal(strategyFor({ url: ORIGIN + "/manifest.webmanifest", method: "GET", origin: ORIGIN, mode: "cors" }), "cache-first");
+  assert.equal(strategyFor({ url: ORIGIN + "/icons/icon-192.png", method: "GET", origin: ORIGIN, mode: "no-cors" }), "cache-first");
 });
 
 test("cross-origin and non-GET requests are never touched", () => {
@@ -47,16 +49,20 @@ test("every shell file exists in web/", () => {
   assert.ok(existsSync(join(WEB, "sw.js")));
 });
 
-test("CACHE_NAME fingerprint matches the cached js and css files", () => {
+test("CACHE_NAME fingerprint matches every offline shell byte", () => {
   const hash = createHash("sha256");
-  for (const f of SHELL_FILES.filter((f) => /\.(js|css)$/.test(f)).sort()) {
-    let text = readFileSync(join(WEB, f), "utf8");
-    if (f === "/js/sw-logic.js") {
-      text = text.split("\n").filter((l) => !l.startsWith("export const CACHE_NAME")).join("\n");
+  for (const path of [...SHELL_FILES].sort()) {
+    const rel = path === "/" ? "index.html" : path.endsWith("/") ? path.slice(1) + "index.html" : path.slice(1);
+    let bytes = readFileSync(join(WEB, rel));
+    if (path === "/js/sw-logic.js") {
+      const text = bytes.toString("utf8").split("\n")
+        .filter((line) => !line.startsWith("export const CACHE_NAME")).join("\n");
+      bytes = Buffer.from(text, "utf8");
     }
-    hash.update(f + "\n" + text);
+    hash.update(path + "\n");
+    hash.update(bytes);
   }
   const want = hash.digest("hex").slice(0, 8);
-  assert.equal(CACHE_NAME, "lightstream-shell-v1-" + want,
-    "cached files changed: set CACHE_NAME to lightstream-shell-v1-" + want);
+  assert.equal(CACHE_NAME, "lightstream-shell-v2-" + want,
+    "offline shell changed: set CACHE_NAME to lightstream-shell-v2-" + want);
 });

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install the LightStream companion</title>
+  <meta name="description" content="Install the LightStream guide and overlay companion on Android, iPhone, or iPad. The mobile companion is not a broadcaster.">
+  <meta name="theme-color" content="#101730">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="LightStream">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/lightstream.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <main id="main">
+    <p><a href="/">Back to LightStream</a></p>
+    <h1>Install the LightStream companion</h1>
+    <p class="note"><strong>This web app is a companion, not a mobile broadcaster.</strong> It installs the guide, preset calculator, and overlay page. It cannot capture a phone screen or publish RTMP video. LightStream does not ship an APK, AAB, or IPA.</p>
+
+    <section aria-labelledby="android-title">
+      <h2 id="android-title">Android: Chrome</h2>
+      <ol class="steps">
+        <li>Open this page in Chrome.</li>
+        <li>Open Chrome's menu and choose <strong>Install app</strong> or <strong>Add to Home screen</strong>.</li>
+        <li>Confirm the name and tap <strong>Install</strong>.</li>
+      </ol>
+      <p>If Chrome does not show the option, use the current HTTPS site rather than a copied local file, then reload once.</p>
+    </section>
+
+    <section aria-labelledby="ios-title">
+      <h2 id="ios-title">iPhone or iPad: Safari</h2>
+      <ol class="steps">
+        <li>Open this page in Safari.</li>
+        <li>Tap the Share button.</li>
+        <li>Choose <strong>Add to Home Screen</strong>, then tap <strong>Add</strong>.</li>
+      </ol>
+      <p>Other iOS browsers may open Safari for this system install action.</p>
+    </section>
+
+    <section aria-labelledby="offline-title">
+      <h2 id="offline-title">What works after installation</h2>
+      <ul>
+        <li>The guide, preset calculator, install help, and demo companion shell remain available offline after one successful load.</li>
+        <li>Live Twitch data still needs a network connection. Tokens stay in the URL fragment and are not cached.</li>
+        <li>The desktop app's phone-remote link is separate. The desktop app creates that private local-network link only while a stream is running.</li>
+      </ul>
+      <p><a class="button" href="/companion/">Open overlay companion</a> <a class="button ghost" href="/">Open guide</a></p>
+    </section>
+
+    <section aria-labelledby="native-title">
+      <h2 id="native-title">Why there is no mobile broadcaster package</h2>
+      <p>The desktop product uses tkinter, desktop capture APIs, and a separate FFmpeg process. Android and iOS do not support that process model. A real mobile broadcaster needs native capture, encoding, background execution, permissions, and store signing. See the project roadmap for the separate Android and iOS architecture.</p>
+    </section>
+  </main>
+  <footer><p>LightStream is MIT licensed. The installed companion stores no stream key.</p></footer>
+  <script type="module" src="/js/install.js"></script>
+</body>
+</html>

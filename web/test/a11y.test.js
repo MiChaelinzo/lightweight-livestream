@@ -8,7 +8,11 @@ import { join } from "node:path";
 
 const WEB = fileURLToPath(new URL("..", import.meta.url));
 const read = (p) => readFileSync(join(WEB, p), "utf8");
-const PAGES = { "index.html": read("index.html"), "companion/index.html": read("companion/index.html") };
+const PAGES = {
+  "index.html": read("index.html"),
+  "install/index.html": read("install/index.html"),
+  "companion/index.html": read("companion/index.html"),
+};
 
 function ids(html) {
   return [...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]);
@@ -21,6 +25,16 @@ test("pages declare lang, viewport, title, one h1 and a main landmark", () => {
     assert.match(html, /<title>[^<]+<\/title>/, name);
     assert.equal((html.match(/<h1[\s>]/g) || []).length, 1, name + " h1 count");
     assert.match(html, /<main[\s>]/, name);
+  }
+});
+
+test("installable pages expose manifest and Apple metadata", () => {
+  for (const name of ["index.html", "install/index.html"]) {
+    const html = PAGES[name];
+    assert.match(html, /<link rel="manifest" href="\/manifest\.webmanifest">/, name);
+    assert.match(html, /<link rel="icon" href="\/icons\/lightstream\.svg" type="image\/svg\+xml">/, name);
+    assert.match(html, /<link rel="apple-touch-icon" href="\/icons\/apple-touch-icon-180\.png">/, name);
+    assert.match(html, /<meta name="theme-color" content="#101730">/, name);
   }
 });
 
@@ -84,6 +98,12 @@ test("vercel.json CSP forbids unsafe-inline and keeps companion hosts path-scope
   assert.doesNotMatch(JSON.stringify(root), /twitch/);
   const sw = config.headers.find((h) => h.source === "/sw.js");
   assert.ok(sw.headers.some((h) => h.key === "Cache-Control" && h.value === "no-cache"));
+  const manifest = config.headers.find((h) => h.source === "/manifest.webmanifest");
+  assert.ok(manifest.headers.some((h) => h.key === "Content-Type" && h.value.startsWith("application/manifest+json")));
+  const icons = config.headers.find((h) => h.source === "/icons/(.*)");
+  const iconCache = icons.headers.find((h) => h.key === "Cache-Control").value;
+  assert.match(iconCache, /max-age=/);
+  assert.doesNotMatch(iconCache, /immutable/); // filenames are stable, not content hashes
 });
 
 test("companion renders chat with textContent only", () => {

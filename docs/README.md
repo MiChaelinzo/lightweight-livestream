@@ -6,10 +6,12 @@ Start here. Status labels used everywhere: **Done**, **Partial**, **Roadmap** (w
 
 | File | Purpose |
 |---|---|
+| [INSTALLING.md](INSTALLING.md) | beginner desktop and mobile-companion install paths, checksums, FFmpeg, unsigned warnings, uninstall and troubleshooting |
 | [FEATURES.md](FEATURES.md) | detailed feature guides, window layouts, web demo, known limitations, portable mode, standalone builds (moved out of the top README in 0.14) |
 | [ROADMAP.md](ROADMAP.md) | status table per area |
 | [ARCHITECTURE-NOTES.md](ARCHITECTURE-NOTES.md) | auto-scale design and alternatives, v0.16 guardian decisions and the dependabot workflow observation, optimizer notes, 0.12 platform v2 decisions from measured spikes |
-| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, v0.11 before and after, web page weight, v0.12 spikes (`tools/spikes.py`), v0.13 import cost and page weight before and after, v0.14 page weight and demo decision, v0.15 audio chain cost, highlights analysis cost and Benchmark Lab harness check, v0.16 idle budgets, v0.17 idle budget before and after the phone remote, runtime bitrate change, overlay cost and synthetic predictor results |
+| [BENCHMARKS.md](BENCHMARKS.md) | measured numbers from one Linux sandbox, web page weight through v0.18, v0.12 spikes, v0.13 import cost, v0.15 audio/highlights/Benchmark Lab, v0.16 idle budgets, v0.17 remote idle comparison, runtime bitrate change, overlay cost and synthetic predictor results |
+| [architecture/V018-MAP.md](architecture/V018-MAP.md) | v0.18 architecture/status map (self-test, desktop package plans, release provenance, installable companion, native mobile boundary) |
 | [architecture/V017-MAP.md](architecture/V017-MAP.md) | v0.17 feature map (phone remote, session timeline, race test), security design (threat model), final status and suite tables |
 | [architecture/V016-MAP.md](architecture/V016-MAP.md) | v0.16 feature map (guardian, auto-survival, predictor, profiles, timeline, portable audit), roadmap decisions, final status and suite tables |
 | [PROFILES.md](PROFILES.md) | one-click profiles `potato_pc`, `office_laptop`, `budget_gaming` and `recommend_profile` rules |

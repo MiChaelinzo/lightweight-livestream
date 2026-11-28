@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.18.0
+
+- Release foundation: `lightstream gui --self-test [--self-test-json] [--self-test-output FILE]` and frozen executables now validate required imports, Tcl/Tk without opening a display, app and portable roots, writable state storage, and FFmpeg discovery. Missing FFmpeg is guidance and still exits 0; an app-integrity failure exits nonzero. Frozen entry points now propagate the exit code. The output-file transport supports Windows `--windowed` executables where Python has no stdout/stderr console.
+- Version invariant: `tools/check_version.py` and tests require `lightstream.__version__` and `pyproject.toml` to match. Both are 0.18.0. Tagged release jobs also require the tag version and reject a tag commit that is not reachable from `origin/main`.
+- Desktop packaging: architecture-qualified artifact names; deterministic portable ZIP/tar metadata; Windows x86_64 portable ZIP plus a per-user WiX 5 MSI using an on-directory payload and Start Menu shortcut; macOS arm64 app ZIP, DMG with Applications link, and PKG to `/Applications`; Linux x86_64 tar.gz, AppImage, deb, and rpm with desktop/AppStream metadata. FFmpeg remains external and recommended, never bundled. Snap/Flatpak remain roadmap items until PipeWire portal capture and confined host FFmpeg/device access work.
+- Release validation: native binaries are self-tested before packaging. AppImage is self-tested through extract-and-run; package containers use native inspection commands where practical. PyInstaller is pinned to 6.11.1, WiX to 5.0.2, and the downloaded appimagetool asset is checksum-pinned. The workflow runs Python tests, Node tests, compileall, preset parity, icon reproducibility, source self-test, tag provenance, and an exact nine-artifact publish gate.
+- Optional signing: Windows PFX and macOS P12/signing/notarization paths use GitHub secrets and temporary runner files/keychains only. Unsigned artifacts say `unsigned`; partial secret configuration fails. No certificate or signing material is committed.
+- Reproducible original icon set: stdlib-only `tools/generate_icons.py` emits SVG, ICO, ICNS, and PWA PNG assets; `--check` and unit tests verify bytes, containers, dimensions, and the web image budget.
+- Mobile companion PWA: standards-based manifest, 192/512/maskable/Apple icons, Android Chrome and iPhone/iPad Safari install help, strict CSP, shared service-worker registration, and an offline-shell fingerprint across every cached text and binary file. It is clearly a guide/calculator/overlay companion, not a phone broadcaster. No Electron, Capacitor, Cordova, npm dependency, APK, AAB, or IPA was added.
+- Documentation: new `docs/INSTALLING.md` and `docs/architecture/V018-MAP.md`; README, RELEASING, ROADMAP, FEATURES, BENCHMARKS, and docs index updated. Release instructions now sync main, verify the exact merged SHA, tag that commit, and push only the tag.
+- Verification: a real Linux x86_64 tarball was built with PyInstaller 6.11.1, extracted, and its frozen JSON self-test passed in the sandbox. Windows/macOS artifacts, MSI/DMG/PKG/AppImage/deb/rpm installs, signing/notarization, and the billing-locked workflow remain UNVERIFIED.
+
 ## 0.17.0
 
 - Phone remote (`src/lightstream/remote.py`, opt-in): local HTTP API on 127.0.0.1 with a random bearer token, Host-header check and failed-auth lockout. It exposes emergency, restore and stop only; start is not exposed and the stream key never passes through it. Added `StreamController.timeline_lines()`.

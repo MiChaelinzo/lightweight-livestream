@@ -1,0 +1,85 @@
+{
+  "id": "/",
+  "name": "LightStream Companion",
+  "short_name": "LightStream",
+  "description": "Installable guide, preset calculator, and overlay companion for the LightStream desktop broadcaster. It does not broadcast from a phone.",
+  "lang": "en",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "background_color": "#070a14",
+  "theme_color": "#101730",
+  "orientation": "any",
+  "categories": [
+    "utilities",
+    "productivity",
+    "entertainment"
+  ],
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Installation help",
+      "short_name": "Install help",
+      "url": "/install/",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Companion overlay",
+      "short_name": "Overlay",
+      "url": "/companion/",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/img/gui-dashboard-dark.webp",
+      "sizes": "900x636",
+      "type": "image/webp",
+      "form_factor": "wide",
+      "label": "LightStream desktop dashboard"
+    },
+    {
+      "src": "/img/gui-dashboard-light.webp",
+      "sizes": "900x636",
+      "type": "image/webp",
+      "form_factor": "wide",
+      "label": "LightStream desktop dashboard in the light theme"
+    }
+  ]
+}

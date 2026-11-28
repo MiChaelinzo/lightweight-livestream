@@ -6,6 +6,12 @@
   <title>lightstream: lightweight streaming for old PCs</title>
   <meta name="color-scheme" content="dark light">
   <meta name="description" content="A small FFmpeg-based streamer for old PCs. Pick a preset, see the bandwidth it needs, and get the install steps.">
+  <meta name="theme-color" content="#101730">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="LightStream">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/lightstream.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon-180.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,7 +22,8 @@
       <h1 class="animated-title">lightstream</h1>
       <p class="tagline">Go live from an old PC without the lag. One small window, one FFmpeg encode, no browser engine.</p>
       <nav aria-label="Quick links" class="hero-links">
-        <a class="button" href="#install">Download</a>
+        <a class="button" href="#install">Desktop downloads</a>
+        <a class="button ghost" href="/install/">Install mobile companion</a>
         <a class="button ghost" href="#picker">Try presets</a>
         <a class="button ghost" href="#compare">Compare with OBS</a>
       </nav>
@@ -41,7 +48,8 @@
         <div>
           <h3>Does not</h3>
           <ul>
-            <li>Run in the browser. This site is a guide and a calculator only.</li>
+            <li>Run the desktop broadcaster in the browser. This site is an installable guide, calculator, and overlay companion.</li>
+            <li>Turn a phone into a broadcaster. There is no APK, AAB, or IPA; native mobile capture is a separate product.</li>
             <li>Stream from a web page. Browsers cannot push RTMP to Twitch or YouTube.</li>
             <li>Send your stream key anywhere. This site never asks for it.</li>
           </ul>
@@ -125,6 +133,7 @@
     <section id="companion-section" aria-labelledby="companion-title">
       <h2 id="companion-title">Browser companion overlay</h2>
       <p>The <a href="/companion">companion page</a> shows chat, viewer count, a stream timer and a goal bar. Open it in a browser window and capture that window with a scene, so lightstream never embeds a browser. With no settings it runs in demo mode with sample data.</p>
+      <p>You can <a href="/install/">install the guide and companion shell</a> from Android Chrome or iPhone/iPad Safari. Installation adds a home-screen web app; it does not add phone screen capture or mobile broadcasting.</p>
       <p>For Twitch chat add the channel to the address, for example <code>/companion#channel=yourname</code>. Optional viewer counts need a Twitch client ID and token, added after the <code>#</code> as <code>&amp;clientId=...&amp;token=...</code>. They stay in your browser, are never sent to this site, and are never saved. Twitch and YouTube connections are UNVERIFIED (no network in the dev sandbox), and only Twitch is implemented.</p>
     </section>
 
@@ -148,16 +157,12 @@
     </section>
 
     <section id="install" aria-labelledby="install-title">
-      <h2 id="install-title">Download and install</h2>
-      <p>Source and releases are on
-        <a href="https://github.com/MiChaelinzo/lightweight-livestream">GitHub</a>.
-        Clone the repo or download the zip, then run:</p>
+      <h2 id="install-title">Desktop downloads</h2>
+      <p>The v0.18 release workflow is configured to build architecture-labelled portable and installer downloads for Windows, macOS, and Linux. The native workflow remains UNVERIFIED until the repository's GitHub Actions billing lock is removed and each package is installed on its target system.</p>
+      <p>All downloads keep FFmpeg external. Follow the <a href="https://github.com/MiChaelinzo/lightweight-livestream/blob/main/docs/INSTALLING.md">platform installation guide</a> for FFmpeg, unsigned-app warnings, uninstall steps, and troubleshooting. Source installation remains available:</p>
       <pre class="code">pip install .
 lightstream gui</pre>
-      <p>For a USB stick, build the portable zip with
-        <code>python tools/build_portable.py</code> and drop FFmpeg into its <code>ffmpeg</code> folder.
-        On Windows, <code>python tools/build_windows_portable.py</code> builds a LightStreamPortable folder with an exe (needs PyInstaller; UNVERIFIED here).
-        The README has the full steps.</p>
+      <p>Want a home-screen shortcut on a phone? <a href="/install/">Install the companion web app</a>. It is not a mobile broadcaster.</p>
     </section>
 
     <section aria-labelledby="capture-title">

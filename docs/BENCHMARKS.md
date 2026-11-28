@@ -477,3 +477,16 @@ Method: `python3 tools/idle_budget.py --duration 20` under Xvfb, as in the v0.16
 | after, run 2 | 0.159 | 38.78 | 0.2% |
 
 Reading: RSS is about 0.1 to 0.4 MB higher and the other values are inside run-to-run noise (two runs per side; the before startup differs by 0.135 s between its own runs). Do not read the lower startup as a speedup. The budgets (startup under 2 s, RSS under 150 MB, CPU under 5 percent) hold. Cost while the remote is running and serving a phone was not measured.
+## v0.18 installable companion page weight
+
+Method: `python3 tools/page_weight.py` after the manifest, install page, service-worker module, and generated PWA icons were added. The v0.17 baseline was computed from commit `a9f60b7` with the same `gzip.compress(..., mtime=0)` method. `web/test` and `package.json` are excluded. Text totals include all other served non-image files. Image totals include WebP, PNG, JPEG, GIF, and SVG bytes. No network transfer, browser parse time, service-worker install time, or home-screen installation was measured.
+
+| Item | v0.17 baseline | v0.18 | Change |
+|---|---:|---:|---:|
+| Text assets, bytes | 56,421 | 63,955 | +7,534 |
+| Text assets, gzip bytes | 20,950 | 23,837 | +2,887 |
+| Images, bytes | 84,984 | 146,617 | +61,633 |
+
+The image increase is the original LightStream SVG plus 180, 192, 512, and maskable 512 PNG install icons. Total images remain 6,983 bytes below the existing 150 KiB (153,600 byte) showcase budget. The PNGs are already compressed; gzipping them again does not reduce transfer size. Screenshots remain lazy and are not precached. Install icons are precached because they are required for a reliable installed shell.
+
+The service-worker fingerprint test hashes every precached byte, including HTML, JSON, SVG, and PNG files. This verifies cache invalidation logic, not real offline behavior in a browser. Real Android Chrome and iOS Safari installation and offline launch remain UNVERIFIED.

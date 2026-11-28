@@ -25,7 +25,7 @@ FLAG_TEXT = "Settings are stored in ./data next to LightStream.exe (created on f
 FFMPEG_NOTE = ("LightStream does not include FFmpeg.\n"
                "Download ffmpeg.exe yourself (https://ffmpeg.org/download.html) and put it in this folder.\n"
                "LightStream uses it before any ffmpeg installed on the PC.\n")
-ENTRY_SOURCE = "from lightstream.gui import main\nmain()\n"
+ENTRY_SOURCE = "from lightstream.gui import main\nraise SystemExit(main())\n"
 
 
 class BuildError(Exception):
